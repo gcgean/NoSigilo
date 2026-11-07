@@ -7,7 +7,7 @@ import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, seedPortugalCities } from './seedCities.js';
 import { createApp, ehPlanoPortugal, totalDeVisitas, visitasPor, syncHubAccessForUser, runLembretesRenovacao } from './app.js';
-import { escolherFotoDaCabine, quemFoiMarcado } from './casa.js';
+import { calcularPermanencia, escolherFotoDaCabine, ordenarParaResponder, quemFoiMarcado } from './casa.js';
 import type { DbHandle } from './db.js';
 
 // Segredo do webhook do hub no ambiente de teste. Fica aqui em cima porque o
@@ -3932,6 +3932,88 @@ describe('nosigilo backend', () => {
     expect(nomes('@Anabela oi')).toEqual(['Anabela']);
     expect(nomes('@PABLO&NINA e @Homem Casa 2')).toEqual(['Pablo&Nina', 'Homem Casa 2']);
     expect(nomes('Ana sem arroba')).toEqual([]);
+  });
+
+  it('ninguém fala sozinho: chama quem é da mesma cidade, aceita o perfil e não está só olhando', () => {
+    const agora = Date.now();
+    const pessoa = (id: string, cidade: string | null, uf: string | null, extra: object = {}) => ({ id, cidade, uf, pulseira: null as string | null, ultimaMsg: 0, ...extra });
+    const autor = pessoa('autor', 'Fortaleza', 'CE');
+    const lista = [pessoa('sp', 'São Paulo', 'SP'), pessoa('ce', 'Sobral', 'CE'), pessoa('cidade', 'Fortaleza', 'CE'), pessoa('olhando', 'Fortaleza', 'CE', { pulseira: 'vermelha' }), autor];
+    const ordem = ordenarParaResponder(autor, lista, () => true, agora, () => 0, () => 0).map((p) => p.id);
+    expect(ordem).toEqual(['cidade', 'ce', 'sp']);
+    // Os dois lados precisam aceitar o perfil.
+    expect(ordenarParaResponder(autor, lista, (a, b) => !(a.id === 'cidade' && b.id === 'autor'), agora, () => 0, () => 0).map((p) => p.id)).toEqual(['ce', 'sp']);
+    // Quem foi chamado há pouco descansa 10 minutos.
+    expect(ordenarParaResponder(autor, lista, () => true, agora, (id) => (id === 'cidade' ? agora - 60_000 : 0), () => 0).map((p) => p.id)).toEqual(['ce', 'sp']);
+  });
+
+  it('permanência: soma as salas, junta queda rápida e separa quem saiu logo', () => {
+    const em = (min: number) => new Date(Date.UTC(2026, 10, 7, 1, min)).toISOString();
+    const ev = (user_id: string, tipo: string, min: number) => ({ user_id, tipo, created_at: em(min) });
+    expect(calcularPermanencia([ev('a', 'entrou', 0)], Date.parse(em(10)))).toBeNull();
+    const r = calcularPermanencia([
+      ev('rapido', 'entrou', 0), ev('rapido', 'saiu', 1),
+      // Trocou de sala e caiu por 2 min: uma visita só, 40 min no total.
+      ev('fiel', 'entrou', 0), ev('fiel', 'trocou', 10), ev('fiel', 'entrou', 10), ev('fiel', 'caiu', 20), ev('fiel', 'entrou', 22), ev('fiel', 'fechou', 42),
+      // Saiu e voltou depois de 30 min: duas visitas, 15 min no total.
+      ev('volta', 'entrou', 0), ev('volta', 'saiu', 5), ev('volta', 'entrou', 35), ev('volta', 'saiu', 45),
+      // Sem saída registrada: conta até o fim informado.
+      ev('aberto', 'entrou', 40), ev('sem-entrada', 'saiu', 3),
+    ], Date.parse(em(45)));
+    expect(r).toEqual({ pessoas: 4, medianaMin: 10, ate2Min: 1, de2a10Min: 1, de10a30Min: 1, mais30Min: 1, voltaram: 1 });
+  });
+
+  it('A Casa registra a saída da sala e a permanência só o admin vê', async () => {
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const terca = new Date();
+    do terca.setUTCDate(terca.getUTCDate() + 1); while ([5, 6, 0].includes(terca.getUTCDay()));
+    terca.setUTCHours(18, 0, 0, 0);
+    vi.useFakeTimers({ toFake: ['Date'], now: terca });
+    try {
+      const nova = async (nome: string, gender: string) => {
+        const u = await registerInvitedUser(ctx, sponsorToken, { name: nome, email: `${nome.toLowerCase().replace(/\s+/g, '-')}@example.com`, password: 'senha123', gender });
+        await grantPremium(ctx, String(u.user.id));
+        return u;
+      };
+      const admin = await nova('Admin Saida Casa', 'Mulher');
+      await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(admin.user.id)]);
+      const verificada = await nova('Verificada Saida Casa', 'Mulher');
+      await run(ctx.db, 'UPDATE users SET is_verified = 1 WHERE id = ?', [String(verificada.user.id)]);
+      await ctx.db.persist();
+      const bonus = async () => ((await queryAll(ctx.db, "SELECT id FROM token_transactions WHERE user_id = ? AND action_type = 'casa_mulher_noite'", [String(verificada.user.id)])) as any[]).length;
+
+      await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 60 }).expect(200);
+      // Bônus desligado: entra e não ganha.
+      await request(ctx.app).post('/api/casa/salao/entrar').set(auth(verificada.token)).expect(200);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(await bonus()).toBe(0);
+      // Trocar de sala e sair ficam registrados.
+      await request(ctx.app).post('/api/casa/casais/entrar').set(auth(verificada.token)).expect(200);
+      await request(ctx.app).post('/api/casa/casais/sair').set(auth(verificada.token)).expect(200);
+      await new Promise((r) => setTimeout(r, 50));
+      const tipos = ((await queryAll(ctx.db, "SELECT tipo FROM casa_eventos WHERE user_id = ? ORDER BY created_at", [String(verificada.user.id)])) as any[]).map((e) => e.tipo);
+      expect(tipos).toEqual(expect.arrayContaining(['entrou', 'trocou', 'saiu']));
+
+      // Bônus ligado: verificada ganha uma vez por noite.
+      await run(ctx.db, "INSERT INTO system_settings (key, value, updated_at) VALUES ('casa_mulheres_ativo', '1', ?)", [new Date().toISOString()]);
+      await ctx.db.persist();
+      await request(ctx.app).post('/api/casa/salao/entrar').set(auth(verificada.token)).expect(200);
+      await vi.waitFor(async () => expect(await bonus()).toBe(1));
+      await request(ctx.app).post('/api/casa/salao/sair').set(auth(verificada.token)).expect(200);
+      await request(ctx.app).post('/api/casa/salao/entrar').set(auth(verificada.token)).expect(200);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(await bonus()).toBe(1);
+
+      await request(ctx.app).get('/api/casa/admin/permanencia').set(auth(verificada.token)).expect(403);
+      await request(ctx.app).get('/api/casa/admin/permanencia').set(auth(admin.token)).expect(200);
+      await request(ctx.app).post('/api/casa/salao/sair').set(auth(verificada.token)).expect(200);
+      await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 0 }).expect(200);
+      await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(admin.user.id)]);
+    } finally {
+      vi.useRealTimers();
+      await run(ctx.db, "DELETE FROM system_settings WHERE key = 'casa_mulheres_ativo'");
+      for (const t of ['casa_mensagens', 'casa_eventos', 'casa_pontos']) await run(ctx.db, `DELETE FROM ${t} WHERE noite LIKE ?`, [`%${terca.toISOString().slice(0, 10)}`]);
+    }
   });
 
   it('sorteio do fundo da cabine: prefere a foto menos usada e não quebra sem fotos', () => {

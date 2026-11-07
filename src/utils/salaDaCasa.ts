@@ -32,7 +32,10 @@ export function avisoDeMencao(
   msg: { tipo?: string; texto?: string; autor?: { id?: string } | null; resposta?: { nome?: string } | null },
   eu: { id?: string | null; nome?: string | null } | null | undefined,
 ): 'marcou' | 'respondeu' | null {
-  if (!eu?.nome || msg.tipo !== 'pessoa' || !msg.autor || msg.autor.id === eu.id) return null;
+  if (!eu?.nome) return null;
+  // A Lola chama pelo @ quando alguém está falando sozinho ou ao apresentar duas pessoas.
+  if (msg.tipo === 'lola') return mencionou(msg.texto, eu.nome) ? 'marcou' : null;
+  if (msg.tipo !== 'pessoa' || !msg.autor || msg.autor.id === eu.id) return null;
   if (mencionou(msg.texto, eu.nome)) return 'marcou';
   return msg.resposta?.nome === eu.nome ? 'respondeu' : null;
 }

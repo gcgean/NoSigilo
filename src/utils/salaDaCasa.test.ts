@@ -40,9 +40,12 @@ describe('aviso quando me marcam na sala', () => {
   it('avisa quem recebeu uma resposta', () => {
     expect(avisoDeMencao({ tipo: 'pessoa', autor: outro, texto: 'oi', resposta: { nome: 'Pablo&Nina' } }, eu)).toBe('respondeu');
   });
-  it('não avisa a própria mensagem, a Lola, nem mensagem para outra pessoa', () => {
+  it('avisa quando a Lola chama pelo @, e só a pessoa chamada', () => {
+    expect(avisoDeMencao({ tipo: 'lola', texto: '💘 @Pablo&Nina, responde aí' }, eu)).toBe('marcou');
+    expect(avisoDeMencao({ tipo: 'lola', texto: '💘 @Maria, responde aí' }, eu)).toBeNull();
+  });
+  it('não avisa a própria mensagem, nem mensagem para outra pessoa', () => {
     expect(avisoDeMencao({ tipo: 'pessoa', autor: eu, texto: '@Pablo&Nina' }, eu)).toBeNull();
-    expect(avisoDeMencao({ tipo: 'lola', texto: '@Pablo&Nina' }, eu)).toBeNull();
     expect(avisoDeMencao({ tipo: 'pessoa', autor: outro, texto: '@Maria oi', resposta: { nome: 'Maria' } }, eu)).toBeNull();
     expect(avisoDeMencao({ tipo: 'pessoa', autor: outro, texto: '@Pablo&Nina' }, null)).toBeNull();
   });

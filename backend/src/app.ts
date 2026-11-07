@@ -616,6 +616,8 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   casa_entrada: { points: 5, dailyCap: 1 },
   // Promoção: casal que entra na Casa antes da meia-noite (NOITES_CASAL_CEDO em casa.ts).
   casa_casal_cedo: { points: 20, dailyCap: 1 },
+  // Mulher verificada que entra na noite (só com system_settings.casa_mulheres_ativo = '1').
+  casa_mulher_noite: { points: 30, dailyCap: 1 },
   casa_quiz: { points: 3, dailyCap: 5 },
   casa_desafio: { points: 5, dailyCap: 10 },
   casa_duelo: { points: 10, dailyCap: 3 },

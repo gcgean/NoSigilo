@@ -530,7 +530,7 @@ export default function Casa() {
       const eu = agora?.sala.id === d.sala ? agora.presentes.find((x) => x.id === agora.eu.idPublico) : null;
       const aviso = avisoDeMencao(d.msg, eu);
       if (aviso) {
-        const quem = d.msg.autor?.nome ?? 'Alguém';
+        const quem = d.msg.autor?.nome ?? (d.msg.tipo === 'lola' ? 'A Lola' : 'Alguém');
         const texto = aviso === 'marcou' ? `${quem} marcou você` : `${quem} respondeu você`;
         const ir = () => { setCabineAberta(null); irParaCitadaRef.current(d.msg.id); };
         tocarAviso(false, 'chegou');
@@ -1383,7 +1383,7 @@ export default function Casa() {
             {m.resposta && (
               <Citacao nome={m.resposta.nome} trecho={m.resposta.trecho} onIr={() => irParaCitada(m.resposta!.id)} className="border-white/60 bg-black/20 text-white/80" />
             )}
-            <p className="whitespace-pre-line text-sm leading-snug">{m.texto}</p>
+            <p className="whitespace-pre-line text-sm leading-snug"><TextoComMencoes texto={m.texto} nomes={nomesNaSala} meuNome={meuNomeNaSala} /></p>
             {estado.eu.podeFalar && /foram pra cabine|com a porta aberta/.test(m.texto) && <AcoesDaCabineAnunciada texto={m.texto} />}
             {m.jogoId && estado.jogo?.id === m.jogoId && (
               <div className="-mx-3 mt-1">

@@ -214,7 +214,7 @@ export type DependenciasDaCasa = {
   requireAuth: express.RequestHandler;
   getIo: () => SocketIOServer | undefined;
   temPremium: (userId: string) => Promise<boolean>;
-  premiar: (userId: string, acao: 'casa_entrada' | 'casa_casal_cedo' | 'casa_quiz' | 'casa_desafio' | 'casa_duelo' | 'casa_relampago', refId: string) => Promise<void>;
+  premiar: (userId: string, acao: 'casa_entrada' | 'casa_casal_cedo' | 'casa_mulher_noite' | 'casa_quiz' | 'casa_desafio' | 'casa_duelo' | 'casa_relampago', refId: string) => Promise<void>;
   /** Passa tokens de uma pessoa para outra (revelação paga). false = saldo insuficiente. */
   transferirTokens: (de: string, para: string, valor: number, refId: string) => Promise<boolean>;
   /** Tira tokens de alguém (desafio sugerido: fica guardado até cumprir). false = saldo insuficiente. */
@@ -307,6 +307,7 @@ const fimDaNoite = (chave: string, tema: 'sexta' | 'sabado') => inicioDaNoite(ch
 // meia-noite ganha TOKENS_CASAL_CEDO, uma vez por noite. Vale só nas noites daqui.
 const NOITES_CASAL_CEDO = new Set(['2026-11-06']);
 const TOKENS_CASAL_CEDO = 20; // igual a casa_casal_cedo em TOKEN_RULES (app.ts)
+const TOKENS_MULHER_NOITE = 30; // igual a casa_mulher_noite em TOKEN_RULES (app.ts)
 export function ganhaBonusCasalCedo(cat: string | undefined, chaveDaNoite: string, agora = new Date()) {
   return cat === 'casal' && NOITES_CASAL_CEDO.has(chaveDaNoite) && agoraBrasilia(agora).data === chaveDaNoite;
 }
@@ -357,6 +358,88 @@ function embaralhar<T>(lista: T[]): T[] {
 
 function procuraAceita(p: Presente, outro: Presente) {
   return p.procura.length === 0 || p.procura.includes(outro.genero);
+}
+
+/**
+ * Quem a Lola chama para responder quem falou sozinho: os dois precisam aceitar o
+ * perfil um do outro. Vem antes quem é da mesma cidade, depois do mesmo estado e
+ * quem falou há pouco (está de olho no chat). Pulseira vermelha nunca é chamada.
+ */
+export function ordenarParaResponder<T extends { id: string; cidade: string | null; uf: string | null; pulseira?: string | null; ultimaMsg: number }>(
+  autor: T,
+  candidatos: T[],
+  aceitam: (a: T, b: T) => boolean,
+  agora: number,
+  chamadoEm: (id: string) => number = () => 0,
+  aleatorio: () => number = Math.random,
+): T[] {
+  return candidatos
+    .filter((c) => c.id !== autor.id && c.pulseira !== 'vermelha' && aceitam(autor, c) && aceitam(c, autor) && agora - chamadoEm(c.id) >= 10 * 60_000)
+    .map((c) => ({
+      c,
+      pontos: (autor.cidade && c.cidade === autor.cidade ? 4 : 0) + (autor.uf && c.uf === autor.uf ? 2 : 0)
+        + (agora - c.ultimaMsg < 5 * 60_000 ? 1 : 0) + aleatorio() * 0.5,
+    }))
+    .sort((x, y) => y.pontos - x.pontos)
+    .map((x) => x.c);
+}
+
+export type ResumoPermanencia = { pessoas: number; medianaMin: number; ate2Min: number; de2a10Min: number; de10a30Min: number; mais30Min: number; voltaram: number };
+const TIPOS_DE_SAIDA = new Set(['saiu', 'caiu', 'trocou', 'fechou', 'expulso']);
+
+/**
+ * Quanto tempo cada pessoa ficou na noite, somando as salas. Trocar de sala ou cair
+ * e voltar em até 3 min é a mesma visita. Sem nenhum registro de saída devolve null:
+ * as noites anteriores a esta medição não têm como ser calculadas.
+ */
+export function calcularPermanencia(eventos: { user_id: string | null; tipo: string; created_at: string }[], fimPadraoMs: number): ResumoPermanencia | null {
+  if (!eventos.some((e) => TIPOS_DE_SAIDA.has(e.tipo))) return null;
+  const porPessoa = new Map<string, { em: number; entrada: boolean }[]>();
+  for (const e of eventos) {
+    const entrada = e.tipo === 'entrou';
+    if (!e.user_id || (!entrada && !TIPOS_DE_SAIDA.has(e.tipo))) continue;
+    const lista = porPessoa.get(e.user_id) ?? [];
+    lista.push({ em: Date.parse(e.created_at), entrada });
+    porPessoa.set(e.user_id, lista);
+  }
+  const VISITA_MS = 3 * 60_000;
+  const tempos: number[] = [];
+  let voltaram = 0;
+  for (const lista of porPessoa.values()) {
+    if (!lista.some((x) => x.entrada)) continue;
+    lista.sort((a, b) => a.em - b.em);
+    let total = 0;
+    let visitas = 0;
+    let aberto: number | null = null;
+    let ultimaSaida = -Infinity;
+    for (const x of lista) {
+      if (x.entrada) {
+        if (aberto !== null) continue;
+        if (x.em - ultimaSaida > VISITA_MS) visitas += 1;
+        aberto = x.em;
+      } else if (aberto !== null) {
+        total += x.em - aberto;
+        aberto = null;
+        ultimaSaida = x.em;
+      }
+    }
+    if (aberto !== null) total += Math.max(0, fimPadraoMs - aberto);
+    tempos.push(total / 60_000);
+    if (visitas > 1) voltaram += 1;
+  }
+  if (tempos.length === 0) return null;
+  tempos.sort((a, b) => a - b);
+  const meio = Math.floor(tempos.length / 2);
+  const mediana = tempos.length % 2 ? tempos[meio] : (tempos[meio - 1] + tempos[meio]) / 2;
+  return {
+    pessoas: tempos.length,
+    medianaMin: Math.round(mediana),
+    ate2Min: tempos.filter((t) => t < 2).length,
+    de2a10Min: tempos.filter((t) => t >= 2 && t < 10).length,
+    de10a30Min: tempos.filter((t) => t >= 10 && t < 30).length,
+    mais30Min: tempos.filter((t) => t >= 30).length,
+    voltaram,
+  };
 }
 
 /** Quem está nesta lista e foi marcado com @Nome. "@Ana" não marca a Anabela. */
@@ -702,10 +785,10 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const atualizarTema = async (noite: { chave: string; tema: 'sexta' | 'sabado' } | null) => {
     temaAtual = noite ? await temaDaFesta(noite.chave, noite.tema) : null;
   };
-  const registrarEvento = (salaId: SalaId | null, tipo: string, userId: string | null, outroId: string | null = null) => {
+  const registrarEvento = (salaId: SalaId | null, tipo: string, userId: string | null, outroId: string | null = null, emMs?: number) => {
     if (!chaveDaNoite) return;
     void db.run('INSERT INTO casa_eventos (id, noite, sala, tipo, user_id, outro_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [randomUUID(), chaveDaNoite, salaId, tipo, userId, outroId, new Date().toISOString()]).catch(() => {});
+      [randomUUID(), chaveDaNoite, salaId, tipo, userId, outroId, new Date(emMs ?? Date.now()).toISOString()]).catch(() => {});
   };
 
   // O histórico guarda sempre o id REAL (no Glory Hole o autor aparece com id anônimo).
@@ -1166,13 +1249,72 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     anfitrioes(sala, dita, { id: msgId, nome: p.nome, trecho: texto.slice(0, 80) });
   };
 
+  // ─── Ninguém fala sozinho ───────────────────────────────────────────────────
+  // A primeira fala da pessoa na sala, se ficar 1 min sem resposta, a Lola marca alguém
+  // compatível para responder. Sem ninguém compatível, quem responde é o casal anfitrião.
+  const OI_ESPERA_MS = 60_000;
+  type OiPendente = { msgId: string; em: number; texto: string };
+  const oisPendentes = new Map<string, Map<string, OiPendente>>();
+  const jaFalaramNaSala = new Set<string>();
+  const ultimoOiAtendido = new Map<string, number>();
+  const chamadoParaResponder = new Map<string, number>();
+  const registrarFalaParaOi = (sala: Sala, p: Presente, msgId: string, texto: string, respondendo: boolean) => {
+    const pendentes = oisPendentes.get(sala.id);
+    // Marcaram quem esperava com @: o oi foi atendido (citar a mensagem é em oiFoiRespondido).
+    if (pendentes) {
+      for (const [autorId, oi] of [...pendentes]) {
+        const autor = sala.presentes.get(autorId);
+        if (autorId !== p.id && autor && quemFoiMarcado(texto, [autor]).length > 0) pendentes.delete(autorId);
+      }
+    }
+    const chave = `${chaveDaNoite}:${sala.id}:${p.id}`;
+    if (jaFalaramNaSala.has(chave)) return;
+    jaFalaramNaSala.add(chave);
+    // Quem já chegou falando com alguém não está sozinho.
+    if (sala.anonima || respondendo || texto.includes('@')) return;
+    const lista = pendentes ?? new Map<string, OiPendente>();
+    lista.set(p.id, { msgId, em: Date.now(), texto });
+    oisPendentes.set(sala.id, lista);
+  };
+  const oiFoiRespondido = (sala: Sala, msgId: string, porQuem: string) => {
+    const pendentes = oisPendentes.get(sala.id);
+    if (!pendentes) return;
+    for (const [autorId, oi] of [...pendentes]) if (oi.msgId === msgId && autorId !== porQuem) pendentes.delete(autorId);
+  };
+  const atenderOisSemResposta = async (sala: Sala, agora: number) => {
+    const pendentes = oisPendentes.get(sala.id);
+    if (!pendentes?.size) return;
+    for (const [autorId, oi] of [...pendentes]) {
+      if (agora - oi.em < OI_ESPERA_MS) continue;
+      const autor = sala.presentes.get(autorId);
+      if (!autor || !sala.mensagens.some((m) => m.id === oi.msgId) || agora - oi.em > 4 * 60_000) { pendentes.delete(autorId); continue; }
+      // Um por vez, para a Lola não encher a sala.
+      if (agora - (ultimoOiAtendido.get(sala.id) ?? 0) < 45_000) return;
+      pendentes.delete(autorId);
+      ultimoOiAtendido.set(sala.id, agora);
+      const ordem = ordenarParaResponder(autor, falantes(sala), procuraAceita, agora, (id) => chamadoParaResponder.get(id) ?? 0);
+      let parceiro: Presente | null = null;
+      for (const c of ordem) if (!(await bloqueados(autor.id, c.id))) { parceiro = c; break; }
+      if (!parceiro) { void responderComoAnfitrioes(sala, autor, oi.texto, oi.msgId); return; }
+      chamadoParaResponder.set(parceiro.id, agora);
+      const deOnde = autor.cidade && autor.cidade === parceiro.cidade ? ` também é de ${autor.cidade} e`
+        : autor.uf && autor.uf === parceiro.uf ? ` também é de ${autor.uf} e` : '';
+      publicarMsg(sala, {
+        tipo: 'lola',
+        texto: `💘 @${parceiro.nome}, ${autor.nome}${deOnde} puxou papo aqui. Responde aí 😏`,
+        resposta: { id: oi.msgId, nome: autor.nome, trecho: oi.texto.slice(0, 80) },
+      });
+      return;
+    }
+  };
+
   // ─── Lola casamenteira: apresenta casais (e mulheres) que combinam ────────
   const apresentados = new Set<string>();
   const ultimaApresentacao = new Map<string, number>();
-  const apresentarPar = (sala: Sala, agora: number, chaveNoite: string) => {
-    if (sala.anonima || agora - (ultimaApresentacao.get(sala.id) ?? 0) < 9 * 60_000) return;
-    const cand = [...sala.presentes.values()].filter((p) => p.podeFalar && p.pulseira !== 'vermelha'
-      && (p.cat === 'casal' || p.cat === 'mulher') && agora - p.entrouEm > 2 * 60_000);
+  const apresentarPar = async (sala: Sala, agora: number, chaveNoite: string) => {
+    if (sala.anonima || agora - (ultimaApresentacao.get(sala.id) ?? 0) < 6 * 60_000) return;
+    // Homem entra também, mas só se o outro lado procura esse perfil (procuraAceita abaixo).
+    const cand = [...sala.presentes.values()].filter((p) => p.podeFalar && p.pulseira !== 'vermelha' && agora - p.entrouEm > 2 * 60_000);
     let melhor: { a: Presente; b: Presente; pontos: number } | null = null;
     for (let i = 0; i < cand.length; i++) {
       for (let j = i + 1; j < cand.length; j++) {
@@ -1185,6 +1327,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       }
     }
     if (!melhor) return;
+    if (await bloqueados(melhor.a.id, melhor.b.id)) { apresentados.add([chaveNoite, ...[melhor.a.id, melhor.b.id].sort()].join(':')); return; }
     const { a, b } = melhor;
     apresentados.add([chaveNoite, ...[a.id, b.id].sort()].join(':'));
     ultimaApresentacao.set(sala.id, agora);
@@ -1193,7 +1336,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       : a.pulseira && a.pulseira === b.pulseira ? `os dois estão de pulseira ${PULSEIRAS[a.pulseira]}`
       : b.cat === 'mulher' || a.cat === 'mulher' ? 'tô sentindo uma química aqui'
       : 'casal com casal combina 😏';
-    lola(sala, `💘 ${a.nome}, já conhece ${b.nome}? ${motivo}… dá uma olhada, paga um drink ou chama pra cabine 😈`);
+    lola(sala, `💘 @${a.nome}, já conhece @${b.nome}? ${motivo}… puxa papo, manda um oi 😈`);
   };
 
   // Pulseira vermelha = "só olhando": nunca é sorteada para desafio, duelo ou match.
@@ -1438,7 +1581,8 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     for (const sala of salas.values()) {
       let mudou = false;
       for (const [id, p] of sala.presentes) {
-        if (agora - p.ultimoPing > PING_EXPIRA_MS) { sala.presentes.delete(id); mudou = true; }
+        // O app parou de avisar: a saída de verdade foi no último aviso, não agora.
+        if (agora - p.ultimoPing > PING_EXPIRA_MS) { sala.presentes.delete(id); registrarEvento(sala.id, 'caiu', id, null, p.ultimoPing); mudou = true; }
       }
       for (const [id, t] of sala.espiando) {
         if (agora - t > PING_EXPIRA_MS) { sala.espiando.delete(id); mudou = true; }
@@ -1448,6 +1592,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         if (sala.presentes.size > 0 || sala.espiando.size > 0) {
           lola(sala, `A Casa fechou por hoje 🌙 Obrigada pela noite! ${HORARIO_DA_CASA}, tem mais.`);
           emitirParaSala(sala, 'casa.fechou', { sala: sala.id });
+          for (const id of sala.presentes.keys()) registrarEvento(sala.id, 'fechou', id);
           sala.presentes.clear();
           sala.espiando.clear();
         }
@@ -1488,13 +1633,15 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         else await iniciarJogo(sala);
       }
       if (!sala.jogo) provocarQuieto(sala, agora);
-      if (noite && !sala.jogo) { apresentarPar(sala, agora, noite.chave); puxarConversa(sala, agora); }
+      if (noite && !sala.jogo) { await apresentarPar(sala, agora, noite.chave); puxarConversa(sala, agora); }
+      if (noite) await atenderOisSemResposta(sala, agora);
     }
     if (noite) anunciarRanking(noite.chave);
     if (noite && !noite.teste) destravarSeEncheu(noite);
     if (noite) equilibrarSalas(agora);
     void lembrarReservas(noite).catch((err) => console.error('[casa] lembrete de reserva falhou', err));
     void convidarParaOTema().catch((err) => console.error('[casa] convite do tema falhou', err));
+    void convidarMulheres().catch((err) => console.error('[casa] convite das mulheres falhou', err));
 
     // Abriu a noite: aviso no celular de quem usou o site nos últimos 7 dias (uma vez por noite).
     if (noite && !noite.forcada && noite.chave !== noiteAnterior) {
@@ -1533,7 +1680,9 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       void (async () => {
         const m = (await db.queryOne(`SELECT COUNT(*) AS msgs, SUM(CASE WHEN tipo = 'midia' THEN 1 ELSE 0 END) AS midias, COUNT(DISTINCT autor_id) AS falaram FROM casa_mensagens WHERE noite = ?`, [chave])) as any;
         const e = (await db.queryOne(`SELECT COUNT(DISTINCT CASE WHEN tipo = 'entrou' THEN user_id END) AS pessoas, SUM(CASE WHEN tipo = 'cabine' THEN 1 ELSE 0 END) AS cabines, SUM(CASE WHEN tipo = 'drink' THEN 1 ELSE 0 END) AS drinks FROM casa_eventos WHERE noite = ?`, [chave])) as any;
-        await deps.alertar(`🌅 A Casa fechou (${chave}). Resumo:\n👥 ${Number(e?.pessoas || 0)} pessoas entraram · 🗣️ ${Number(m?.falaram || 0)} falaram\n💬 ${Number(m?.msgs || 0)} mensagens · 📸 ${Number(m?.midias || 0)} fotos/vídeos\n🚪 ${Number(e?.cabines || 0)} cabines · 🍸 ${Number(e?.drinks || 0)} drinks\n💋 Lola: ${contadores.avisos} avisos, ${contadores.expulsoes} expulsões · 🚩 ${contadores.denuncias} denúncias\nTudo no Histórico da Casa (admin).`);
+        const fica = await permanenciaDaNoite(chave);
+        const linhaFica = fica ? `⏱️ Ficaram ${fica.medianaMin} min (mediana) · ${fica.ate2Min} saíram em menos de 2 min · ${fica.mais30Min} ficaram 30 min ou mais\n` : '';
+        await deps.alertar(`🌅 A Casa fechou (${chave}). Resumo:\n👥 ${Number(e?.pessoas || 0)} pessoas entraram · 🗣️ ${Number(m?.falaram || 0)} falaram\n${linhaFica}💬 ${Number(m?.msgs || 0)} mensagens · 📸 ${Number(m?.midias || 0)} fotos/vídeos\n🚪 ${Number(e?.cabines || 0)} cabines · 🍸 ${Number(e?.drinks || 0)} drinks\n💋 Lola: ${contadores.avisos} avisos, ${contadores.expulsoes} expulsões · 🚩 ${contadores.denuncias} denúncias\nTudo no Histórico da Casa (admin).`);
       })().catch(() => {});
     }
 
@@ -1645,6 +1794,40 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     }
   };
 
+  // Mulheres: convite 2h antes de abrir e bônus para quem é verificada, nas noites normais.
+  // Só com system_settings.casa_mulheres_ativo = '1' (fica desligado até o dono aprovar).
+  const mulheresAtivo = async () => String(((await db.queryOne("SELECT value FROM system_settings WHERE key = 'casa_mulheres_ativo' LIMIT 1", [])) as any)?.value ?? '') === '1';
+  const convidarMulheres = async () => {
+    const n = noiteDoHorario(new Date(Date.now() + 2 * 3600_000));
+    if (!n || noiteDoHorario() || !deps.recadoDaLola || !(await mulheresAtivo())) return 0;
+    const t = await temaDaFesta(n.chave, n.tema);
+    // A noite "Elas no Comando" já tem o convite dela.
+    if (t.id === 'elas' || !(await umaVez(`casa_convite_mulheres:${n.chave}`))) return 0;
+    const desde = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    const pessoas = (await db.queryAll(
+      `SELECT u.id, u.gender, u.is_verified FROM users u
+        WHERE u.last_seen_at >= ? AND COALESCE(u.is_showcase,0) = 0 AND COALESCE(u.is_banned,0) = 0
+          AND COALESCE(u.is_deactivated,0) = 0 AND COALESCE(u.conta_oficial,0) = 0 AND u.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM casa_reservas r WHERE r.user_id = u.id AND r.noite = ?)`,
+      [desde, n.chave],
+    )) as any[];
+    const naoQuerem = await naoQueremConvite();
+    let enviados = 0;
+    for (const p of pessoas) {
+      const id = String(p.id);
+      if (categoria(p.gender) !== 'mulher' || naoQuerem.has(id)) continue;
+      const verificada = Number(p.is_verified || 0) === 1;
+      const ok = await deps.recadoDaLola(id, {
+        texto: `Hoje tem A Casa das ${HORA_DE_ABRIR[n.tema]}h até ${HORA_DE_FECHAR[n.tema]}h 💋 Aqui quem escolhe é você: só entra na sua cabine quem você aceitar, e dá para bloquear quem incomodar. ${verificada ? `Com seu perfil verificado, você ganha +${TOKENS_MULHER_NOITE} tokens ao entrar.` : `Verifique seu perfil e ganhe +${TOKENS_MULHER_NOITE} tokens ao entrar.`} Vem:`,
+        titulo: '💋 Hoje tem A Casa', descricao: `Das ${HORA_DE_ABRIR[n.tema]}h até ${HORA_DE_FECHAR[n.tema]}h. Quem escolhe é você.`, url: '/casa',
+      }).catch(() => false);
+      if (ok) enviados += 1;
+      await new Promise((res) => setTimeout(res, 60));
+    }
+    console.log(`[casa] convite para ${enviados} mulher(es)`);
+    return enviados;
+  };
+
   // Noite "Elas no Comando": 3h antes de abrir, a Lola convida as mulheres (e casais de
   // mulheres) que usaram o site nos últimos 60 dias. Uma vez por noite; quem reservou já
   // recebe os lembretes da reserva.
@@ -1732,7 +1915,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   // ─── Rotas ────────────────────────────────────────────────────────────────
   const carregarPerfil = async (userId: string) => {
     const u = (await db.queryOne(
-      `SELECT u.id, u.name, u.gender, u.looking_for_json, u.is_admin, u.avatar, u.city, u.state, u.created_at,
+      `SELECT u.id, u.name, u.gender, u.looking_for_json, u.is_admin, u.is_verified, u.avatar, u.city, u.state, u.created_at,
               (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) AS foto
          FROM users u WHERE u.id = ? LIMIT 1`,
       [userId],
@@ -1747,6 +1930,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       cat: categoria(u.gender),
       procura,
       admin: Number(u.is_admin || 0) === 1,
+      verificado: Number(u.is_verified || 0) === 1,
       avatar: u.foto ? `/uploads/${u.foto}` : (u.avatar ? String(u.avatar) : null),
       criadoEm: u.created_at ? String(u.created_at) : null,
       cidade: u.city ? String(u.city) : null,
@@ -1766,6 +1950,16 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     }
     return { chave: '', inicio: null };
   };
+  async function permanenciaDaNoite(chave: string) {
+    const eventos = (await db.queryAll(
+      "SELECT user_id, tipo, created_at FROM casa_eventos WHERE noite = ? AND tipo IN ('entrou', 'saiu', 'caiu', 'trocou', 'fechou', 'expulso')",
+      [chave],
+    )) as { user_id: string | null; tipo: string; created_at: string }[];
+    // Quem ficou sem registro de saída (o servidor reiniciou) conta até o último evento da noite.
+    const fim = Math.max(0, ...eventos.map((e) => Date.parse(e.created_at)));
+    return calcularPermanencia(eventos, chaveDaNoite === chave ? Date.now() : fim);
+  }
+
   const totalReservas = async (chave: string) =>
     Number(((await db.queryOne('SELECT COUNT(*) AS c FROM casa_reservas WHERE noite = ?', [chave])) as any)?.c || 0);
 
@@ -2032,7 +2226,9 @@ Sala: ${salaId}`).catch(() => {});
     // Uma sala por vez.
     for (const outra of salas.values()) {
       if (outra === sala) continue;
-      const saiu = outra.presentes.delete(userId) || outra.espiando.delete(userId);
+      const estavaFalando = outra.presentes.delete(userId);
+      if (estavaFalando) registrarEvento(outra.id, 'trocou', userId);
+      const saiu = estavaFalando || outra.espiando.delete(userId);
       if (saiu) avisarPresentes(outra);
     }
 
@@ -2100,6 +2296,9 @@ Sala: ${salaId}`).catch(() => {});
       registrarEvento(sala.id, 'entrou', userId);
       avisarPresentes(sala);
       void deps.premiar(userId, 'casa_entrada', `casa-${noite.chave}`).catch(() => {});
+      if (p.cat === 'mulher' && perfil.verificado) {
+        void mulheresAtivo().then((ativo) => (ativo ? deps.premiar(userId, 'casa_mulher_noite', `casa-mulher-${noite.chave}`) : undefined)).catch(() => {});
+      }
       if (ganhaBonusCasalCedo(p.cat, noite.chave)) {
         void deps.premiar(userId, 'casa_casal_cedo', `casa-cedo-${noite.chave}`).catch(() => {});
         // Sem nome de propósito (há sala anônima); no máximo 1 vez a cada 20 min por sala.
@@ -2128,7 +2327,7 @@ Sala: ${salaId}`).catch(() => {});
     const userId = userDe(req);
     if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
     sala.espiando.delete(userId);
-    if (sala.presentes.delete(userId)) avisarPresentes(sala);
+    if (sala.presentes.delete(userId)) { registrarEvento(sala.id, 'saiu', userId); avisarPresentes(sala); }
     res.json({ ok: true });
   });
 
@@ -2297,6 +2496,20 @@ Sala: ${salaId}`).catch(() => {});
   });
 
   // ─── Admin: tudo o que aconteceu na Casa, noite por noite ─────────────────
+  // Quanto tempo as pessoas ficam, noite a noite (só existe a partir de quando a saída é registrada).
+  app.get('/api/casa/admin/permanencia', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const noites = (await db.queryAll(
+      "SELECT DISTINCT noite FROM casa_eventos WHERE noite NOT LIKE 'teste%' ORDER BY noite DESC LIMIT 8", [],
+    )) as { noite: string }[];
+    const lista = [];
+    for (const { noite } of noites) {
+      const resumo = await permanenciaDaNoite(String(noite));
+      if (resumo) lista.push({ noite: String(noite), ...resumo });
+    }
+    res.json({ noites: lista });
+  });
+
   app.get('/api/casa/admin/noites', deps.requireAuth, async (req, res) => {
     if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
     const noites = (await db.queryAll(
@@ -2410,6 +2623,8 @@ Sala: ${salaId}`).catch(() => {});
     const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
     moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id), contextoDe(sala.mensagens, publicada.id));
     void avisarMarcados(sala, p, texto);
+    if (respondida) oiFoiRespondido(sala, respondida.id, p.id);
+    registrarFalaParaOi(sala, p, publicada.id, texto, !!respondida);
     if (respondida?.tipo === 'lola') void responderComoLola(sala, p, texto, respondida.texto, publicada.id);
     if (respondida?.tipo === 'anfitriao') void responderComoAnfitrioes(sala, p, texto, publicada.id);
     res.json({ ok: true });
@@ -2439,6 +2654,8 @@ Sala: ${salaId}`).catch(() => {});
     const lista = msg.reacoes[emoji] ?? [];
     msg.reacoes[emoji] = lista.includes(p.idPublico) ? lista.filter((x) => x !== p.idPublico) : [...lista, p.idPublico];
     if (msg.reacoes[emoji].length === 0) delete msg.reacoes[emoji];
+    // Reagir também é responder: quem falou já não está sozinho.
+    oiFoiRespondido(sala, msg.id, p.id);
     emitirParaSala(sala, 'casa.reacao', { sala: sala.id, mensagemId: msg.id, reacoes: msg.reacoes });
     const total = Object.values(msg.reacoes).reduce((n, ids) => n + ids.length, 0);
     if (total >= 3 && msg.tipo === 'pessoa' && msg.autor && !comentadas.has(msg.id) && Date.now() - (ultimoComentario.get(sala.id) ?? 0) > 60_000) {
@@ -2768,7 +2985,7 @@ Sala: ${salaId}`).catch(() => {});
           drinks: conta(ehDrink), drinksTokens: -soma(ehDrink),
           revelacoes: conta(ehRevelacao), revelacoesTokens: -soma(ehRevelacao),
           desafiosCumpridos: conta((t) => t.action_type === 'casa_desafio_recebido'), desafiosTokens: soma((t) => t.action_type === 'casa_desafio_recebido'),
-          premiosDaCasa: soma((t) => ['casa_entrada', 'casa_casal_cedo', 'casa_quiz', 'casa_desafio', 'casa_duelo', 'casa_relampago'].includes(t.action_type)),
+          premiosDaCasa: soma((t) => ['casa_entrada', 'casa_casal_cedo', 'casa_mulher_noite', 'casa_quiz', 'casa_desafio', 'casa_duelo', 'casa_relampago'].includes(t.action_type)),
         },
       });
     }
@@ -3000,7 +3217,9 @@ Sala: ${salaId}`).catch(() => {});
   const rankingsAnunciados = new Set<string>();
   const provocarQuieto = (sala: Sala, agora: number) => {
     if (sala.anonima || falantes(sala).length < 2) return;
-    if (agora - (ultimaProvocacao.get(sala.id) ?? 0) < 10 * 60_000) return;
+    // Chamada solta é o último recurso: apresentar duas pessoas funciona melhor.
+    if (agora - (ultimaProvocacao.get(sala.id) ?? 0) < 20 * 60_000) return;
+    if (agora - (ultimaApresentacao.get(sala.id) ?? 0) < 6 * 60_000) return;
     // Quieto: está há mais de 3 min na sala e não fala há mais de 8 min.
     const quietos = [...sala.presentes.values()].filter((x) => x.podeFalar && agora - x.ultimaMsg > 8 * 60_000 && agora - x.entrouEm > 3 * 60_000);
     if (quietos.length === 0) return;
