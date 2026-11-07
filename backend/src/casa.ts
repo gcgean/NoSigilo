@@ -384,6 +384,33 @@ export function ordenarParaResponder<T extends { id: string; cidade: string | nu
     .map((x) => x.c);
 }
 
+/**
+ * Quem aparece com foto no mapa da entrada: os mais ativos dos últimos 15 min primeiro,
+ * e o primeiro leva o destaque se tiver movimento de verdade (3 pontos ou mais: cada
+ * mensagem e cada reação recebida contam 1). Quem bloqueou ou foi bloqueado não aparece.
+ */
+export function pessoasDoMapa<P extends { id: string; idPublico: string; nome: string; avatar: string | null; cat: string }>(
+  presentes: P[],
+  mensagens: { autor?: { id?: string } | null; criadoEm: string; reacoes?: Record<string, string[]> }[],
+  bloqueados: Set<string>,
+  agora: number,
+  maximo = 9,
+) {
+  const pontos = new Map<string, number>();
+  for (const m of mensagens) {
+    const autor = m.autor?.id;
+    if (!autor || agora - Date.parse(m.criadoEm) > 15 * 60_000) continue;
+    const reacoes = Object.values(m.reacoes ?? {}).reduce((n, ids) => n + ids.length, 0);
+    pontos.set(autor, (pontos.get(autor) ?? 0) + 1 + reacoes);
+  }
+  const ordem = presentes
+    .filter((p) => !bloqueados.has(p.id))
+    .map((p) => ({ p, n: pontos.get(p.idPublico) ?? 0 }))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, maximo);
+  return ordem.map(({ p, n }, i) => ({ id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat, destaque: i === 0 && n >= 3 }));
+}
+
 export type ResumoPermanencia = { pessoas: number; medianaMin: number; ate2Min: number; de2a10Min: number; de10a30Min: number; mais30Min: number; voltaram: number };
 const TIPOS_DE_SAIDA = new Set(['saiu', 'caiu', 'trocou', 'fechou', 'expulso']);
 
@@ -2107,6 +2134,12 @@ Sala: ${salaId}`).catch(() => {});
     const prox = await proximaNoite();
     const reservado = prox.chave ? !!(await db.queryOne('SELECT 1 AS x FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, prox.chave])) : false;
     const fundosDoMapa = new Map(await Promise.all([...salas.keys()].map(async (id) => [id, await fundoPublico(id)] as const)));
+    // Fotos no mapa só para quem pode falar na Casa (quem entrar na sala veria o mesmo).
+    const comFotos = !!noite && podeFalar;
+    const bloqueadosNoMapa = new Set<string>(comFotos ? ((await db.queryAll(
+      'SELECT blocked_user_id AS id FROM blocks WHERE blocker_user_id = ? UNION SELECT blocker_user_id AS id FROM blocks WHERE blocked_user_id = ?',
+      [userId, userId],
+    )) as any[]).map((r) => String(r.id)) : []);
     res.json({
       aberta: !!noite,
       tema: noite ? temaPublico(await temaDaFesta(noite.chave, noite.tema)) : null,
@@ -2139,9 +2172,13 @@ Sala: ${salaId}`).catch(() => {});
           posicaoNaFila: s.fila.indexOf(userId) >= 0 ? s.fila.indexOf(userId) + 1 : null,
           // Para o mapa da Casa: só o tipo de cada pessoa (sem nome) e as cabines da sala.
           pessoas: [...s.presentes.values()].map((x) => x.cat),
+          // A sala anônima nunca mostra quem é quem.
+          ...(comFotos && !s.anonima ? { presentes: pessoasDoMapa([...s.presentes.values()], s.mensagens, bloqueadosNoMapa, Date.now()) } : {}),
           cabines: [...cabines.values()].filter((c) => c.salaId === s.id).map((c) => ({
             id: c.id, aberta: c.aberta, pessoas: c.membros.size, espiando: c.espectadores.size,
             tipos: c.aberta ? [...c.membros.values()].map((m) => m.cat) : [],
+            // Só o clima, sem dizer quem está dentro nem o que está acontecendo.
+            nivel: nivelPeloCalor(c),
           })),
         };
       }),

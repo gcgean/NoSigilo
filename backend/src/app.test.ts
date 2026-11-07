@@ -7,7 +7,7 @@ import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, seedPortugalCities } from './seedCities.js';
 import { createApp, ehPlanoPortugal, totalDeVisitas, visitasPor, syncHubAccessForUser, runLembretesRenovacao } from './app.js';
-import { calcularPermanencia, escolherFotoDaCabine, ordenarParaResponder, quemFoiMarcado } from './casa.js';
+import { calcularPermanencia, escolherFotoDaCabine, ordenarParaResponder, pessoasDoMapa, quemFoiMarcado } from './casa.js';
 import type { DbHandle } from './db.js';
 
 // Segredo do webhook do hub no ambiente de teste. Fica aqui em cima porque o
@@ -3945,6 +3945,21 @@ describe('nosigilo backend', () => {
     expect(ordenarParaResponder(autor, lista, (a, b) => !(a.id === 'cidade' && b.id === 'autor'), agora, () => 0, () => 0).map((p) => p.id)).toEqual(['ce', 'sp']);
     // Quem foi chamado há pouco descansa 10 minutos.
     expect(ordenarParaResponder(autor, lista, () => true, agora, (id) => (id === 'cidade' ? agora - 60_000 : 0), () => 0).map((p) => p.id)).toEqual(['ce', 'sp']);
+  });
+
+  it('mapa: mais ativos primeiro, destaque só com movimento e bloqueado não aparece', () => {
+    const agora = Date.now();
+    const p = (id: string) => ({ id, idPublico: id, nome: id, avatar: null, cat: 'casal' });
+    const msg = (id: string, minutos: number, reacoes?: Record<string, string[]>) => ({ autor: { id }, criadoEm: new Date(agora - minutos * 60_000).toISOString(), reacoes });
+    const lista = [p('quieto'), p('ativo'), p('bloqueado')];
+    const mensagens = [msg('ativo', 1, { '🔥': ['x', 'y'] }), msg('quieto', 30), msg('quieto', 40), msg('quieto', 50), msg('bloqueado', 1)];
+    const r = pessoasDoMapa(lista, mensagens, new Set(['bloqueado']), agora);
+    expect(r.map((x) => x.id)).toEqual(['ativo', 'quieto']);
+    expect(r[0].destaque).toBe(true);
+    expect(r[1].destaque).toBe(false);
+    // Sem movimento recente, ninguém é destaque.
+    expect(pessoasDoMapa(lista, [msg('ativo', 1)], new Set(), agora).some((x) => x.destaque)).toBe(false);
+    expect(pessoasDoMapa(Array.from({ length: 12 }, (_, i) => p(`p${i}`)), [], new Set(), agora)).toHaveLength(9);
   });
 
   it('permanência: soma as salas, junta queda rápida e separa quem saiu logo', () => {
