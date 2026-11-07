@@ -143,13 +143,13 @@ const PROMPT_RESUMO_DIARIO = `Você é o analista financeiro do NoSigilo, rede s
 
 Você recebe em JSON os números do dia fechado, comparações (dia anterior, mesmo dia da semana passada), o mês até esse dia, o mês anterior até o mesmo dia e a projeção de fechamento do mês.
 
-Escreva em português do Brasil, para ler no Telegram:
-- no máximo 6 linhas, cada uma começando com "• ";
+Os totais já aparecem acima do seu texto: não os repita. Escreva em português do Brasil, para ler no Telegram:
+- exatamente 3 linhas, cada uma começando com "• ", com no máximo 15 palavras;
 - texto puro, sem markdown, sem asteriscos, sem títulos;
-- cite números e variações em % quando ajudar;
-- cubra: como foi o dia frente às comparações, o ritmo do mês e a projeção, conversão de cadastro em assinante e do teste grátis, renovações, tokens;
-- termine com 1 recomendação prática e específica para hoje;
-- não invente dado que não está no JSON; se algo for zero ou faltar, diga só se for relevante.`;
+- 1ª linha: como foi o dia frente à mesma semana passada, com a variação em %;
+- 2ª linha: a única coisa que mais merece atenção agora (ignore o que está normal);
+- 3ª linha: começa com "Hoje:" e traz 1 ação prática e específica;
+- não invente dado que não está no JSON.`;
 
 export async function analisarResumoDiario(apiKey: string, dados: unknown): Promise<string> {
   const { texto } = await chamarDeepSeek(apiKey, 'deepseek-chat', [

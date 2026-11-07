@@ -3300,8 +3300,8 @@ async function montarResumoDiario(db: DbHandle, env: Env, dia: string) {
 
   const [cadDia, cadMes] = await Promise.all([contarCadastros(db, dia, dia), contarCadastros(db, inicioMes, dia)]);
   const cabecalho =
-    `📅 <b>Resumo de ${dia.slice(8)}/${dia.slice(5, 7)}/${y} (${semana})</b>\n\n` +
-    `🆕 Novos cadastros: <b>${num(cadDia)}</b> · no mês: <b>${num(cadMes)}</b>`;
+    `📅 <b>Resumo · ${semana} ${dia.slice(8)}/${dia.slice(5, 7)}</b>\n` +
+    `🆕 Cadastros: <b>${num(cadDia)}</b> · mês ${num(cadMes)}`;
 
   let somar: Awaited<ReturnType<typeof apuracaoFinanceira>>;
   try {
@@ -3312,31 +3312,33 @@ async function montarResumoDiario(db: DbHandle, env: Env, dia: string) {
     return `${cabecalho}\n\n⚠️ Não foi possível obter os pagamentos do Hub agora.`;
   }
 
-  const bloco = (titulo: string, b: BlocoFinanceiro) =>
-    `<b>${titulo}</b>\n` +
-    `💰 Total: <b>${brl(b.assinaturasCents + b.tokensCents)}</b> (assinaturas ${brl(b.assinaturasCents)} + tokens ${brl(b.tokensCents)})\n` +
-    `👤 Novos assinantes: <b>${num(b.novos)}</b> · ${brl(b.novosCents)}\n` +
-    `   ↳ vieram do teste grátis: <b>${num(b.doTeste)}</b> · ${brl(b.doTesteCents)}\n` +
-    `🔁 Renovações: <b>${num(b.renovacoes)}</b> · ${brl(b.renovacoesCents)}\n` +
-    `🎯 Ticket médio: <b>${ticket(b)}</b> (${num(b.pagamentos)} pagamento${b.pagamentos === 1 ? '' : 's'} de assinatura)\n` +
-    `🪙 Tokens: <b>${num(b.tokens)}</b> compra${b.tokens === 1 ? '' : 's'} · ${brl(b.tokensCents)}`;
+  // Só o que muda decisão; tokens aparecem quando houve venda.
+  const linhasDoBloco = (titulo: string, b: BlocoFinanceiro) => {
+    const doTeste = b.doTeste > 0 ? ` (${num(b.doTeste)} do teste)` : '';
+    return `${titulo}: <b>${brl(b.assinaturasCents + b.tokensCents)}</b>\n` +
+      `   👤 ${num(b.novos)} novos${doTeste} · 🔁 ${num(b.renovacoes)} renovações` +
+      (b.tokens > 0 ? ` · 🪙 ${num(b.tokens)}` : '');
+  };
 
   const hoje = somar(dia, dia);
   const mes = somar(inicioMes, dia);
   const projecaoCents = Math.round(((mes.assinaturasCents + mes.tokensCents) / d) * diasNoMes);
 
+  const mesAntInteiro = somar(`${mesAnt}-01`, ultimoMesAnt.toISOString().slice(0, 10));
+  const mesAntInteiroCents = mesAntInteiro.assinaturasCents + mesAntInteiro.tokensCents;
+  const variacaoMes = mesAntInteiroCents > 0 ? Math.round(((projecaoCents - mesAntInteiroCents) / mesAntInteiroCents) * 100) : null;
+
   let texto =
     `${cabecalho}\n\n` +
-    `${bloco('💳 DIA', hoje)}\n\n` +
-    `${bloco(`📊 MÊS (01 a ${dia.slice(8)}/${dia.slice(5, 7)})`, mes)}\n` +
-    `📈 Previsão de fechamento do mês: <b>${brl(projecaoCents)}</b>`;
+    `${linhasDoBloco('💰 Dia', hoje)}\n` +
+    `${linhasDoBloco('📊 Mês', mes)}\n` +
+    `📈 Previsão: <b>${brl(projecaoCents)}</b>${variacaoMes !== null ? ` (${variacaoMes >= 0 ? '+' : ''}${variacaoMes}% sobre o mês passado)` : ''}`;
 
   if (env.DEEPSEEK_API_KEY) {
     try {
       const centavosEmReais = (b: BlocoFinanceiro) => Object.fromEntries(
         Object.entries(b).map(([k, v]) => [k.replace(/Cents$/, 'Reais'), k.endsWith('Cents') ? v / 100 : v])
       );
-      const mesAntInteiro = somar(`${mesAnt}-01`, ultimoMesAnt.toISOString().slice(0, 10));
       const analise = await analisarResumoDiario(env.DEEPSEEK_API_KEY, {
         dia, diaDaSemana: semana, diaDoMes: d, diasNoMes,
         cadastros: { dia: cadDia, mesAteODia: cadMes, mesmoDiaSemanaPassada: await contarCadastros(db, somarDias(dia, -7), somarDias(dia, -7)) },
@@ -3349,10 +3351,10 @@ async function montarResumoDiario(db: DbHandle, env: Env, dia: string) {
         projecao_fechamento_mes_reais: projecaoCents / 100,
       });
       const seguro = analise.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      texto += `\n\n🤖 <b>Análise da IA</b>\n${seguro}`;
+      texto += `\n\n🤖 ${seguro}`;
     } catch (err) {
       console.error('[admin-daily-summary] ia:', err);
-      texto += '\n\n🤖 Análise da IA indisponível hoje.';
+      // Sem a análise o resumo continua completo: não precisa de aviso.
     }
   }
   return texto;

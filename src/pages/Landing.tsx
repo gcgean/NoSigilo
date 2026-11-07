@@ -324,7 +324,7 @@ export default function Landing() {
               </p>
               {/* Chamada principal (mesmo botão das páginas regionais): antes o
                   topo só tinha o link "Conheça a experiência". */}
-              <p className="landing-perfis-titulo">Quem vai entrar? É grátis.</p>
+              <p className="landing-perfis-titulo">Quem vai entrar?</p>
               <div className="landing-perfis">
                 {PERFIS_DO_TOPO.map((p) => (
                   <Link key={p.perfil} className="landing-cta-pulso" to={`/register?profile=${encodeURIComponent(p.perfil)}`} onClick={() => marcarPassoCadastro(p.evento)}>
