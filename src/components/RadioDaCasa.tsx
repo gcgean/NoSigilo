@@ -23,9 +23,20 @@ function gravar(chave: string, valor: string) {
   try { localStorage.setItem(chave, valor); } catch { /* modo restrito */ }
 }
 
+// Um só elemento de áudio para a Casa inteira: o celular libera o som por elemento,
+// então a música liberada na entrada continua liberada ao entrar numa sala.
+let audioUnico: HTMLAudioElement | null = null;
+function audioDaCasa() {
+  if (!audioUnico) {
+    audioUnico = new Audio();
+    audioUnico.preload = 'auto';
+  }
+  return audioUnico;
+}
+
 /** compacto: só um ícone no topo da sala (toque liga/desliga), sem a faixa da música. */
 export default function RadioDaCasa({ compacto = false }: { compacto?: boolean } = {}) {
-  const audio = useRef<HTMLAudioElement | null>(null);
+  const audio = useRef<HTMLAudioElement>(audioDaCasa());
   const [tocando, setTocando] = useState<Tocando | null>(null);
   // Som ligado por padrão ao entrar na Casa; só fica mudo para quem silenciou antes.
   const [ligado, setLigado] = useState(() => ler(CHAVE_LIGADO, '1') === '1');
@@ -58,6 +69,11 @@ export default function RadioDaCasa({ compacto = false }: { compacto?: boolean }
   }, [ligado]);
 
   useEffect(() => { void sintonizar(); }, [sintonizar]);
+  useEffect(() => {
+    const el = audio.current;
+    el.onended = () => { void sintonizar(); };
+    return () => { el.onended = null; };
+  }, [sintonizar]);
   useEffect(() => {
     const t = setInterval(() => { void sintonizar(true); }, 20_000);
     return () => clearInterval(t);
@@ -103,7 +119,6 @@ export default function RadioDaCasa({ compacto = false }: { compacto?: boolean }
   const IconeVolume = !somAtivo || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
   if (compacto) return (
     <>
-      <audio ref={audio} preload="auto" onEnded={() => void sintonizar()} />
       {tocando && (
         <button type="button" onClick={alternar}
           title={somAtivo ? `Tocando: ${tocando.titulo}${tocando.artista ? ` · ${tocando.artista}` : ''} (toque para silenciar)` : 'Ligar a música'}
@@ -115,9 +130,7 @@ export default function RadioDaCasa({ compacto = false }: { compacto?: boolean }
     </>
   );
   return (
-    // O <audio> fica sempre montado (mesmo sem faixa): a primeira sintonia precisa dele.
     <div className={cn('flex items-center gap-2 border-b border-white/10 bg-black/40 px-3 py-1.5', !tocando && 'hidden')}>
-      <audio ref={audio} preload="auto" onEnded={() => void sintonizar()} />
       {tocando && (<>
       <Music2 className={cn('h-4 w-4 shrink-0 text-fuchsia-300', somAtivo && 'animate-pulse')} />
       <p className="min-w-0 flex-1 truncate text-[11px] text-white/80">

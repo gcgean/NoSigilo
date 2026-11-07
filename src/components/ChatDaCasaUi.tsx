@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -53,28 +53,55 @@ export function Citacao({ nome, trecho, onIr, className, nomeClassName }: {
  * Arrastar a mensagem para a direita responde (como no WhatsApp). Só no toque;
  * movimento mais vertical que horizontal é rolagem e não conta.
  */
-export function ArrastaParaResponder({ ativo, onResponder, destacada, children, className, ...resto }: {
+export function ArrastaParaResponder({ ativo, onResponder, onSegurar, destacada, children, className, ...resto }: {
   ativo: boolean; onResponder: () => void; destacada?: boolean; children: ReactNode; className?: string;
+  /** Segurar a mensagem (ou botão direito no computador), como no chat do app. */
+  onSegurar?: () => void;
   'data-msg-id'?: string;
 }) {
   const inicio = useRef<{ x: number; y: number; horizontal: boolean | null } | null>(null);
   const [dx, setDx] = useState(0);
   const LIMITE = 56;
+  const timerSegurar = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const segurou = useRef(false);
+  const cancelarSegurar = () => {
+    if (timerSegurar.current) clearTimeout(timerSegurar.current);
+    timerSegurar.current = null;
+  };
+  useEffect(() => cancelarSegurar, []);
   return (
     <div
       {...resto}
       className={cn('relative rounded-2xl transition-all duration-500', destacada && 'bg-amber-300/30 ring-2 ring-amber-400', className)}
-      onTouchStart={ativo ? (e) => { const t = e.touches[0]; inicio.current = { x: t.clientX, y: t.clientY, horizontal: null }; } : undefined}
+      style={onSegurar && ativo ? { WebkitTouchCallout: 'none' } : undefined}
+      onTouchStart={ativo ? (e) => {
+        const t = e.touches[0];
+        inicio.current = { x: t.clientX, y: t.clientY, horizontal: null };
+        segurou.current = false;
+        cancelarSegurar();
+        if (onSegurar) {
+          timerSegurar.current = setTimeout(() => {
+            segurou.current = true;
+            try { navigator.vibrate?.(15); } catch { /* sem vibração */ }
+            onSegurar();
+          }, 450);
+        }
+      } : undefined}
+      onContextMenu={ativo && onSegurar ? (e) => { e.preventDefault(); cancelarSegurar(); segurou.current = false; onSegurar(); } : undefined}
+      // Quem segurou a foto quer reagir: o toque não pode abrir a foto ao soltar.
+      onClickCapture={(e) => { if (segurou.current) { segurou.current = false; e.preventDefault(); e.stopPropagation(); } }}
       onTouchMove={ativo ? (e) => {
         const i = inicio.current;
         if (!i) return;
         const t = e.touches[0];
         const mx = t.clientX - i.x;
         const my = t.clientY - i.y;
+        if (Math.abs(mx) > 8 || Math.abs(my) > 8) cancelarSegurar();
         if (i.horizontal === null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) i.horizontal = Math.abs(mx) > Math.abs(my);
         if (i.horizontal) setDx(Math.max(0, Math.min(mx, LIMITE + 20)));
       } : undefined}
       onTouchEnd={ativo ? () => {
+        cancelarSegurar();
         if (dx >= LIMITE) { onResponder(); try { navigator.vibrate?.(15); } catch { /* sem vibração */ } }
         inicio.current = null;
         setDx(0);

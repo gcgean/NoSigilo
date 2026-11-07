@@ -277,7 +277,7 @@ export default function CabineDaCasa({
           </>
         )}
         {reagindoEm === m.id && (
-          <div className="flex w-full gap-1 pt-1">
+          <div className="flex w-full flex-wrap gap-1 pt-1">
             {REACOES.map((e) => (
               <button key={e} type="button" onClick={() => void reagir(m, e)} className="rounded-full bg-white/10 px-2 py-1 text-base hover:scale-110">{e}</button>
             ))}
@@ -505,7 +505,7 @@ export default function CabineDaCasa({
         {cab.mensagens.map((m) => (
           <Fragment key={m.id}>
           {rolagem.marcador === m.id && <LinhaNaoLidas />}
-          <ArrastaParaResponder data-msg-id={m.id} ativo={!!cab.souMembro && m.tipo !== 'sistema' && m.tipo !== 'acao'} destacada={rolagem.destacada === m.id} onResponder={() => setRespondendo(m)}>
+          <ArrastaParaResponder data-msg-id={m.id} ativo={!!cab.souMembro && m.tipo !== 'sistema' && m.tipo !== 'acao'} destacada={rolagem.destacada === m.id} onResponder={() => setRespondendo(m)} onSegurar={() => setReagindoEm(m.id)}>
           {m.tipo === 'sistema' ? (
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
         ) : m.tipo === 'acao' ? (

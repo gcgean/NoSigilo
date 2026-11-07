@@ -18,6 +18,7 @@ import { ToastAction } from '@/components/ui/toast';
 import RadioDaCasa from '@/components/RadioDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
 import CabineDaCasa from '@/components/CabineDaCasa';
+import { contaComoNovaNaCabine, enviarComNovaTentativa } from '@/utils/salaDaCasa';
 import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
 import { profileService } from '@/services/api';
 import PerfilNaCasa from '@/components/PerfilNaCasa';
@@ -375,6 +376,11 @@ export default function Casa() {
   const cabineAbertaRef = useRef(cabineAberta);
   cabineAbertaRef.current = cabineAberta;
   const [minhasCabines, setMinhasCabines] = useState<string[]>([]);
+  const [dadosCabines, setDadosCabines] = useState<Record<string, { id: string; eu: string | null; salaId: string | null; aberta: boolean; espectadores: number; membros: { id: string; nome: string; avatar: string | null; cat: Categoria }[] }>>({});
+  const dadosCabinesRef = useRef(dadosCabines);
+  dadosCabinesRef.current = dadosCabines;
+  const [naoLidasCabine, setNaoLidasCabine] = useState<Record<string, number>>({});
+  const [listaDeCabines, setListaDeCabines] = useState(false);
   const [cabinesAbertas, setCabinesAbertas] = useState<{ id: string; aberta?: boolean; espectadores: number; souMembro: boolean; membros: { id: string; nome: string; avatar: string | null; cat: Categoria }[] }[]>([]);
   const [conviteCabine, setConviteCabine] = useState<{ cabineId: string; membros: string[] } | null>(null);
   const [propondoPara, setPropondoPara] = useState<Pessoa | null>(null);
@@ -687,14 +693,32 @@ export default function Casa() {
     setEscolhendoPulseira(true);
   }, [estado?.sala.id, estado?.eu.podeFalar, estado?.eu.pulseira, pulseiraDispensada]);
 
+  const enviandoRapida = useRef(false);
   const enviar = async (direto?: string) => {
     const t = (direto ?? texto).trim();
     if (!t || !salaAtual) return;
     if (direto === undefined) setTexto('');
+    // Toque duplo numa mensagem rápida não publica duas vezes.
+    if (direto !== undefined) {
+      if (enviandoRapida.current) return;
+      enviandoRapida.current = true;
+    }
     const resp = respondendo;
     setRespondendo(null);
-    try { await apiClient.post(`/casa/${salaAtual}/mensagem`, { texto: t, ...(resp ? { respostaA: resp.id } : {}) }); }
-    catch (e) { if (direto === undefined) setTexto(t); setRespondendo(resp); toast({ title: erroDe(e, 'Mensagem não enviada.'), variant: 'destructive' }); }
+    const sala = salaAtual;
+    try {
+      await enviarComNovaTentativa(
+        () => apiClient.post(`/casa/${sala}/mensagem`, { texto: t, ...(resp ? { respostaA: resp.id } : {}) }),
+        async () => { const { data } = await apiClient.post(`/casa/${sala}/entrar`); if (data?.sala) setEstado(data); },
+      );
+    } catch (e) {
+      if (direto === undefined) setTexto(t);
+      setRespondendo(resp);
+      const semAssinatura = (e as any)?.response?.status === 403;
+      toast({ title: erroDe(e, semAssinatura ? 'Assine para falar na sala.' : 'Mensagem não enviada. Confira sua internet e tente de novo.'), variant: 'destructive' });
+    } finally {
+      if (direto !== undefined) enviandoRapida.current = false;
+    }
   };
   // Tocar no nome ou na foto de quem escreveu abre o mesmo menu da lista de presentes.
   const abrirAutor = (autor: Msg['autor']) => {
@@ -920,6 +944,63 @@ export default function Casa() {
     const t = setInterval(buscar, 15_000);
     return () => clearInterval(t);
   }, [salaAtual, cabineAberta]);
+  // Minhas cabines, de qualquer sala: seguem comigo pela Casa até eu fechar ou sair.
+  const tirarCabine = useCallback((id: string) => {
+    setMinhasCabines((l) => l.filter((x) => x !== id));
+    setNaoLidasCabine((n) => { const { [id]: _, ...resto } = n; return resto; });
+  }, []);
+  const guardarCabine = useCallback((c: any) => {
+    setDadosCabines((d) => ({ ...d, [c.id]: { id: c.id, eu: c.eu ?? null, salaId: c.salaId ?? null, aberta: !!c.aberta, espectadores: c.espectadores ?? 0, membros: c.membros ?? [] } }));
+  }, []);
+  // Ao entrar ou trocar de sala: procura em todas (ex.: a página foi recarregada).
+  const salasDaCasa = (info?.salas ?? []).map((s) => s.id).join(',');
+  useEffect(() => {
+    if (!salasDaCasa) return;
+    let valendo = true;
+    void Promise.all(salasDaCasa.split(',').map((id) => apiClient.get(`/casa/${id}/cabines`).then((r) => (r.data.cabines ?? []) as { id: string; souMembro: boolean }[]).catch(() => [])))
+      .then((listas) => {
+        if (!valendo) return;
+        const minhas = listas.flat().filter((c) => c.souMembro).map((c) => c.id);
+        if (minhas.length) setMinhasCabines((l) => [...new Set([...l, ...minhas])]);
+      });
+    return () => { valendo = false; };
+  }, [salasDaCasa, salaAtual]);
+  // Com a tela aberta a cabine conta como em uso: sem isso, o servidor fechava em 5 min
+  // quem voltou para a sala. Quem sai da Casa para de avisar e ela fecha sozinha.
+  const idsDasCabines = minhasCabines.join(',');
+  useEffect(() => {
+    if (!idsDasCabines) return;
+    const atualizar = () => {
+      for (const id of idsDasCabines.split(',')) {
+        void apiClient.post(`/casa/cabine/${id}/estado`)
+          .then(({ data }) => { if (data?.cabine?.souMembro) guardarCabine(data.cabine); else tirarCabine(id); })
+          .catch((e) => { if ([403, 404, 410].includes((e as any)?.response?.status)) tirarCabine(id); });
+      }
+    };
+    atualizar();
+    const t = setInterval(atualizar, 45_000);
+    return () => clearInterval(t);
+  }, [idsDasCabines, guardarCabine, tirarCabine]);
+  useEffect(() => {
+    const aoEstado = (d: { cabine?: any }) => { if (d.cabine?.souMembro) { guardarCabine(d.cabine); setMinhasCabines((l) => (l.includes(d.cabine.id) ? l : [...l, d.cabine.id])); } };
+    const aoMensagem = (d: { cabineId: string; msg: { tipo?: string; autor?: { id?: string } | null } }) => {
+      if (cabineAbertaRef.current?.id === d.cabineId) return;
+      const minha = dadosCabinesRef.current[d.cabineId];
+      if (!minha || !contaComoNovaNaCabine(d.msg, minha.eu)) return;
+      setNaoLidasCabine((n) => ({ ...n, [d.cabineId]: (n[d.cabineId] ?? 0) + 1 }));
+    };
+    const aoFechou = (d: { cabineId: string }) => tirarCabine(d.cabineId);
+    on('casa.cabine.estado', aoEstado); on('casa.cabine.mensagem', aoMensagem); on('casa.cabine.fechou', aoFechou);
+    return () => { off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMensagem); off('casa.cabine.fechou', aoFechou); };
+  }, [on, off, guardarCabine, tirarCabine]);
+  useEffect(() => {
+    const id = cabineAberta?.id;
+    if (id) setNaoLidasCabine((n) => { if (!n[id]) return n; const { [id]: _, ...resto } = n; return resto; });
+  }, [cabineAberta?.id]);
+  // A barra de reações aparece embaixo da mensagem: na última da lista, ficaria fora da tela.
+  useEffect(() => {
+    if (reagindoEm) document.querySelector(`[data-msg-id="${reagindoEm}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [reagindoEm]);
   const responderConviteCabine = async (aceitar: boolean) => {
     const c = conviteCabine;
     setConviteCabine(null);
@@ -1017,7 +1098,7 @@ export default function Casa() {
           </>
         )}
         {reagindoEm === m.id && (
-          <div className="flex w-full gap-1 pt-1">
+          <div className="flex w-full flex-wrap gap-1 pt-1">
             {REACOES.map((e) => (
               <button key={e} type="button" onClick={() => void reagir(m, e)} className="rounded-full bg-white/10 px-2 py-1 text-base hover:scale-110">{e}</button>
             ))}
@@ -1058,6 +1139,14 @@ export default function Casa() {
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
         <RadioDaCasa compacto />
+        {minhasCabines.length > 0 && (
+          <button type="button" onClick={() => setListaDeCabines(true)} className="relative rounded-full border border-rose-400/60 bg-rose-600/30 px-2 py-1.5 text-xs" aria-label="Minhas cabines" title="Minhas cabines">
+            🚪
+            {Object.keys(naoLidasCabine).some((id) => minhasCabines.includes(id)) && (
+              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-black" aria-label="Mensagem nova na cabine" />
+            )}
+          </button>
+        )}
         <TokenBadge semLink />
         <button type="button" onClick={() => setFeedbackAberto(true)} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" aria-label="Sugestões" title="Feedback e sugestões">💬</button>
         <button
@@ -1112,16 +1201,17 @@ export default function Casa() {
         ))}
       </div>
 
-      {cabinesAbertas.some((c) => c.aberta !== false || c.souMembro) && (
+      {/* As minhas ficam no ícone 🚪 do topo; aqui só as de porta aberta para espiar. */}
+      {cabinesAbertas.some((c) => c.aberta !== false && !c.souMembro) && (
         <div className="relative flex gap-2 overflow-x-auto border-b border-white/10 px-3 py-2 [scrollbar-width:none]">
-          {cabinesAbertas.filter((c) => c.aberta !== false || c.souMembro).map((c) => (
+          {cabinesAbertas.filter((c) => c.aberta !== false && !c.souMembro).map((c) => (
             <button
               key={c.id}
               type="button"
-              onClick={() => setCabineAberta({ id: c.id, modo: c.souMembro ? 'membro' : 'espiar' })}
-              className={cn('flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs', c.souMembro ? 'bg-rose-600' : 'bg-white/10')}
+              onClick={() => setCabineAberta({ id: c.id, modo: 'espiar' })}
+              className="flex shrink-0 items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs"
             >
-              <span>{c.souMembro ? '🚪 Minha cabine' : '👀 Espiar'}</span>
+              <span>👀 Espiar</span>
               <span className="max-w-[140px] truncate text-white/80">{c.membros.map((m) => m.nome).join(' & ')}</span>
               {c.espectadores > 0 && <span className="text-white/60">· {c.espectadores} 👀</span>}
             </button>
@@ -1187,7 +1277,7 @@ export default function Casa() {
         {estado.mensagens.map((m) => (
           <Fragment key={m.id}>
           {rolagem.marcador === m.id && <LinhaNaoLidas />}
-          <ArrastaParaResponder data-msg-id={m.id} ativo={!!estado.eu.podeFalar && m.tipo !== 'sistema'} destacada={rolagem.destacada === m.id} onResponder={() => setRespondendo(m)}>
+          <ArrastaParaResponder data-msg-id={m.id} ativo={!!estado.eu.podeFalar && m.tipo !== 'sistema'} destacada={rolagem.destacada === m.id} onResponder={() => setRespondendo(m)} onSegurar={() => setReagindoEm(m.id)}>
           {m.tipo === 'sistema' ? (
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
         ) : m.tipo === 'midia' ? (
@@ -1616,17 +1706,43 @@ export default function Casa() {
           cabineId={cabineAberta.id}
           modo={cabineAberta.modo}
           meuIdPublico={estado.eu.idPublico ?? user?.id ?? null}
-          convidaveis={estado.presentes}
-          outrasCabines={cabinesAbertas.filter((c) => c.souMembro && c.id !== cabineAberta.id).map((c) => ({
-            id: c.id, nomes: c.membros.filter((m) => m.id !== estado.eu.idPublico).map((m) => m.nome).join(', ') || 'cabine',
+          // O convite só alcança quem está na sala onde a cabine nasceu.
+          convidaveis={dadosCabines[cabineAberta.id]?.salaId && dadosCabines[cabineAberta.id].salaId !== estado.sala.id ? [] : estado.presentes}
+          outrasCabines={minhasCabines.filter((id) => id !== cabineAberta.id).map((id) => ({
+            id, nomes: (dadosCabines[id]?.membros ?? []).filter((m) => m.id !== dadosCabines[id]?.eu).map((m) => m.nome).join(', ') || 'cabine',
           }))}
           onTrocar={(id) => setCabineAberta({ id, modo: 'membro' })}
           onVerPerfil={(id) => setPerfilAberto(id)}
           onChamarParaOutra={(p) => void convidar(p)}
           onVoltar={() => setCabineAberta(null)}
-          onSaiu={() => { setMinhasCabines((l) => l.filter((x) => x !== cabineAberta.id)); setCabineAberta(null); }}
+          onSaiu={() => { tirarCabine(cabineAberta.id); setCabineAberta(null); }}
         />
       )}
+
+      <Dialog open={listaDeCabines && !cabineAberta} onOpenChange={setListaDeCabines}>
+        <DialogContent className="z-[9995] max-w-sm">
+          <DialogHeader><DialogTitle>🚪 Suas cabines abertas</DialogTitle></DialogHeader>
+          {minhasCabines.length === 0 && <p className="text-sm text-muted-foreground">Você não está em nenhuma cabine agora.</p>}
+          <div className="space-y-2">
+            {minhasCabines.map((id) => {
+              const c = dadosCabines[id];
+              const outros = (c?.membros ?? []).filter((m) => m.id !== c?.eu);
+              const novas = naoLidasCabine[id] ?? 0;
+              return (
+                <button key={id} type="button" onClick={() => { setListaDeCabines(false); setCabineAberta({ id, modo: 'membro' }); }}
+                  className="flex w-full items-center gap-3 rounded-xl border p-3 text-left hover:bg-muted">
+                  <span className="text-xl">🚪</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">{outros.map((m) => m.nome).join(', ') || 'Cabine'}</span>
+                    <span className="block text-xs text-muted-foreground">{c?.aberta ? `👀 Porta aberta · ${c.espectadores} espiando` : '🔒 Porta fechada'}</span>
+                  </span>
+                  {novas > 0 && <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">{novas}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={recebidoAgora === 'conviteCabine'} onOpenChange={(v) => !v && void responderConviteCabine(false)}>
         <DialogContent className="z-[9995] max-w-xs">
@@ -1656,7 +1772,9 @@ export default function Casa() {
               <>
                 <div className="flex flex-wrap justify-center gap-1">
                   {REACOES.map((e) => {
-                    const minha = (vendo.msg?.reacoes?.[e] ?? []).includes(meuId);
+                    // Da conversa, não da cópia de quando a foto abriu: senão o emoji não acende ao tocar.
+                    const reacoesAgora = estado.mensagens.find((x) => x.id === vendo.msg?.id)?.reacoes ?? vendo.msg?.reacoes;
+                    const minha = (reacoesAgora?.[e] ?? []).includes(meuId);
                     return (
                       <button key={e} type="button"
                         onClick={() => { const m = vendo.msg!; void reagir(m, e); toast({ title: `${e} enviado pra ${m.autor?.nome ?? 'a pessoa'}` }); }}
@@ -1810,7 +1928,8 @@ export default function Casa() {
   return (
     <div className="dark -mx-3 -mt-3 -mb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] min-h-[calc(100vh-4rem)] bg-gradient-to-b from-zinc-950 via-fuchsia-950 to-zinc-950 px-4 pb-32 pt-8 text-white sm:-mx-4 sm:-mt-6 md:-mb-6 md:pb-16">
       <div className="mx-auto max-w-lg space-y-6">
-        <div className="text-center">
+        <div className="relative text-center">
+          {info?.aberta && <div className="absolute right-0 top-0"><RadioDaCasa compacto /></div>}
           <div className="flex justify-center"><BrandLogo /></div>
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
           <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
@@ -1938,14 +2057,6 @@ export default function Casa() {
         </div>
 
         {info?.aberta && <CabinesFechadas cabines={info.cabinesFechadas ?? []} pedindo={pedindoCabine} onPedir={(c) => void pedirCabineFechada(c)} />}
-
-        {/* Como funciona: o vídeo-tour da Lola. */}
-        <div>
-          <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-3xl border border-fuchsia-500/40 shadow-[0_0_60px_rgba(236,72,153,0.35)]">
-            <video src="/api/casa/apresentacao/video.mp4" poster="/api/casa/apresentacao/capa.jpg" controls playsInline preload="metadata" className="block aspect-[9/16] w-full bg-black object-cover" />
-          </div>
-          <p className="mt-2 text-center text-xs text-white/60">▶️ Aperte o play: a Lola te mostra como funciona (1 min)</p>
-        </div>
 
         <div className="rounded-3xl bg-gradient-to-br from-fuchsia-800/60 to-rose-800/60 p-5">
           <p className="text-xs font-bold uppercase tracking-wide text-fuchsia-200">💋 O que rola lá dentro</p>
