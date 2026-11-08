@@ -70,6 +70,9 @@ type Env = {
   VAPID_SUBJECT?: string;
   TELEGRAM_BOT_TOKEN?: string;
   DEEPSEEK_API_KEY?: string;
+  STT_API_KEY?: string;
+  STT_BASE_URL?: string;
+  STT_MODEL?: string;
   TELEGRAM_BOT_USERNAME?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -2428,7 +2431,41 @@ function extensionForMime(mime: string, originalName: string) {
   if (m === 'video/mp4') return '.mp4';
   if (m === 'video/webm') return '.webm';
   if (m === 'video/quicktime') return '.mov';
+  if (m === 'audio/webm') return '.webm';
+  if (m === 'audio/ogg') return '.ogg';
+  if (m === 'audio/mp4' || m === 'audio/x-m4a' || m === 'audio/aac') return '.m4a';
+  if (m === 'audio/mpeg') return '.mp3';
+  if (m === 'audio/wav' || m === 'audio/x-wav') return '.wav';
   return '';
+}
+
+// ─── Contos em áudio: voz para texto (moderação e busca) ─────────────────────
+// API compatível com a da OpenAI (Groq por padrão). Sem chave, devolve null e o
+// conto em áudio fica em revisão para o admin ouvir.
+async function transcreverAudio(env: Env, caminho: string, mime: string): Promise<string | null> {
+  if (!env.STT_API_KEY) return null;
+  const controle = new AbortController();
+  const timer = setTimeout(() => controle.abort(), 120_000);
+  try {
+    const form = new FormData();
+    const nome = path.basename(caminho);
+    form.append('file', new Blob([readFileSync(caminho)], { type: mime || 'audio/webm' }), nome);
+    form.append('model', env.STT_MODEL || 'whisper-large-v3-turbo');
+    form.append('language', 'pt');
+    form.append('response_format', 'json');
+    const r = await fetch(`${(env.STT_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/$/, '')}/audio/transcriptions`, {
+      method: 'POST', headers: { Authorization: `Bearer ${env.STT_API_KEY}` }, body: form, signal: controle.signal,
+    });
+    if (!r.ok) { console.warn('[contos/audio] transcrição falhou', r.status, (await r.text()).slice(0, 200)); return null; }
+    const json = await r.json() as any;
+    const texto = String(json?.text || '').trim();
+    return texto || null;
+  } catch (err) {
+    console.warn('[contos/audio] transcrição falhou', err);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function sendLocalFile(
@@ -3907,6 +3944,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await apagar(`DELETE FROM likes WHERE target_type = 'experience' AND target_id IN (${contos})`, u);
     await apagar(`DELETE FROM experience_reads WHERE experience_id IN (${contos})`, u);
     await apagar(`DELETE FROM experience_media WHERE experience_id IN (${contos})`, u);
+    await apagar(`DELETE FROM experience_audios WHERE experience_id IN (${contos})`, u);
     await apagar('DELETE FROM experiences WHERE user_id = ?', u);
     const radares = 'SELECT id FROM radar_broadcasts WHERE user_id = ?';
     await apagar(`DELETE FROM radar_broadcast_views WHERE broadcast_id IN (${radares})`, u);
@@ -10064,10 +10102,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Busca por palavra dentro do tema escolhido (título ou texto do conto).
     const busca = String(req.query.q || '').trim().slice(0, 60);
     if (busca.length >= 2) {
-      filtros.push('(LOWER(e.title) LIKE ? OR LOWER(e.description) LIKE ?)');
+      filtros.push('(LOWER(e.title) LIKE ? OR LOWER(e.description) LIKE ? OR EXISTS (SELECT 1 FROM experience_audios ea WHERE ea.experience_id = e.id AND LOWER(ea.transcricao) LIKE ?))');
       const termo = `%${busca.toLowerCase()}%`;
-      filtroParams.push(termo, termo);
+      filtroParams.push(termo, termo, termo);
     }
+    // Só contos com áudio (para quem prefere ouvir).
+    if (String(req.query.audio || '') === '1') filtros.push('EXISTS (SELECT 1 FROM experience_audios ea WHERE ea.experience_id = e.id)');
     if (leitura === 'nao_lidos') { filtros.push('NOT EXISTS (SELECT 1 FROM experience_reads er WHERE er.experience_id = e.id AND er.user_id = ?)'); filtroParams.push(me); }
     if (leitura === 'lidos') { filtros.push('EXISTS (SELECT 1 FROM experience_reads er WHERE er.experience_id = e.id AND er.user_id = ?)'); filtroParams.push(me); }
     const ordenacao = ordem === 'votados'
@@ -10147,6 +10187,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         mediaByExpId.get(eid)!.push({ id: String(m.id), url: `/uploads/${m.filename}`, mimeType: String(m.mime_type || '') });
       }
     }
+    const audiosPorConto = await audiosDosContos(experienceIds);
 
     res.json({
       experiences: slice.map((r: any) => ({
@@ -10159,6 +10200,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         emRevisao: String(r.status || 'publicado') === 'em_revisao',
         lido: !!Number(r.lido || 0) || r.lido === true,
         media: mediaByExpId.get(String(r.id)) ?? [],
+        audios: audiosPorConto.get(String(r.id)) ?? [],
         author: {
           id: r.author_id,
           name: r.author_name,
@@ -10175,11 +10217,87 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
+  // Áudio do conto (gravado no app ou escolhido do celular): até 15 MB / 3 min.
+  // Fica como mídia com source 'conto_audio' (não aparece em galeria nenhuma).
+  const AUDIO_MIMES = new Set(['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/x-m4a', 'audio/aac', 'audio/mpeg', 'audio/wav', 'audio/x-wav']);
+  const uploadAudio = multer({
+    storage,
+    limits: { fileSize: 15 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const mime = String(file.mimetype || '').split(';')[0].trim().toLowerCase();
+      if (!AUDIO_MIMES.has(mime)) { cb(new Error('INVALID_FILE_TYPE')); return; }
+      file.mimetype = mime;
+      cb(null, true);
+    },
+  });
+  app.post('/api/experiences/audio', requireAuth(env, db), (req, res, next) => {
+    uploadAudio.single('file')(req, res, (err: any) => {
+      if (err) {
+        res.status(400).json({ error: 'audio_invalido', message: err?.code === 'LIMIT_FILE_SIZE' ? 'O áudio passou de 15 MB. Grave partes de até 3 minutos.' : 'Formato de áudio não aceito.' });
+        return;
+      }
+      next();
+    });
+  }, async (req, res) => {
+    const f = (req as any).file;
+    if (!f) { res.status(400).json({ error: 'sem_arquivo' }); return; }
+    const id = randomUUID();
+    await run(db,
+      'INSERT INTO media (id, user_id, filename, original_name, mime_type, size, is_private, is_main, source, phash, processando, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, NULL, 0, ?)',
+      [id, req.auth!.userId, f.filename, f.originalname || f.filename, f.mimetype, f.size, 'conto_audio', nowIso()]);
+    await persist();
+    res.json({ id, url: `/uploads/${f.filename}` });
+  });
+
+  // Depois de publicar: transcreve cada parte e roda a mesma moderação do texto.
+  // Passou, o conto vai ao ar; não passou (ou sem transcrição), fica em revisão.
+  const moderarAudiosDoConto = async (experienceId: string) => {
+    const conto = (await queryOne(db, 'SELECT e.id, e.title, e.description, u.name, u.email FROM experiences e JOIN users u ON u.id = e.user_id WHERE e.id = ? LIMIT 1', [experienceId])) as any;
+    if (!conto) return;
+    const audios = (await queryAll(db,
+      'SELECT ea.id, m.filename, m.mime_type FROM experience_audios ea JOIN media m ON m.id = ea.media_id WHERE ea.experience_id = ? ORDER BY ea.ordem', [experienceId])) as any[];
+    const textos: string[] = [];
+    let falhou = false;
+    for (const a of audios) {
+      const t = await transcreverAudio(env, path.join(uploadsDir, String(a.filename)), String(a.mime_type || ''));
+      if (t == null) { falhou = true; continue; }
+      textos.push(t);
+      await run(db, 'UPDATE experience_audios SET transcricao = ? WHERE id = ?', [t.slice(0, 20000), String(a.id)]);
+    }
+    const motivos = falhou ? ['áudio sem transcrição: revisar ouvindo'] : sinaisDeConteudoProibido(String(conto.title || ''), `${String(conto.description || '')} ${textos.join(' ')}`);
+    if (motivos.length === 0) {
+      await run(db, "UPDATE experiences SET status = 'publicado', revisao_motivo = NULL WHERE id = ?", [experienceId]);
+    } else {
+      await run(db, 'UPDATE experiences SET revisao_motivo = ? WHERE id = ?', [motivos.join('; '), experienceId]);
+      void notifyAdminsTelegram({ db, env },
+        `🎧 <b>Conto em áudio para revisar</b> (${motivos.join(', ')})\n\n<b>${String(conto.name || 'Usuário')}</b> ${String(conto.email || '')}\n\n${String(conto.title || '').slice(0, 200)}\n\nOuça em Admin › Contos.`,
+        'moderacao'
+      );
+    }
+    await persist();
+  };
+
+  const audiosDosContos = async (ids: string[]) => {
+    const mapa = new Map<string, Array<{ id: string; url: string; duracaoSeg: number; transcricao: string | null }>>();
+    if (ids.length === 0) return mapa;
+    const linhas = (await queryAll(db,
+      `SELECT ea.experience_id, ea.id, ea.duracao_seg, ea.transcricao, m.filename FROM experience_audios ea JOIN media m ON m.id = ea.media_id
+        WHERE ea.experience_id IN (${ids.map(() => '?').join(', ')}) ORDER BY ea.experience_id, ea.ordem`, ids)) as any[];
+    for (const l of linhas) {
+      const eid = String(l.experience_id);
+      if (!mapa.has(eid)) mapa.set(eid, []);
+      mapa.get(eid)!.push({ id: String(l.id), url: `/uploads/${l.filename}`, duracaoSeg: Number(l.duracao_seg || 0), transcricao: l.transcricao ? String(l.transcricao) : null });
+    }
+    return mapa;
+  };
+
   app.post('/api/experiences', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
       title: z.string().max(120).optional().or(z.literal('')),
-      description: z.string().min(20).max(50000),
+      description: z.string().max(50000).optional().or(z.literal('')),
       mediaIds: z.array(z.string()).max(10).optional(),
+      // Partes em áudio (até 5, até ~3 min cada). Com áudio, o texto vira opcional.
+      audios: z.array(z.object({ mediaId: z.string().min(1), duracaoSeg: z.number().int().min(1).max(190), disfarcada: z.boolean().optional() })).max(5).optional(),
       categoria: z.enum(SLUGS_CATEGORIAS),
     });
     const parsed = schema.safeParse(req.body);
@@ -10188,23 +10306,50 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(400).json({ error: 'invalid_input', message: semCategoria ? 'Escolha a categoria do conto.' : undefined });
       return;
     }
+    const audios = parsed.data.audios ?? [];
+    const descricao = String(parsed.data.description || '').trim();
+    if (audios.length === 0 && descricao.length < 20) {
+      res.status(400).json({ error: 'invalid_input', message: 'A descrição precisa ter pelo menos 20 caracteres (ou grave um áudio).' });
+      return;
+    }
+    if (audios.length > 0 && descricao.length < 20 && String(parsed.data.title || '').trim().length < 3) {
+      res.status(400).json({ error: 'invalid_input', message: 'Dê um título ao seu conto em áudio.' });
+      return;
+    }
+    // O áudio precisa ser da própria pessoa e ter subido como áudio de conto.
+    for (const a of audios) {
+      const m = (await queryOne(db, "SELECT id FROM media WHERE id = ? AND user_id = ? AND source = 'conto_audio' LIMIT 1", [a.mediaId, req.auth!.userId])) as any;
+      if (!m) { res.status(400).json({ error: 'audio_invalido', message: 'Um dos áudios não foi encontrado. Grave de novo.' }); return; }
+    }
     const id = randomUUID();
-    const titulo = buildExperienceTitle(parsed.data.title, parsed.data.description);
+    const titulo = audios.length > 0 && descricao.length < 20
+      ? String(parsed.data.title || '').trim().slice(0, 120)
+      : buildExperienceTitle(parsed.data.title, descricao);
     // Conteúdo proibido (menores, animais, incesto) não vai ao ar direto: fica
-    // em revisão, visível só para o autor e o admin, que decide.
-    const motivos = sinaisDeConteudoProibido(titulo, parsed.data.description);
+    // em revisão, visível só para o autor e o admin, que decide. Com áudio, fica
+    // em revisão até a transcrição passar pela mesma regra.
+    const motivos = sinaisDeConteudoProibido(titulo, descricao);
+    if (audios.length > 0 && motivos.length === 0) motivos.push(env.STT_API_KEY ? 'aguardando transcrição do áudio' : 'áudio sem transcrição: revisar ouvindo');
     const status = motivos.length ? 'em_revisao' : 'publicado';
     await run(db, 'INSERT INTO experiences (id, user_id, title, description, created_at, categoria, status, revisao_motivo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
       id,
       req.auth!.userId,
       titulo,
-      parsed.data.description.trim(),
+      descricao,
       nowIso(),
       parsed.data.categoria,
       status,
       motivos.length ? motivos.join('; ') : null,
     ]);
-    if (motivos.length) {
+    for (let i = 0; i < audios.length; i++) {
+      await run(db, 'INSERT INTO experience_audios (id, experience_id, media_id, ordem, duracao_seg, disfarcada, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [randomUUID(), id, audios[i].mediaId, i, audios[i].duracaoSeg, audios[i].disfarcada ? 1 : 0, nowIso()]);
+    }
+    // Áudio com transcrição: modera em segundo plano (quem publicou vê "Em revisão"
+    // por alguns segundos). Sem transcrição, o aviso ao admin sai abaixo.
+    if (audios.length > 0 && env.STT_API_KEY && sinaisDeConteudoProibido(titulo, descricao).length === 0) {
+      setTimeout(() => { void moderarAudiosDoConto(id).catch((e) => console.error('[contos/audio] moderação', e)); }, 500);
+    } else if (motivos.length) {
       const autor = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
       void notifyAdminsTelegram({ db, env },
         `🚫 <b>Conto segurado para revisão</b> (${motivos.join(', ')})\n\n<b>${String(autor?.name || 'Usuário')}</b> ${String(autor?.email || '')}\n\n${titulo.slice(0, 200)}\n\nRevise em Admin › Contos.`,
@@ -10233,6 +10378,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     await run(db, "DELETE FROM likes WHERE target_type = 'experience' AND target_id = ?", [experienceId]);
     await run(db, "DELETE FROM comments WHERE target_type = 'experience' AND target_id = ?", [experienceId]);
+    await run(db, 'DELETE FROM experience_audios WHERE experience_id = ?', [experienceId]);
     await run(db, 'DELETE FROM experiences WHERE id = ? AND user_id = ?', [experienceId, req.auth!.userId]);
     await persist();
     res.json({ ok: true });
@@ -10306,6 +10452,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         LIMIT 51 OFFSET ?`,
       [...params, (pagina - 1) * 50]
     )) as any[];
+    const audiosAdmin = await audiosDosContos(rows.slice(0, 50).map((r) => String(r.id)));
     const contagem = (await queryOne(db, "SELECT SUM(CASE WHEN status = 'em_revisao' THEN 1 ELSE 0 END) AS revisao, SUM(CASE WHEN categoria IS NULL THEN 1 ELSE 0 END) AS sem_categoria, COUNT(*) AS total FROM experiences", [])) as any;
     res.json({
       contos: rows.slice(0, 50).map((r) => ({
@@ -10318,6 +10465,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         motivo: r.revisao_motivo ?? null,
         votos: Number(r.votos || 0),
         leituras: Number(r.leituras || 0),
+        audios: audiosAdmin.get(String(r.id)) ?? [],
         autor: { id: String(r.author_id), nome: String(r.author_name || ''), email: String(r.author_email || '') },
       })),
       temMais: rows.length > 50,
@@ -10393,11 +10541,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const lm = await queryAll(db, `SELECT target_id FROM likes WHERE target_type = 'experience' AND user_id = ? AND target_id IN (${ph})`, [req.auth!.userId, ...experienceIds]);
       for (const r of lm as any[]) likedByMeSet.add(String(r.target_id));
     }
+    const audiosDoPerfil = await audiosDosContos(experienceIds);
     res.json(rows.map((r: any) => ({
       id: String(r.id),
       title: String(r.title || ''),
       description: String(r.description || ''),
       createdAt: r.created_at,
+      audios: audiosDoPerfil.get(String(r.id)) ?? [],
       likesCount: likesCountMap.get(String(r.id)) ?? 0,
       commentsCount: commentsCountMap.get(String(r.id)) ?? 0,
       likedByMe: likedByMeSet.has(String(r.id)),

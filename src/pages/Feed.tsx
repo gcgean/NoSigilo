@@ -1,3 +1,6 @@
+import GravadorDeAudio, { type ParteDeAudio } from '@/components/GravadorDeAudio';
+import PlayerDoConto, { type AudioDoConto } from '@/components/PlayerDoConto';
+import { textoDuracao } from '@/utils/audioDoConto';
 import { FotoAusente } from '@/components/AvatarDoTipo';
 import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
 import { GenteNaRegiao } from '@/components/GenteNaRegiao';
@@ -116,6 +119,7 @@ type FeedExperience = {
   description: string;
   createdAt: string;
   media?: Array<{ id: string; url: string; mimeType: string }>;
+  audios?: AudioDoConto[];
   author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; birthDate?: string | null; partnerBirthDate?: string | null; isPremium?: boolean };
   likesCount: number;
   commentsCount: number;
@@ -344,6 +348,9 @@ export default function Feed() {
   // mostrar primeiro os contos publicados. Abre ao tocar no botão ou vindo do
   // convite "conte como foi".
   const [escrevendoConto, setEscrevendoConto] = useState(false);
+  // Partes em áudio do conto (gravadas ou escolhidas do celular).
+  const [audiosConto, setAudiosConto] = useState<ParteDeAudio[]>([]);
+  const [soComAudio, setSoComAudio] = useState(false);
   const [expTemplatesOpen, setExpTemplatesOpen] = useState(false);
   const [reelsOnly, setReelsOnly] = useState(false);
   // Tema do vídeo anexado (obrigatório quando há vídeo) e o post cujo tema o dono está trocando.
@@ -830,7 +837,7 @@ export default function Feed() {
     setIsLoadingExperiences(true);
     try {
       const [feed, contagem] = await Promise.all([
-        experienceService.getFeed({ page: 1, limit: 50, categoria: filtroCategoria || undefined, ordem: ordemContos, leitura: leituraContos, q: buscaContos || undefined }),
+        experienceService.getFeed({ page: 1, limit: 50, categoria: filtroCategoria || undefined, ordem: ordemContos, leitura: leituraContos, q: buscaContos || undefined, ...(soComAudio ? { audio: 1 as const } : {}) }),
         experienceService.categorias().catch(() => null),
       ]);
       setAllExperiences(Array.isArray(feed?.experiences) ? feed.experiences : []);
@@ -870,7 +877,7 @@ export default function Feed() {
     if (feedFilter !== 'experiences') return;
     void reloadExperiences();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feedFilter, filtroCategoria, ordemContos, leituraContos, buscaContos]);
+  }, [feedFilter, filtroCategoria, ordemContos, leituraContos, buscaContos, soComAudio]);
 
   // Admin classifica o conto direto no feed.
   const classificarConto = async (experience: FeedExperience, categoria: string) => {
@@ -1504,9 +1511,14 @@ export default function Feed() {
   const handlePublishExperience = async () => {
     const title = experienceTitle.trim();
     const description = experienceDescription.trim();
-    if (!description) return;
-    if (description.length < 20) {
-      toast({ title: 'Descrição muito curta', description: 'A descrição precisa ter pelo menos 20 caracteres.', variant: 'destructive' });
+    const temAudio = audiosConto.length > 0;
+    if (!description && !temAudio) return;
+    if (!temAudio && description.length < 20) {
+      toast({ title: 'Descrição muito curta', description: 'A descrição precisa ter pelo menos 20 caracteres (ou grave um áudio).', variant: 'destructive' });
+      return;
+    }
+    if (temAudio && description.length < 20 && title.length < 3) {
+      toast({ title: 'Dê um título ao seu conto', description: 'Conto em áudio precisa de um título.', variant: 'destructive' });
       return;
     }
     if (!expCategoria) {
@@ -1522,7 +1534,14 @@ export default function Feed() {
         const uploaded = await profileService.uploadMedia(a.file);
         if (uploaded?.id) mediaIds.push(String(uploaded.id));
       }
-      const criado = await experienceService.create({ title, description, categoria: expCategoria, ...(mediaIds.length ? { mediaIds } : {}) });
+      const audios: Array<{ mediaId: string; duracaoSeg: number; disfarcada: boolean }> = [];
+      for (const a of audiosConto) {
+        const subido = await experienceService.uploadAudio(a.arquivo, a.nome);
+        audios.push({ mediaId: String(subido.id), duracaoSeg: a.duracaoSeg, disfarcada: a.disfarcada });
+      }
+      const criado = await experienceService.create({ title, description, categoria: expCategoria, ...(mediaIds.length ? { mediaIds } : {}), ...(audios.length ? { audios } : {}) });
+      audiosConto.forEach((a) => URL.revokeObjectURL(a.url));
+      setAudiosConto([]);
       setExperienceTitle('');
       setExperienceDescription('');
       setExpAttachments([]);
@@ -1531,8 +1550,10 @@ export default function Feed() {
       await reloadExperiences();
       if (criado?.status === 'em_revisao') {
         toast({
-          title: 'Conto enviado para revisão',
-          description: 'Ele passa pela equipe antes de aparecer. Conteúdo com menores de idade, animais ou incesto não é permitido.',
+          title: audios.length ? 'Conto em áudio enviado 🎧' : 'Conto enviado para revisão',
+          description: audios.length
+            ? 'A equipe confere o áudio antes de ele aparecer para todo mundo. Enquanto isso, só você vê.'
+            : 'Ele passa pela equipe antes de aparecer. Conteúdo com menores de idade, animais ou incesto não é permitido.',
         });
         return;
       }
@@ -1549,7 +1570,7 @@ export default function Feed() {
         ),
       });
     } catch (e: any) {
-      toast({ title: 'Erro ao publicar experiência', description: e?.message || 'Tente novamente.', variant: 'destructive' });
+      toast({ title: 'Erro ao publicar experiência', description: e?.response?.data?.message || e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsPublishingExperience(false);
       publishExperienceGuardRef.current = false;
@@ -2234,7 +2255,9 @@ export default function Feed() {
                 rows={6}
               />
               <span className={cn('absolute bottom-2 right-3 text-xs', experienceDescription.trim().length < 20 ? 'text-muted-foreground' : 'text-green-500')}>
-                {experienceDescription.trim().length < 20
+                {audiosConto.length > 0 && experienceDescription.trim().length < 20
+                  ? 'texto opcional (tem áudio)'
+                  : experienceDescription.trim().length < 20
                   ? `${experienceDescription.trim().length}/20 mín.`
                   : `${experienceDescription.trim().length.toLocaleString('pt-BR')} caracteres`}
               </span>
@@ -2261,6 +2284,7 @@ export default function Feed() {
                 ))}
               </div>
             )}
+            <GravadorDeAudio partes={audiosConto} onChange={setAudiosConto} disabled={isPublishingExperience} />
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-3">
                 <label className="cursor-pointer flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -2300,7 +2324,7 @@ export default function Feed() {
               <Button
                 size="sm"
                 className="h-11 rounded-xl bg-gradient-primary px-4 text-sm font-medium hover:opacity-90 gap-2 sm:h-9 sm:rounded-md sm:px-3"
-                disabled={experienceDescription.trim().length < 20 || !expCategoria || isPublishingExperience}
+                disabled={(experienceDescription.trim().length < 20 && audiosConto.length === 0) || !expCategoria || isPublishingExperience}
                 onClick={handlePublishExperience}
               >
                 <Send className="w-4 h-4" />
@@ -2775,6 +2799,8 @@ export default function Feed() {
                 onOrdem={setOrdemContos}
                 onLeitura={setLeituraContos}
                 onBusca={setBuscaContos}
+                soComAudio={soComAudio}
+                onSoComAudio={setSoComAudio}
               />
 
               {isLoadingExperiences ? (
@@ -2853,7 +2879,12 @@ export default function Feed() {
                             {experience.categoriaNome}
                           </button>
                         )}
-                        <span className="text-[11px] text-muted-foreground">⏱ {minutosDeLeitura(experience.description)} min de leitura</span>
+                        {experience.description.trim().length > 0 && <span className="text-[11px] text-muted-foreground">⏱ {minutosDeLeitura(experience.description)} min de leitura</span>}
+                        {(experience.audios?.length ?? 0) > 0 && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-brand-pink">
+                            🎧 {experience.audios!.length > 1 ? `${experience.audios!.length} áudios · ` : ''}{textoDuracao(experience.audios!.reduce((a, x) => a + x.duracaoSeg, 0))}
+                          </span>
+                        )}
                         {experience.emRevisao ? (
                           <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600">Em revisão — só você vê</span>
                         ) : experience.lido ? (
@@ -2891,10 +2922,13 @@ export default function Feed() {
                         >
                           {experience.description}
                         </p>
-                        <span className="mt-1.5 inline-block text-sm font-semibold text-brand-pink hover:underline">
-                          {expandedExp[experience.id] ? 'Ler menos' : 'Ler conto completo →'}
-                        </span>
+                        {experience.description.trim().length > 0 && (
+                          <span className="mt-1.5 inline-block text-sm font-semibold text-brand-pink hover:underline">
+                            {expandedExp[experience.id] ? 'Ler menos' : 'Ler conto completo →'}
+                          </span>
+                        )}
                       </button>
+                      {(experience.audios?.length ?? 0) > 0 && <PlayerDoConto audios={experience.audios!} />}
                     </div>
                     {/* Photo carousel */}
                     {(experience.media ?? []).filter((m) => m.mimeType.startsWith('image/')).length > 0 && (() => {

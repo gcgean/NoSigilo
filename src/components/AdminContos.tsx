@@ -1,3 +1,4 @@
+import PlayerDoConto from '@/components/PlayerDoConto';
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, BookOpen, Check, Loader2, PauseCircle, ShieldAlert, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -175,6 +176,8 @@ export default function AdminContos() {
                 <p className={cn('whitespace-pre-line text-sm text-muted-foreground', aberto !== c.id && 'line-clamp-3')}>{c.trecho}</p>
                 <span className="text-xs font-medium text-primary">{aberto === c.id ? 'Recolher' : 'Ver trecho'}</span>
               </button>
+              {/* Conto em áudio: ouça antes de aprovar (sem transcrição automática, a revisão é no ouvido). */}
+              {(c.audios?.length ?? 0) > 0 && <PlayerDoConto audios={c.audios!} />}
 
               <div className="flex flex-wrap items-center gap-2">
                 <select

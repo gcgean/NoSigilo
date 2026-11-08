@@ -25,6 +25,8 @@ export default function FiltrosContos({
   onOrdem,
   onLeitura,
   onBusca,
+  soComAudio = false,
+  onSoComAudio,
 }: {
   categorias: CategoriaContagem[];
   total: number;
@@ -37,6 +39,9 @@ export default function FiltrosContos({
   onOrdem: (o: OrdemContos) => void;
   onLeitura: (l: LeituraContos) => void;
   onBusca: (q: string) => void;
+  /** Só contos com áudio (para quem prefere ouvir). */
+  soComAudio?: boolean;
+  onSoComAudio?: (v: boolean) => void;
 }) {
   // Digitação não dispara busca a cada tecla: espera 400ms.
   const [texto, setTexto] = useState(busca);
@@ -84,6 +89,11 @@ export default function FiltrosContos({
       </div>
 
       <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none" aria-label="Temas">
+        {onSoComAudio && (
+          <button type="button" className={chip(soComAudio)} aria-pressed={soComAudio} onClick={() => onSoComAudio(!soComAudio)}>
+            🎧 Com áudio
+          </button>
+        )}
         <button type="button" className={chip(categoria === '')} onClick={() => onCategoria('')}>
           Todos os temas <span className="opacity-70">({total})</span>
         </button>

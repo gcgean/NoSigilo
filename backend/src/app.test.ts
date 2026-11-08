@@ -3227,6 +3227,50 @@ describe('nosigilo backend', () => {
   });
 
   // ── Contos: categoria, trava, lidos e admin ─────────────────────────────────
+  it('contos em áudio: sobe o áudio, conto só em áudio fica em revisão até o admin ouvir', async () => {
+    const autor = await registerInvitedUser(ctx, sponsorToken, { name: 'Autor Audio', email: 'autor-audio@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    const outro = await registerInvitedUser(ctx, sponsorToken, { name: 'Outro Audio', email: 'outro-audio@example.com', password: 'senha123', gender: 'Mulher' });
+    const admin = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Audio', email: 'admin-audio@example.com', password: 'senha123', gender: 'Homem' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.user.id]);
+    const A = { Authorization: `Bearer ${autor.token}` };
+    const O = { Authorization: `Bearer ${outro.token}` };
+    const ADM = { Authorization: `Bearer ${admin.token}` };
+
+    // Só áudio é aceito nessa rota.
+    await request(ctx.app).post('/api/experiences/audio').set(A)
+      .attach('file', Buffer.from([0x89, 0x50, 0x4e, 0x47]), { filename: 'x.png', contentType: 'image/png' }).expect(400);
+    const sobe = await request(ctx.app).post('/api/experiences/audio').set(A)
+      .attach('file', Buffer.from('audio-falso'), { filename: 'parte1.webm', contentType: 'audio/webm' }).expect(200);
+    const audioId = String(sobe.body.id);
+
+    // Sem texto e sem áudio não publica; com áudio, o texto é opcional mas o título não.
+    await request(ctx.app).post('/api/experiences').set(A).send({ title: 'Noite', description: 'curto', categoria: 'swing' }).expect(400);
+    await request(ctx.app).post('/api/experiences').set(A).send({ description: '', categoria: 'swing', audios: [{ mediaId: audioId, duracaoSeg: 42 }] }).expect(400);
+    // Áudio de outra pessoa não vale.
+    await request(ctx.app).post('/api/experiences').set(O).send({ title: 'Roubado', description: '', categoria: 'swing', audios: [{ mediaId: audioId, duracaoSeg: 42 }] }).expect(400);
+
+    const criado = await request(ctx.app).post('/api/experiences').set(A)
+      .send({ title: 'Nossa primeira troca', description: '', categoria: 'swing', audios: [{ mediaId: audioId, duracaoSeg: 42, disfarcada: true }] }).expect(200);
+    // Sem serviço de transcrição (teste), o conto em áudio espera o admin ouvir.
+    expect(criado.body.status).toBe('em_revisao');
+
+    // O autor vê o próprio conto com o áudio; os outros ainda não.
+    const doAutor = (await request(ctx.app).get('/api/feed/experiences').set(A).query({ audio: 1 }).expect(200)).body.experiences;
+    const meu = doAutor.find((e: any) => e.id === criado.body.id);
+    expect(meu.emRevisao).toBe(true);
+    expect(meu.audios).toEqual([expect.objectContaining({ duracaoSeg: 42, url: expect.stringMatching(/^\/uploads\/.+\.webm$/) })]);
+    expect((await request(ctx.app).get('/api/feed/experiences').set(O).expect(200)).body.experiences.some((e: any) => e.id === criado.body.id)).toBe(false);
+
+    // O admin ouve no painel e aprova: aí aparece para todos (e no filtro "com áudio").
+    const painel = (await request(ctx.app).get('/api/admin/contos').set(ADM).query({ status: 'em_revisao' }).expect(200)).body.contos;
+    const naFila = painel.find((c: any) => c.id === criado.body.id);
+    expect(naFila.audios).toHaveLength(1);
+    expect(naFila.motivo).toContain('áudio');
+    await request(ctx.app).patch(`/api/admin/contos/${criado.body.id}`).set(ADM).send({ status: 'publicado' }).expect(200);
+    const comAudio = (await request(ctx.app).get('/api/feed/experiences').set(O).query({ audio: 1 }).expect(200)).body.experiences;
+    expect(comAudio.some((e: any) => e.id === criado.body.id)).toBe(true);
+  });
+
   it('contos: categoria obrigatoria, trava de conteudo proibido, lidos e moderacao', async () => {
     const autor = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Autor Contos', email: 'autor-contos@example.com', password: 'senha123', gender: 'Mulher',

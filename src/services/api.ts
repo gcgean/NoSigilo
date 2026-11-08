@@ -336,12 +336,20 @@ export const feedService = {
 };
 
 export const experienceService = {
-  getFeed: async (params?: { page?: number; limit?: number; categoria?: string; ordem?: 'recentes' | 'votados'; leitura?: 'todos' | 'nao_lidos' | 'lidos'; q?: string }) => {
+  getFeed: async (params?: { page?: number; limit?: number; categoria?: string; ordem?: 'recentes' | 'votados'; leitura?: 'todos' | 'nao_lidos' | 'lidos'; q?: string; audio?: 1 }) => {
     const response = await apiClient.get('/feed/experiences', { params });
     return response.data;
   },
 
-  create: async (data: { title: string; description: string; categoria: string; mediaIds?: string[] }): Promise<{ id: string; status: 'publicado' | 'em_revisao' }> => {
+  /** Sobe uma parte em áudio do conto (até 15 MB / 3 min). Devolve o id para mandar em create(). */
+  uploadAudio: async (arquivo: Blob, nome: string): Promise<{ id: string; url: string }> => {
+    const form = new FormData();
+    form.append('file', arquivo, nome);
+    const response = await apiClient.post('/experiences/audio', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120_000 });
+    return response.data;
+  },
+
+  create: async (data: { title: string; description: string; categoria: string; mediaIds?: string[]; audios?: Array<{ mediaId: string; duracaoSeg: number; disfarcada?: boolean }> }): Promise<{ id: string; status: 'publicado' | 'em_revisao' }> => {
     const response = await apiClient.post('/experiences', data);
     return response.data;
   },
@@ -1066,6 +1074,7 @@ export type RankingPromotor = {
 export type ContoAdmin = {
   id: string; titulo: string; trecho: string; createdAt: string; categoria: string | null;
   status: 'publicado' | 'em_revisao'; motivo: string | null; votos: number; leituras: number;
+  audios?: Array<{ id: string; url: string; duracaoSeg: number; transcricao: string | null }>;
   autor: { id: string; nome: string; email: string };
 };
 

@@ -8,8 +8,8 @@ const STORAGE_KEY = 'nosigilo:weekend-modal-date';
 function shouldShow(user: any): boolean {
   if (!user || !user.avatar || user.isAdmin) return false;
   const now = new Date();
-  // Sunday = 0, after 07:00
-  if (now.getDay() !== 0 || now.getHours() < 7) return false;
+  // Domingo, das 7h até as 23h (fim de semana ainda fresco na cabeça).
+  if (now.getDay() !== 0 || now.getHours() < 7 || now.getHours() >= 23) return false;
   try {
     return localStorage.getItem(STORAGE_KEY) !== now.toDateString();
   } catch {
@@ -57,12 +57,12 @@ export default function WeekendAdventureModal() {
           {/* Copy */}
           <div className="space-y-2">
             <h2 className="text-xl font-bold leading-tight">
-              Como foi o seu sábado à noite? 😈
+              Como foi o seu fim de semana? 😈
             </h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Rolou algo quente? Conta pra galera nos contos —{' '}
               <span className="text-primary font-medium">aqui é lugar seguro!</span>
-              {' '}Você pode compartilhar texto, foto ou vídeo.
+              {' '}Escreva ou <b>mande em áudio</b> 🎙️ (dá até pra disfarçar a voz), com foto ou vídeo se quiser.
             </p>
           </div>
 

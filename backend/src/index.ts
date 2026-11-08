@@ -327,8 +327,8 @@ async function runSundayStoryPush(db: DbHandle) {
         const parsed = JSON.parse(String(sub.subscription_json || '{}'));
         if (!parsed?.endpoint) continue;
         await webpush.sendNotification(parsed, JSON.stringify({
-          title: 'Como foi o seu sábado à noite? 😈',
-          body: 'Rolou algo quente? Conta pra galera nos contos — em 1 minuto.',
+          title: 'Como foi o seu fim de semana? 😈',
+          body: 'Rolou algo quente? Conta nos contos, escrevendo ou mandando um áudio 🎙️',
           url: '/feed?contar=sabado',
           tag: 'sunday-story',
         })).catch(() => {});

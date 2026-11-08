@@ -38,5 +38,9 @@ export const env = {
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
   // Chave da API do DeepSeek para a IA do chat de suporte. Sem ela, a IA fica desligada.
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '',
+  // Voz para texto (contos em áudio). Compatível com a API da OpenAI: Groq por padrão.
+  STT_API_KEY: process.env.STT_API_KEY || '',
+  STT_BASE_URL: process.env.STT_BASE_URL || 'https://api.groq.com/openai/v1',
+  STT_MODEL: process.env.STT_MODEL || 'whisper-large-v3-turbo',
   TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || '',
 };
