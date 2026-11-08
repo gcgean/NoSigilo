@@ -13,7 +13,7 @@ export default function PromoterPerformance({ stats, history }: { stats: Promote
   const goal = goals.find((value) => value > earned) || (Math.floor(earned / 100000) + 1) * 100000;
   const remaining = Math.max(0, stats.minPayoutCents - stats.approvedCents);
   return <section className="space-y-5" aria-label="Meu desempenho">
-    <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/15 to-background p-5 sm:p-6 space-y-4">
+    <div className="rounded-2xl border border-emerald-500/40 bg-gradient-to-br from-emerald-500/15 to-background p-5 sm:p-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-bold">Meu desempenho</h2>
         <select aria-label="Mês do desempenho" className="rounded-xl border bg-background p-3 text-sm" value={selected?.month || ''} onChange={(e) => setPeriod(e.target.value)}>
@@ -21,16 +21,16 @@ export default function PromoterPerformance({ stats, history }: { stats: Promote
         </select>
       </div>
       <p className="text-sm text-muted-foreground">Comissões geradas no mês · 20% sobre assinaturas confirmadas</p>
-      <p className="text-4xl font-bold text-primary">{money(earned)}</p>
+      <p className="text-4xl font-bold text-emerald-700 dark:text-emerald-400">{money(earned)}</p>
       <p className="text-sm">{selected?.signups || 0} cadastros · {selected?.subscriptions || 0} pagamentos de assinatura</p>
       <div className="space-y-2 border-t pt-4">
         <div className="flex flex-wrap justify-between gap-2 text-sm"><strong>Próxima meta: {money(goal)}</strong><span>Faltam {money(goal - earned)}</span></div>
-        <progress aria-label="Progresso da meta de ganhos" className="w-full h-3 accent-pink-500" value={earned} max={goal} />
+        <progress aria-label="Progresso da meta de ganhos" className="w-full h-3 accent-emerald-500" value={earned} max={goal} />
         <p className="text-sm font-medium">{Math.floor(earned / goal * 100)}% da próxima meta alcançados</p>
-        <div className="flex flex-wrap gap-2" aria-label="Etapas de ganhos no mês">{goals.map((value) => <span key={value} className={`rounded-full border px-3 py-1 text-xs ${earned >= value ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500' : value === goal ? 'border-primary text-primary' : 'text-muted-foreground'}`}>{earned >= value ? '✓ ' : ''}{money(value)}</span>)}</div>
+        <div className="flex flex-wrap gap-2" aria-label="Etapas de ganhos no mês">{goals.map((value) => <span key={value} className={`rounded-full border px-3 py-1 text-xs ${earned >= value ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500' : value === goal ? 'border-emerald-600 text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>{earned >= value ? '✓ ' : ''}{money(value)}</span>)}</div>
         <p className="text-xs text-muted-foreground">Metas de acompanhamento. Sua comissão continua em 20% em todas as etapas; não há bônus automático. Valores pendentes podem mudar após análise.</p>
       </div>
-      <Button asChild className="w-full sm:w-auto min-h-11"><Link to="/promoter/artes">Escolher uma arte para divulgar</Link></Button>
+      <Button asChild className="w-full sm:w-auto min-h-11 bg-emerald-700 hover:bg-emerald-800 text-white"><Link to="/promoter/artes">Escolher uma arte para divulgar</Link></Button>
     </div>
     <div className="glass rounded-2xl p-5 space-y-3">
       <h2 className="font-semibold">Caminho até o próximo Pix</h2>

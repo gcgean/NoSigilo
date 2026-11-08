@@ -19,8 +19,9 @@ const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, 
  * Grava (ou escolhe do celular) até 5 partes de áudio de até 3 min para um conto.
  * "Disfarçar minha voz" deixa o timbre irreconhecível antes de subir.
  */
-export default function GravadorDeAudio({ partes, onChange, disabled }: { partes: ParteDeAudio[]; onChange: (p: ParteDeAudio[]) => void; disabled?: boolean }) {
+export default function GravadorDeAudio({ partes, onChange, disabled, onBusyChange }: { partes: ParteDeAudio[]; onChange: (p: ParteDeAudio[]) => void; disabled?: boolean; onBusyChange?: (busy: boolean) => void }) {
   const [gravando, setGravando] = useState(false);
+  const [iniciando, setIniciando] = useState(false);
   const [segundos, setSegundos] = useState(0);
   const [disfarcar, setDisfarcar] = useState(false);
   const [processando, setProcessando] = useState(false);
@@ -29,14 +30,26 @@ export default function GravadorDeAudio({ partes, onChange, disabled }: { partes
   const pedacos = useRef<Blob[]>([]);
   const relogio = useRef<number | null>(null);
   const seletor = useRef<HTMLInputElement>(null);
+  const montado = useRef(true);
   const partesRef = useRef(partes);
   partesRef.current = partes;
   const cheio = partes.length >= AUDIOS_POR_CONTO;
+  useEffect(() => {
+    onBusyChange?.(iniciando || gravando || processando);
+  }, [iniciando, gravando, processando, onBusyChange]);
 
-  useEffect(() => () => {
-    if (relogio.current) window.clearInterval(relogio.current);
-    gravador.current?.stream.getTracks().forEach((t) => t.stop());
-  }, []);
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+      if (relogio.current) window.clearInterval(relogio.current);
+      if (gravador.current) {
+        gravador.current.onstop = null;
+        gravador.current.stream.getTracks().forEach((track) => track.stop());
+      }
+      onBusyChange?.(false);
+    };
+  }, [onBusyChange]);
 
   const adicionar = async (arquivo: Blob, duracaoSeg: number, nomeBase: string) => {
     setProcessando(true);
@@ -48,6 +61,7 @@ export default function GravadorDeAudio({ partes, onChange, disabled }: { partes
         nome = `${nomeBase}.wav`;
         duracaoSeg = Math.ceil(duracaoSeg / 0.86);
       }
+      if (!montado.current) return;
       const parte: ParteDeAudio = { id: crypto.randomUUID(), arquivo: final, nome, duracaoSeg: Math.max(1, Math.min(duracaoSeg, 190)), disfarcada: disfarcar, url: URL.createObjectURL(final) };
       onChange([...partesRef.current, parte]);
     } catch {
@@ -66,14 +80,21 @@ export default function GravadorDeAudio({ partes, onChange, disabled }: { partes
     setErro('');
     const tipo = tipoDeGravacao();
     if (tipo === null) { setErro('Seu navegador não grava áudio. Escolha um áudio do celular.'); return; }
+    setIniciando(true);
+    let stream: MediaStream | undefined;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const capturado = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = capturado;
+      if (!montado.current) {
+        capturado.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const rec = tipo ? new MediaRecorder(stream, { mimeType: tipo }) : new MediaRecorder(stream);
       pedacos.current = [];
       rec.ondataavailable = (e) => { if (e.data.size > 0) pedacos.current.push(e.data); };
       const inicio = Date.now();
       rec.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
+        capturado.getTracks().forEach((t) => t.stop());
         setGravando(false);
         const dur = Math.max(1, Math.round((Date.now() - inicio) / 1000));
         const mime = (rec.mimeType || tipo || 'audio/webm').split(';')[0];
@@ -91,7 +112,10 @@ export default function GravadorDeAudio({ partes, onChange, disabled }: { partes
         if (s >= AUDIO_MAX_SEG) parar();
       }, 500);
     } catch {
+      stream?.getTracks().forEach((track) => track.stop());
       setErro('Não deu para usar o microfone. Libere o microfone para o NoSigilo nas configurações do navegador.');
+    } finally {
+      setIniciando(false);
     }
   };
 
@@ -101,8 +125,9 @@ export default function GravadorDeAudio({ partes, onChange, disabled }: { partes
     setErro('');
     if (!arquivo.type.startsWith('audio/')) { setErro('Escolha um arquivo de áudio.'); return; }
     if (arquivo.size > 15 * 1024 * 1024) { setErro('Esse áudio passou de 15 MB. Escolha um de até 3 minutos.'); return; }
-    const dur = await duracaoDoAudio(arquivo);
-    if (dur > AUDIO_MAX_SEG) { setErro('Cada parte pode ter até 3 minutos. Corte o áudio ou grave em partes.'); return; }
+    setProcessando(true);
+    const dur = await duracaoDoAudio(arquivo).catch(() => 0);
+    if (dur > AUDIO_MAX_SEG) { setProcessando(false); setErro('Cada parte pode ter até 3 minutos. Corte o áudio ou grave em partes.'); return; }
     await adicionar(arquivo, dur || 1, `parte${partesRef.current.length + 1}`);
   };
 
@@ -115,10 +140,11 @@ export default function GravadorDeAudio({ partes, onChange, disabled }: { partes
   return (
     <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold">🎙️ Conte em áudio <span className="font-normal text-muted-foreground">(opcional)</span></p>
+        <p className="text-sm font-semibold">🎙️ Grave ou escolha um áudio</p>
         <span className="text-[11px] text-muted-foreground">{partes.length}/{AUDIOS_POR_CONTO} partes · até 3 min cada</span>
       </div>
 
+      <p className="text-sm text-muted-foreground">Toque em Gravar, conte sua história e finalize. Depois, ouça cada parte antes de continuar.</p>
       {partes.map((p, i) => (
         <div key={p.id} className="flex items-center gap-2 rounded-lg bg-background/70 p-2">
           <div className="min-w-0 flex-1">
@@ -135,20 +161,20 @@ export default function GravadorDeAudio({ partes, onChange, disabled }: { partes
         <div className="flex items-center gap-3 rounded-lg bg-rose-500/10 p-2">
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500" aria-hidden />
           <span className="flex-1 text-sm font-semibold tabular-nums">Gravando {mmss(segundos)} / 3:00</span>
-          <button type="button" onClick={parar} className="flex items-center gap-1 rounded-full bg-rose-600 px-3 py-1.5 text-xs font-bold text-white">
-            <Square className="h-3.5 w-3.5" /> Parar
+          <button type="button" onClick={parar} className="flex items-center min-h-11 gap-1 rounded-full bg-rose-600 px-3 py-1.5 text-xs font-bold text-white">
+            <Square className="h-3.5 w-3.5" /> Finalizar
           </button>
         </div>
-      ) : processando ? (
-        <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Preparando o áudio…</p>
+      ) : processando || iniciando ? (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {iniciando ? 'Aguardando o microfone…' : 'Preparando o áudio…'}</p>
       ) : !cheio && (
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => void gravar()} disabled={disabled}
-            className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-rose-600 to-fuchsia-600 px-3.5 py-2 text-xs font-bold text-white disabled:opacity-50">
+            className="flex min-h-12 items-center gap-1.5 rounded-full bg-gradient-to-r from-rose-600 to-fuchsia-600 px-3.5 py-2 text-xs font-bold text-white disabled:opacity-50">
             <Mic className="h-4 w-4" /> Gravar {partes.length ? `parte ${partes.length + 1}` : 'áudio'}
           </button>
           <button type="button" onClick={() => seletor.current?.click()} disabled={disabled}
-            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-2 text-xs font-medium disabled:opacity-50">
+            className="flex min-h-12 items-center gap-1.5 rounded-full border border-border px-3 py-2 text-xs font-medium disabled:opacity-50">
             <Upload className="h-3.5 w-3.5" /> Escolher do celular
           </button>
           <input ref={seletor} type="file" accept="audio/*" className="hidden" onChange={(e) => void escolher(e.target.files?.[0])} />
@@ -156,7 +182,7 @@ export default function GravadorDeAudio({ partes, onChange, disabled }: { partes
       )}
 
       <label className={cn('flex items-start gap-2 text-xs', gravando && 'opacity-50')}>
-        <input type="checkbox" className="mt-0.5" checked={disfarcar} disabled={gravando || processando} onChange={(e) => setDisfarcar(e.target.checked)} />
+        <input type="checkbox" className="mt-0.5" checked={disfarcar} disabled={gravando || processando || iniciando} onChange={(e) => setDisfarcar(e.target.checked)} />
         <span><b>🎭 Disfarçar minha voz</b> nas próximas partes. Sem disfarce, quem ouvir escuta a sua voz de verdade.</span>
       </label>
       {erro && <p role="alert" className="text-xs font-medium text-destructive">{erro}</p>}

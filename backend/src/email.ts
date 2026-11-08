@@ -1473,7 +1473,7 @@ export async function sendCasaAbriuEmail(
     <p style="font-size:16px;line-height:1.6;color:#e8d3db;margin:0 0 24px;">
       Seu lugar está reservado n'A Casa: a boate virtual dos casais liberais do ${appName}. Salas ao vivo, pulseiras, bar, desafios quentes com a Lola e cabine a dois. Chega cedo, antes da sala lotar 😈
     </p>
-    <a href="${siteUrl}/casa" style="display:inline-block;background:linear-gradient(135deg,#e83e68,#c0264a);color:white;font-size:17px;font-weight:800;padding:17px 40px;border-radius:14px;text-decoration:none;">Entrar na Casa →</a>
+    <a href="${siteUrl}/casa?sala=salao" style="display:inline-block;background:linear-gradient(135deg,#e83e68,#c0264a);color:white;font-size:17px;font-weight:800;padding:17px 40px;border-radius:14px;text-decoration:none;">Entrar na Casa →</a>
     <p style="font-size:12px;color:#9a6b7a;margin:22px 0 0;">Você recebeu porque reservou lugar n'A Casa. 🔒 Discreto e só entre maiores de 18.</p>
   </div>
 </div>

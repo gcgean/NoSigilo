@@ -326,6 +326,13 @@ export default function Feed() {
   // mostrar primeiro os contos publicados. Abre ao tocar no botão ou vindo do
   // convite "conte como foi".
   const [escrevendoConto, setEscrevendoConto] = useState(false);
+  const [passoConto, setPassoConto] = useState(1);
+  const [preparandoAudioConto, setPreparandoAudioConto] = useState(false);
+  const irAoPassoConto = (passo: number) => {
+    expFormRef.current?.querySelectorAll('audio').forEach((audio) => audio.pause());
+    setPassoConto(passo);
+    expFormRef.current?.scrollIntoView({ block: 'start' });
+  };
   // Partes em áudio do conto (gravadas ou escolhidas do celular).
   const [audiosConto, setAudiosConto] = useState<ParteDeAudio[]>([]);
   const [soComAudio, setSoComAudio] = useState(false);
@@ -1516,6 +1523,7 @@ export default function Feed() {
       setExperienceDescription('');
       setExpAttachments([]);
       setExpCategoria('');
+      setPassoConto(1);
       setEscrevendoConto(false);
       await reloadExperiences();
       if (criado?.status === 'em_revisao') {
@@ -2157,6 +2165,7 @@ export default function Feed() {
                 {/* Fechar guarda o rascunho: o texto continua aí ao abrir de novo. */}
                 <button
                   type="button"
+                  disabled={preparandoAudioConto || isPublishingExperience}
                   onClick={() => { setEscrevendoConto(false); }}
                   className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
                   aria-label="Fechar e voltar a ler os contos"
@@ -2166,10 +2175,20 @@ export default function Feed() {
               </div>
             </div>
 
+            <ol aria-label="Etapas da publicação" className="grid grid-cols-3 gap-2 text-xs">
+              {['Detalhes', 'Áudio ou texto', 'Revisão'].map((label, index) => (
+                <li key={label} aria-current={passoConto === index + 1 ? 'step' : undefined}
+                  className={cn('rounded-lg border px-2 py-2 text-center', passoConto === index + 1 ? 'border-primary bg-primary/10 font-bold' : 'text-muted-foreground')}>
+                  {index + 1}. {label}
+                </li>
+              ))}
+            </ol>
+            <div hidden={passoConto !== 1} className="space-y-3">
+            <h2 className="font-semibold">Escolha a categoria e dê um título</h2>
             <select
               value={expCategoria}
               onChange={(e) => setExpCategoria(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="h-12 w-full rounded-md border border-input bg-background px-3 text-base"
               aria-label="Categoria do conto"
             >
               <option value="">Categoria do conto (obrigatório)</option>
@@ -2182,14 +2201,24 @@ export default function Feed() {
               value={experienceTitle}
               onChange={(e) => setExperienceTitle(e.target.value)}
               maxLength={120}
+              aria-label="Título do conto"
+              className="h-12 text-base"
             />
+            <p className="text-sm text-muted-foreground">Se for publicar só em áudio, o título precisa ter pelo menos 3 caracteres.</p>
+            <Button className="min-h-12 w-full" disabled={!expCategoria} onClick={() => irAoPassoConto(2)}>Continuar para áudio ou texto</Button>
+            </div>
+            <div hidden={passoConto !== 2} className="space-y-3">
+              <h2 className="font-semibold">Como você quer contar sua história?</h2>
+              <GravadorDeAudio partes={audiosConto} onChange={setAudiosConto} onBusyChange={setPreparandoAudioConto} disabled={isPublishingExperience} />
+              <label htmlFor="conto-texto" className="block text-sm font-medium">Escrever a história ou complementar o áudio</label>
             <div className="relative">
               <Textarea
-                placeholder={"Conte sua experiência com suas próprias palavras."}
+                id="conto-texto"
+                placeholder="Conte sua experiência com suas próprias palavras."
                 value={experienceDescription}
                 onChange={(e) => setExperienceDescription(e.target.value)}
                 maxLength={50000}
-                className="min-h-[160px] resize-y rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[140px] sm:rounded-md sm:border-input sm:text-sm"
+                className="min-h-[140px] resize-y rounded-xl border-2 border-primary/15 bg-background px-4 py-3 pb-8 text-base leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:rounded-md sm:border-input sm:text-sm"
                 rows={6}
               />
               <span className={cn('absolute bottom-2 right-3 text-xs', experienceDescription.trim().length < 20 ? 'text-muted-foreground' : 'text-green-500')}>
@@ -2200,6 +2229,23 @@ export default function Feed() {
                   : `${experienceDescription.trim().length.toLocaleString('pt-BR')} caracteres`}
               </span>
             </div>
+              {audiosConto.length > 0 && experienceDescription.trim().length < 20 && experienceTitle.trim().length < 3 && (
+                <p className="text-sm text-destructive">Volte para dar um título ao conto em áudio.</p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" className="min-h-12" disabled={preparandoAudioConto} onClick={() => irAoPassoConto(1)}>Voltar</Button>
+                <Button className="min-h-12 flex-1" disabled={preparandoAudioConto || (experienceDescription.trim().length < 20 && (!audiosConto.length || experienceTitle.trim().length < 3))} onClick={() => irAoPassoConto(3)}>Revisar publicação</Button>
+              </div>
+            </div>
+            <div hidden={passoConto !== 3} className="space-y-3">
+              <h2 className="font-semibold">Revise e publique</h2>
+              <div className="space-y-1 rounded-xl border p-3">
+                <p className="font-semibold">{experienceTitle.trim() || 'Conto sem título'}</p>
+                <p className="text-sm text-muted-foreground">{contagemContos.categorias.find((c) => c.slug === expCategoria)?.nome} · {audiosConto.length ? `${audiosConto.length} parte(s) de áudio` : 'Conto escrito'}</p>
+                {experienceDescription.trim() && <p className="line-clamp-3 whitespace-pre-wrap break-words text-sm">{experienceDescription.trim()}</p>}
+                {audiosConto.length > 0 && <p className="text-sm text-muted-foreground">O áudio passa pela revisão da equipe antes de aparecer para outras pessoas.</p>}
+              </div>
+              <p className="text-sm font-medium">Adicione fotos ou vídeos, se quiser</p>
             {/* Photo/Video previews */}
             {expAttachments.length > 0 && (
               <div className="flex gap-2 flex-wrap">
@@ -2222,7 +2268,6 @@ export default function Feed() {
                 ))}
               </div>
             )}
-            <GravadorDeAudio partes={audiosConto} onChange={setAudiosConto} disabled={isPublishingExperience} />
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-3">
                 <label className="cursor-pointer flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -2259,6 +2304,7 @@ export default function Feed() {
                   />
                 </label>
               </div>
+              <Button variant="outline" className="min-h-11" disabled={isPublishingExperience} onClick={() => irAoPassoConto(2)}>Voltar e editar</Button>
               <Button
                 size="sm"
                 className="h-11 rounded-xl bg-gradient-primary px-4 text-sm font-medium hover:opacity-90 gap-2 sm:h-9 sm:rounded-md sm:px-3"
@@ -2266,12 +2312,13 @@ export default function Feed() {
                 onClick={handlePublishExperience}
               >
                 <Send className="w-4 h-4" />
-                {isPublishingExperience ? 'Publicando...' : 'Publicar experiência'}
+                {isPublishingExperience ? 'Publicando…' : 'Publicar conto'}
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground">
               Somente entre adultos e com consentimento. Contos com menores de idade, animais ou incesto são proibidos e não são publicados.
             </p>
+            </div>
           </div>
         </Card>
       ) : (

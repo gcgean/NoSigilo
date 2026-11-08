@@ -54,6 +54,8 @@ type Info = {
   aberta: boolean; tema: TemaDaNoite | null; proximoTema?: TemaDaNoite | null; horario: string;
   souAdmin: boolean; podeFalar: boolean; teste?: boolean; abertaAte: string | null; salas: SalaResumo[];
   reservado: boolean; reservas: number; proximaAbertura: string | null;
+  pessoasAgora?: number;
+  proximoEncontro?: { inicio: string; tema: TemaDaNoite; reservas: number; reservado: boolean; lembrete: boolean } | null;
   cabinesFechadas?: CabineFechada[];
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
@@ -346,6 +348,8 @@ export default function Casa() {
   // Comprar tokens sem sair da Casa (abre sozinho quando o saldo não dá).
   const [comprarAberto, setComprarAberto] = useState(false);
   const [feedbackAberto, setFeedbackAberto] = useState(false);
+  const [mostraProximo, setMostraProximo] = useState(false);
+  const [lembrete, setLembrete] = useState(false);
   // Brincadeira que a pessoa dispensou: o cartão do topo some (ela pode votar na mensagem da Lola).
   const [jogosDispensados, setJogosDispensados] = useState<string[]>([]);
   // Card da brincadeira fica recolhido numa linha (abre ao tocar); quem é parte da vez já vê aberto.
@@ -439,19 +443,15 @@ export default function Casa() {
     }
   }, [toast, carregar]);
 
-  const reservar = useCallback(async (reservarLugar = true) => {
-    // Com aviso no celular, 52% de quem reservou entrou em 07/11; sem, 26%. Pede na hora.
-    const pedindo = reservarLugar && typeof Notification !== 'undefined' && Notification.permission === 'default'
+  const reservar = useCallback(async (reservarLugar = true, avisar = false) => {
+    const pedindo = reservarLugar && avisar && typeof Notification !== 'undefined' && Notification.permission === 'default'
       ? enablePushNotifications().catch(() => {}) : Promise.resolve();
     try {
-      const { data } = await apiClient.post('/casa/reservar', { reservar: reservarLugar });
-      setInfo((i) => i ? { ...i, reservado: !!data.reservado, reservas: Number(data.reservas || 0) } : i);
+      const { data } = await apiClient.post('/casa/reservar', { reservar: reservarLugar, lembrete: avisar, proxima: true });
+      setInfo((i) => i?.proximoEncontro ? { ...i, proximoEncontro: { ...i.proximoEncontro, reservado: !!data.reservado, reservas: Number(data.reservas || 0), lembrete: avisar } } : i);
       if (reservarLugar) {
         await pedindo;
-        const comAviso = typeof Notification !== 'undefined' && Notification.permission === 'granted';
-        toast(comAviso
-          ? { title: '🎟️ Lugar reservado!', description: 'Quando A Casa abrir, a gente avisa no seu celular.' }
-          : { title: '🎟️ Lugar reservado!', description: 'Vamos avisar por e-mail quando abrir. Para o aviso chegar no celular, ative as notificações do NoSigilo.' });
+        toast({ title: 'Presença confirmada', description: avisar ? 'Você escolheu receber o lembrete pelos canais habilitados na sua conta.' : undefined });
       }
     } catch { toast({ title: 'Não foi possível reservar agora.', variant: 'destructive' }); }
   }, [toast]);
@@ -459,7 +459,7 @@ export default function Casa() {
     if (params.get('reservar') !== '1' || !info) return;
     params.delete('reservar');
     setParams(params, { replace: true });
-    if (!info.aberta && !info.reservado) void reservar(true);
+    if (!info.aberta && !info.proximoEncontro?.reservado) void reservar(true);
   }, [params, setParams, info, reservar]);
   // Convite da Lola ("a sala está pegando fogo"): o link /casa?sala=... já entra na sala.
   useEffect(() => {
@@ -502,6 +502,7 @@ export default function Casa() {
   const sair = useCallback(async () => {
     if (salaAtual) void apiClient.post(`/casa/${salaAtual}/sair`).catch(() => {});
     setEstado(null);
+    setMostraProximo(true);
     void carregar();
   }, [salaAtual, carregar]);
 
@@ -1205,6 +1206,17 @@ export default function Casa() {
         {estado.sala_anonima && estado.eu.podeFalar && !estado.eu.revelado && (
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
+        <button type="button" className="rounded-full border border-white/20 px-3 py-1.5 text-xs" onClick={async () => {
+          const url = new URL('/casa', window.location.origin);
+          url.searchParams.set('sala', estado.sala.id);
+          const text = `Vem entrar comigo n’A Casa! Estou na sala ${estado.sala.nome}: ${url.href}`;
+          try {
+            if (navigator.share) await navigator.share({ text });
+            else { await navigator.clipboard.writeText(text); toast({ title: 'Convite copiado' }); }
+          } catch (error) {
+            if (!(error instanceof DOMException && error.name === 'AbortError')) toast({ title: 'Não foi possível compartilhar o convite', variant: 'destructive' });
+          }
+        }}>Convide alguém para entrar com você</button>
         <RadioDaCasa compacto />
         {minhasCabines.length > 0 && (
           <button type="button" onClick={() => setListaDeCabines(true)} className="relative rounded-full border border-rose-400/60 bg-rose-600/30 px-2 py-1.5 text-xs" aria-label="Minhas cabines" title="Minhas cabines">
@@ -2046,7 +2058,7 @@ export default function Casa() {
           ) : (
             <>
               <ContagemRegressiva alvo={info?.proximaAbertura ?? null} />
-              {info?.proximoTema && <TemaDaProxima tema={info.proximoTema} />}
+
             </>
           )}
         </div>
@@ -2069,21 +2081,25 @@ export default function Casa() {
           </DialogContent>
         </Dialog>
 
-        {info && !info.aberta && (
-          <div className="space-y-3 text-center">
-            {info.reservado ? (
-              <>
-                <div className="rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-4 font-semibold text-emerald-200">🎟️ Seu lugar está reservado! Quando abrir, a gente avisa no seu celular.</div>
-                <button type="button" className="text-xs text-white/50 underline" onClick={() => void reservar(false)}>Cancelar reserva</button>
-              </>
-            ) : (
-              <Button size="lg" className="h-14 w-full bg-gradient-to-r from-rose-600 to-fuchsia-600 text-lg font-bold" onClick={() => void reservar(true)}>
-                🎟️ Reservar meu lugar
-              </Button>
-            )}
-            {info.reservas > 0 && <p className="text-sm text-fuchsia-200">🎟️ {info.reservas === 1 ? '1 pessoa já reservou' : `${info.reservas} pessoas já reservaram`} lugar para a próxima noite</p>}
+        {info?.proximoEncontro && (!info.aberta || mostraProximo) && (
+          <div className="space-y-3 rounded-2xl border border-fuchsia-400/30 p-4 text-center">
+            <h2 className="font-bold">Próximo encontro</h2>
+            <p>{new Date(info.proximoEncontro.inicio).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · horário de Brasília</p>
+            <TemaDaProxima tema={info.proximoEncontro.tema} />
+            <p className="text-sm">Recepção no Salão, brincadeiras da noite e interação nas salas.</p>
+            <p className="text-sm">{info.proximoEncontro.reservas} confirmações</p>
+            {info.proximoEncontro.reservado ? <div className="space-y-2">
+              <p className="font-semibold text-emerald-300">Presença confirmada</p>
+              <button type="button" className="underline text-sm" onClick={() => void reservar(true, !info.proximoEncontro?.lembrete)}>{info.proximoEncontro.lembrete ? 'Desativar lembrete' : 'Ativar lembrete'}</button>
+              <button type="button" className="ml-3 underline text-sm" onClick={() => void reservar(false)}>Cancelar confirmação</button>
+            </div> : <>
+              <label className="flex justify-center items-center gap-2 text-sm"><input type="checkbox" checked={lembrete} onChange={(e) => setLembrete(e.target.checked)} /> Quero receber um lembrete</label>
+              <Button className="w-full" onClick={() => void reservar(true, lembrete)}>Quero participar</Button>
+            </>}
+            {mostraProximo && <Button variant="outline" onClick={() => setFeedbackAberto(true)}>O que faltou para sua noite ser melhor?</Button>}
           </div>
         )}
+        {info?.aberta && <p className="text-center text-sm">{info.pessoasAgora ?? 0} pessoas n’A Casa agora</p>}
         {info?.aberta && info.salas?.length > 0 && (
           <MapaDaCasa
             salas={info.salas}

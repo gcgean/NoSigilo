@@ -2107,7 +2107,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       const daqui15 = noiteDoHorario(new Date(Date.now() + 15 * 60_000));
       if (!daqui15 || !(await umaVez(`casa_lembrete15:${daqui15.chave}`))) return;
       const t = await temaDaFesta(daqui15.chave, daqui15.tema);
-      const ids = ((await db.queryAll('SELECT user_id FROM casa_reservas WHERE noite = ?', [daqui15.chave])) as any[]).map((r) => String(r.user_id));
+      const ids = ((await db.queryAll('SELECT user_id FROM casa_reservas WHERE noite = ? AND lembrete = 1', [daqui15.chave])) as any[]).map((r) => String(r.user_id));
       for (const id of ids) {
         await deps.push(id, { title: '⏰ Faltam 15 minutos para A Casa!', body: `${t.nome} começa às ${HORA_DE_ABRIR[daqui15.tema]}h.${t.dress ? ` Dress code: ${t.dress}.` : ''} Seu lugar está reservado: chega cedo pra pegar a sala cheia 😈`, url: '/casa', tag: 'casa-15min' }).catch(() => {});
         await new Promise((r) => setTimeout(r, 60));
@@ -2121,7 +2121,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     const pessoas = naCasaAgora();
     const nCabines = cabines.size;
     const faltam = (await db.queryAll(
-      "SELECT r.user_id FROM casa_reservas r WHERE r.noite = ? AND NOT EXISTS (SELECT 1 FROM casa_eventos e WHERE e.noite = r.noite AND e.user_id = r.user_id AND e.tipo IN ('entrou', 'espiou'))",
+      "SELECT r.user_id FROM casa_reservas r WHERE r.noite = ? AND r.lembrete = 1 AND NOT EXISTS (SELECT 1 FROM casa_eventos e WHERE e.noite = r.noite AND e.user_id = r.user_id AND e.tipo IN ('entrou', 'espiou'))",
       [noite.chave],
     )) as any[];
     const corpo = pessoas >= 5
@@ -2227,15 +2227,16 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
 
   const avisarAbertura = async (tema: 'sexta' | 'sabado', chave: string) => {
     const t = await temaDaFesta(chave, tema);
-    const reservados = (await db.queryAll('SELECT user_id FROM casa_reservas WHERE noite = ?', [chaveDaNoite])) as any[];
+    const reservados = (await db.queryAll('SELECT user_id, lembrete FROM casa_reservas WHERE noite = ?', [chave])) as any[];
     const jaAvisados = new Set<string>();
     for (const r of reservados) {
       const id = String(r.user_id);
       jaAvisados.add(id);
+      if (!Number(r.lembrete)) continue;
       await deps.push(id, {
         title: '🔥 Seu lugar n\'A Casa está esperando!',
         body: `${t.nome} começou agora, até ${HORA_DE_FECHAR[tema]}h. Você reservou: entra e chega antes da sala lotar 😈`,
-        url: '/casa',
+        url: '/casa?sala=salao',
         tag: 'casa-abriu',
       }).catch(() => {});
       await deps.emailAbriu(id, t.nome).catch(() => {});
@@ -2300,14 +2301,14 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
   };
 
   /** Chave da noite em curso ou da próxima (é nela que a reserva vale). */
-  const proximaNoite = async (): Promise<{ chave: string; inicio: string | null }> => {
+  const proximaNoite = async (apenasFutura = false): Promise<{ chave: string; inicio: string | null }> => {
     const agora = await noiteAtual();
-    if (agora && !agora.teste) return { chave: agora.chave, inicio: null };
+    if (agora && !agora.teste && !apenasFutura) return { chave: agora.chave, inicio: null };
     const base = Math.ceil(Date.now() / 3_600_000) * 3_600_000;
     for (let h = 0; h < 8 * 24; h++) {
       const t = new Date(base + h * 3_600_000);
       const n = noiteDoHorario(t);
-      if (n) return { chave: n.chave, inicio: t.toISOString() };
+      if (n && (!apenasFutura || n.chave !== agora?.chave)) return { chave: n.chave, inicio: t.toISOString() };
     }
     return { chave: '', inicio: null };
   };
@@ -2491,6 +2492,8 @@ Sala: ${salaId}`).catch(() => {});
     const podeFalar = await podeFalarNaCasa(userId, perfil?.cat);
     const prox = await proximaNoite();
     const reservado = prox.chave ? !!(await db.queryOne('SELECT 1 AS x FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, prox.chave])) : false;
+    const encontro = await proximaNoite(true);
+    const reservaEncontro = encontro.chave ? await db.queryOne('SELECT lembrete FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, encontro.chave]) as { lembrete: number } | undefined : undefined;
     const fundosDoMapa = new Map(await Promise.all([...salas.keys()].map(async (id) => [id, await fundoPublico(id)] as const)));
     // Fotos no mapa só para quem pode falar na Casa (quem entrar na sala veria o mesmo).
     const comFotos = !!noite && podeFalar;
@@ -2504,6 +2507,14 @@ Sala: ${salaId}`).catch(() => {});
       proximoTema: !noite && prox.chave ? temaPublico(await temaDaFesta(prox.chave, diaDaData(prox.chave))) : null,
       horario: HORARIO_DA_CASA,
       reservado,
+      pessoasAgora: noite ? new Set([...salas.values()].flatMap((sala) => [...sala.presentes.keys(), ...sala.espiando.keys()])).size : 0,
+      proximoEncontro: encontro.inicio ? {
+        inicio: encontro.inicio,
+        tema: temaPublico(await temaDaFesta(encontro.chave, diaDaData(encontro.chave))),
+        reservas: await totalReservas(encontro.chave),
+        reservado: !!reservaEncontro,
+        lembrete: !!reservaEncontro?.lembrete,
+      } : null,
       contaCriadaEm: perfil?.criadoEm ?? null,
       // Cabines fechadas com conversa rolando (só tipos de perfil), para pedir para entrar.
       cabinesFechadas: noite && podeFalar ? await cabinesFechadasPara(userId, perfil?.cat) : [],
@@ -2751,16 +2762,14 @@ Sala: ${salaId}`).catch(() => {});
   // Reservar lugar na próxima noite (ou na de hoje): aviso no celular quando abrir.
   app.post('/api/casa/reservar', deps.requireAuth, async (req, res) => {
     const userId = userDe(req);
-    const prox = await proximaNoite();
+    const prox = await proximaNoite((req.body as any)?.proxima === true);
     if (!prox.chave) { res.status(400).json({ error: 'sem_noite' }); return; }
     if ((req.body as any)?.reservar === false) {
       await db.run('DELETE FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, prox.chave]);
     } else {
       await db.run(
-        db.mode === 'pg'
-          ? 'INSERT INTO casa_reservas (user_id, noite, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING'
-          : 'INSERT OR IGNORE INTO casa_reservas (user_id, noite, created_at) VALUES (?, ?, ?)',
-        [userId, prox.chave, new Date().toISOString()],
+        'INSERT INTO casa_reservas (user_id, noite, created_at, lembrete) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, noite) DO UPDATE SET lembrete = excluded.lembrete',
+        [userId, prox.chave, new Date().toISOString(), (req.body as any)?.lembrete === false ? 0 : 1],
       );
     }
     await db.persist();

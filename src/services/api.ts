@@ -1031,11 +1031,17 @@ export type PromoterReferredStatus = 'subscriber' | 'trial' | 'expired' | 'deact
 export type PromoterReferredUser = { id: string; name: string; avatar: string | null; status: PromoterReferredStatus; joinedAt: string; licenseEndAt: string | null };
 
 export type PromoterHistory = { month: string; commissionCents: number; subscriptions: number; signups: number };
-export type PromoterAsset = { id: string; title: string; caption: string; destination: 'community' | 'casa'; createdAt: string; url: string; mimeType: string; processing: boolean; isNew: boolean };
+export type PromoterAsset = { id: string; title: string; caption: string; destination: 'community' | 'casa'; createdAt: string; url: string; mimeType: string; processing: boolean; isNew: boolean; archivedAt?: string | null };
 export const promoterService = {
-  assets: async (): Promise<{ assets: PromoterAsset[]; newCount: number }> => (await apiClient.get('/promoter/assets')).data,
+  assets: async (admin = false): Promise<{ assets: PromoterAsset[]; newCount: number }> => (await apiClient.get('/promoter/assets', { params: { view: admin ? 'admin' : 'promoter' } })).data,
   markAssetsSeen: async (ids: string[]) => (await apiClient.post('/promoter/assets/seen', { ids })).data,
+  recordAssetsVisit: async () => (await apiClient.post('/promoter/assets/visit')).data,
+  assetsEngagement: async (): Promise<{ ativos: number; unicos: number; ultimos7: number; retornaram: number; porDia: { dia: string; total: number }[] }> =>
+    (await apiClient.get('/admin/promoter-assets/engagement')).data,
   publishAsset: async (data: { title: string; caption: string; mediaId: string; destination: 'community' | 'casa' }) => (await apiClient.post('/admin/promoter-assets', data)).data,
+  updateAsset: async (id: string, data: Pick<PromoterAsset, 'title' | 'caption' | 'destination'>) =>
+    (await apiClient.patch(`/admin/promoter-assets/${encodeURIComponent(id)}`, data)).data,
+  restoreAsset: async (id: string) => (await apiClient.post(`/admin/promoter-assets/${encodeURIComponent(id)}/restore`)).data,
   removeAsset: async (id: string) => (await apiClient.delete(`/admin/promoter-assets/${encodeURIComponent(id)}`)).data,
   // Posição do próprio promotor no ranking do mês (sem expor os outros).
   minhaPosicao: async (): Promise<{ posicao: number | null; total: number; periodo: string }> => {

@@ -1,0 +1,1 @@
+ALTER TABLE casa_reservas ADD COLUMN lembrete INTEGER NOT NULL DEFAULT 1;

@@ -5779,10 +5779,35 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const account = await queryOne(db, 'SELECT is_admin FROM users WHERE id = ?', [req.auth!.userId]) as any;
     const promoter = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active'", [req.auth!.userId]);
     if (Number(account?.is_admin) !== 1 && !promoter) { res.status(403).json({ error: 'promoter_required' }); return; }
-    const isAdmin = Number(account?.is_admin) === 1;
-    const rows = await queryAll(db, `SELECT a.*, m.filename, m.mime_type, m.processando, v.viewed_at FROM promoter_assets a JOIN media m ON m.id = a.media_id LEFT JOIN promoter_asset_views v ON v.asset_id = a.id AND v.user_id = ? WHERE m.is_private = 0 ${isAdmin ? '' : 'AND COALESCE(m.processando,0) = 0'} ORDER BY a.created_at DESC, a.id DESC`, [req.auth!.userId]) as any[];
-    const assets = rows.map((r) => ({ id: r.id, title: r.title, caption: r.caption, destination: r.destination, createdAt: r.created_at, url: '/uploads/' + r.filename, mimeType: r.mime_type, processing: !!Number(r.processando), isNew: !r.viewed_at && !Number(r.processando) }));
+    const isAdmin = Number(account?.is_admin) === 1 && req.query.view !== 'promoter';
+    const rows = await queryAll(db, `SELECT a.*, m.filename, m.mime_type, m.processando, v.viewed_at FROM promoter_assets a JOIN media m ON m.id = a.media_id LEFT JOIN promoter_asset_views v ON v.asset_id = a.id AND v.user_id = ? WHERE m.is_private = 0 ${isAdmin ? '' : 'AND a.archived_at IS NULL AND COALESCE(m.processando,0) = 0'} ORDER BY a.created_at DESC, a.id DESC`, [req.auth!.userId]) as any[];
+    const assets = rows.map((r) => ({ id: r.id, title: r.title, caption: r.caption, destination: r.destination, createdAt: r.created_at, url: '/uploads/' + r.filename, mimeType: r.mime_type, processing: !!Number(r.processando), archivedAt: r.archived_at, isNew: !r.archived_at && !r.viewed_at && !Number(r.processando) }));
     res.json({ assets, newCount: assets.filter((a) => a.isNew).length });
+  });
+  const diaAcessoCentral = (diasAtras = 0) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(new Date(Date.now() - diasAtras * 86_400_000));
+  app.post('/api/promoter/assets/visit', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    if (!(await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active'", [userId]))) {
+      res.status(403).json({ error: 'promoter_required' });
+      return;
+    }
+    await run(db, 'INSERT INTO promoter_asset_visits (user_id, visit_day) VALUES (?, ?) ON CONFLICT(user_id, visit_day) DO NOTHING', [userId, diaAcessoCentral()]);
+    await persist();
+    res.json({ ok: true });
+  });
+  app.get('/api/admin/promoter-assets/engagement', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const desde = diaAcessoCentral(29);
+    const hoje = diaAcessoCentral();
+    const ativos = await queryOne(db, "SELECT COUNT(DISTINCT user_id) AS total FROM promoters WHERE status = 'active'", []) as { total: number };
+    const visitas = await queryAll(db, 'SELECT user_id, COUNT(*) AS dias, MAX(visit_day) AS ultimo FROM promoter_asset_visits WHERE visit_day BETWEEN ? AND ? GROUP BY user_id', [desde, hoje]) as { dias: number; ultimo: string }[];
+    const porDia = await queryAll(db, 'SELECT visit_day AS dia, COUNT(*) AS total FROM promoter_asset_visits WHERE visit_day BETWEEN ? AND ? GROUP BY visit_day ORDER BY visit_day DESC', [desde, hoje]) as { dia: string; total: number }[];
+    res.json({
+      ativos: Number(ativos.total),
+      unicos: visitas.length,
+      ultimos7: visitas.filter((v) => v.ultimo >= diaAcessoCentral(6)).length,
+      retornaram: visitas.filter((v) => Number(v.dias) > 1).length,
+      porDia: porDia.map((v) => ({ dia: v.dia, total: Number(v.total) })),
+    });
   });
   app.post('/api/promoter/assets/seen', requireAuth(env, db), async (req, res) => {
     const promoter = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active'", [req.auth!.userId]);
@@ -5790,7 +5815,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const parsed = z.object({ ids: z.array(z.string().min(1)).min(1).max(100) }).safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
     for (const id of new Set(parsed.data.ids)) {
-      await run(db, `INSERT INTO promoter_asset_views (user_id, asset_id, viewed_at) SELECT ?, a.id, ? FROM promoter_assets a JOIN media m ON m.id = a.media_id WHERE a.id = ? AND m.is_private = 0 AND COALESCE(m.processando,0) = 0 ON CONFLICT(user_id, asset_id) DO NOTHING`, [req.auth!.userId, nowIso(), id]);
+      await run(db, `INSERT INTO promoter_asset_views (user_id, asset_id, viewed_at) SELECT ?, a.id, ? FROM promoter_assets a JOIN media m ON m.id = a.media_id WHERE a.id = ? AND a.archived_at IS NULL AND m.is_private = 0 AND COALESCE(m.processando,0) = 0 ON CONFLICT(user_id, asset_id) DO NOTHING`, [req.auth!.userId, nowIso(), id]);
     }
     await persist();
     res.json({ ok: true });
@@ -5806,9 +5831,24 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await persist();
     res.status(201).json({ id });
   });
+  app.patch('/api/admin/promoter-assets/:id', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const parsed = z.object({ title: z.string().trim().min(1).max(100), caption: z.string().trim().max(2000), destination: z.enum(['community', 'casa']) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const id = String(req.params.id);
+    if (!(await queryOne(db, 'SELECT id FROM promoter_assets WHERE id = ?', [id]))) { res.status(404).json({ error: 'not_found' }); return; }
+    const { title, caption, destination } = parsed.data;
+    await run(db, 'UPDATE promoter_assets SET title = ?, caption = ?, destination = ? WHERE id = ?', [title, caption, destination, id]);
+    await persist();
+    res.json({ ok: true });
+  });
   app.delete('/api/admin/promoter-assets/:id', requireAuth(env, db), requireAdmin(), async (req, res) => {
-    await run(db, 'DELETE FROM promoter_asset_views WHERE asset_id = ?', [String(req.params.id)]);
-    await run(db, 'DELETE FROM promoter_assets WHERE id = ?', [String(req.params.id)]);
+    await run(db, 'UPDATE promoter_assets SET archived_at = COALESCE(archived_at, ?) WHERE id = ?', [nowIso(), String(req.params.id)]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  app.post('/api/admin/promoter-assets/:id/restore', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    await run(db, 'UPDATE promoter_assets SET archived_at = NULL WHERE id = ?', [String(req.params.id)]);
     await persist();
     res.json({ ok: true });
   });

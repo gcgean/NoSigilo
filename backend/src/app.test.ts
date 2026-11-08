@@ -4180,6 +4180,16 @@ describe('nosigilo backend', () => {
       const reserva = (await request(ctx.app).get('/api/casa/minha-reserva').set(auth(casal.token)).expect(200)).body;
       expect(reserva).toMatchObject({ aberta: true, reservado: true, naCasa: false });
 
+      const antes = (await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body;
+      expect(antes.proximoEncontro).toMatchObject({ reservado: false, lembrete: false });
+      expect(Date.parse(antes.proximoEncontro.inicio)).toBeGreaterThan(Date.now());
+      await request(ctx.app).post('/api/casa/reservar').set(auth(casal.token)).send({ proxima: true, lembrete: false }).expect(200);
+      const confirmado = (await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body;
+      expect(confirmado.proximoEncontro).toMatchObject({ reservado: true, lembrete: false, reservas: 1 });
+      await request(ctx.app).post('/api/casa/reservar').set(auth(casal.token)).send({ proxima: true, lembrete: true }).expect(200);
+      const comLembrete = (await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body;
+      expect(comLembrete.proximoEncontro).toMatchObject({ reservado: true, lembrete: true, reservas: 1 });
+
       // Sair da tela (ver um perfil) não tira da sala nem registra saída; sair de verdade tira.
       await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200);
       await request(ctx.app).post('/api/casa/salao/sair').set(auth(casal.token)).send({ temporario: true }).expect(200);
@@ -5203,6 +5213,15 @@ describe('nosigilo backend', () => {
     const listed = await request(ctx.app).get('/api/promoter/assets').set(auth).expect(200);
     expect(listed.body.assets).toEqual(expect.arrayContaining([expect.objectContaining({ id: published.body.id, destination: 'casa', url: '/uploads/central-art.webp' })]));
     expect(listed.body.newCount).toBe(1);
+    const engagementUrl = '/api/admin/promoter-assets/engagement';
+    await request(ctx.app).get(engagementUrl).set(auth).expect(403);
+    expect((await request(ctx.app).get(engagementUrl).set(adminAuth).expect(200)).body.unicos).toBe(0);
+    await request(ctx.app).post('/api/promoter/assets/visit').set(adminAuth).expect(403);
+    await request(ctx.app).post('/api/promoter/assets/visit').set(auth).expect(200);
+    await request(ctx.app).post('/api/promoter/assets/visit').set(auth).expect(200);
+    const engagement = (await request(ctx.app).get(engagementUrl).set(adminAuth).expect(200)).body;
+    expect(engagement).toMatchObject({ unicos: 1, ultimos7: 1, retornaram: 0 });
+    expect(engagement.porDia).toEqual([{ dia: expect.any(String), total: 1 }]);
     expect(listed.body.assets[0]).toMatchObject({ mimeType: 'image/webp', processing: false, isNew: true });
     await request(ctx.app).post('/api/promoter/assets/seen').send({ ids: [published.body.id] }).expect(401);
     await request(ctx.app).post('/api/promoter/assets/seen').set(adminAuth).send({ ids: [published.body.id] }).expect(403);
@@ -5228,6 +5247,15 @@ describe('nosigilo backend', () => {
     await request(ctx.app).delete(`/api/admin/promoter-assets/${published.body.id}`).set(adminAuth).expect(200);
     const removed = await request(ctx.app).get('/api/promoter/assets').set(auth).expect(200);
     expect(removed.body.assets.some((a: any) => a.id === published.body.id)).toBe(false);
+    const archived = await request(ctx.app).get('/api/promoter/assets').set(adminAuth).expect(200);
+    expect(archived.body.assets.find((a: any) => a.id === published.body.id)?.archivedAt).toBeTruthy();
+    const editUrl = `/api/admin/promoter-assets/${published.body.id}`;
+    await request(ctx.app).patch(editUrl).set(auth).send(data).expect(403);
+    await request(ctx.app).patch(editUrl).set(adminAuth).send({ ...data, title: 'Arte revisada' }).expect(200);
+    await request(ctx.app).post(`${editUrl}/restore`).set(adminAuth).expect(200);
+    const restored = await request(ctx.app).get('/api/promoter/assets').set(auth).expect(200);
+    expect(restored.body.assets.find((a: any) => a.id === published.body.id)).toMatchObject({ title: 'Arte revisada', isNew: false });
+    expect(restored.body.assets.find((a: any) => a.id === published.body.id).createdAt).toBe(listed.body.assets[0].createdAt);
   });
 
   it('promotor troca a chave Pix só com a senha certa', async () => {

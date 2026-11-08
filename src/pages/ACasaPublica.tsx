@@ -66,15 +66,13 @@ export default function ACasaPublica() {
   }, [isAuthenticated, params, navigate]);
 
   const quero = () => {
-    // Com A Casa fechada, entrar aqui já é reservar: quem cria a conta chega com
-    // o lugar garantido, sem precisar tocar em "reservar" de novo.
-    const destino = info && !info.aberta ? '/casa?reservar=1' : '/casa';
+    const destino = info?.aberta ? '/casa?sala=salao' : '/casa';
     if (isAuthenticated) { navigate(destino); return; }
     guardarDestinoPosCadastro(destino);
     navigate(convite ? `/register?invite=${encodeURIComponent(convite)}` : '/register');
   };
   const c = contagem(info?.proximaAbertura ?? null, agora);
-  const rotuloBotao = info?.aberta ? 'Entrar na Casa' : '🎟️ Reservar meu lugar';
+  const rotuloBotao = info?.aberta ? 'Entrar na Casa' : 'Quero participar';
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-fuchsia-950 to-zinc-950 px-4 py-8 text-white">

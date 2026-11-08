@@ -57,7 +57,7 @@ export default function FeedbackDaCasa({ aberto, onFechar }: { aberto: boolean; 
           onChange={(e) => setTexto(e.target.value)}
           maxLength={1000}
           rows={4}
-          placeholder={tipo === 'problema' ? 'Conta o que aconteceu e em qual sala…' : tipo === 'gostei' ? 'O que você mais curtiu?' : 'Qual a sua ideia para A Casa?'}
+          placeholder={tipo === 'problema' ? 'Conta o que aconteceu e em qual sala…' : tipo === 'gostei' ? 'O que você mais curtiu?' : 'O que faltou para sua noite ser melhor?'}
           className="w-full rounded-xl border bg-background px-3 py-2 text-base"
         />
         <Button className="w-full bg-gradient-to-r from-rose-600 to-fuchsia-600" disabled={enviando} onClick={() => void enviar()}>
