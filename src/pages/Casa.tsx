@@ -1,3 +1,4 @@
+import { useDigitando } from '@/utils/useDigitando';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -532,6 +533,7 @@ export default function Casa() {
   useEffect(() => {
     const aoMsg = (d: { sala: string; msg: Msg }) => {
       setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: [...e.mensagens.slice(-299), d.msg] } : e);
+      digitandoRef.current.falou(d.msg.autor?.id);
       if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
       // Me marcaram com @ ou responderam: som, aviso na tela (até dentro da cabine) e no sino.
       const agora = estadoRef.current;
@@ -679,10 +681,13 @@ export default function Casa() {
       setFaixa((l) => [...l.slice(-15), { ...d, id: `${Date.now()}-${Math.random()}`, em: Date.now() }]);
     };
     on('casa.faixa', aoFaixa);
+    const aoDigitando = (d: { sala: string; id: string; nome: string }) => { if (estadoRef.current?.sala.id === d.sala) digitandoRef.current.chegou(d.id, d.nome); };
+    on('casa.digitando', aoDigitando);
     on('casa.cabine.decidir', aoDecidir); on('casa.mensagem', aoMsg); on('casa.reacao', aoReacao); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
     on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.cabine.esquentar', aoEsquentarCabine); on('casa.convite.sala', aoConviteSala); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
     return () => {
       off('casa.faixa', aoFaixa);
+      off('casa.digitando', aoDigitando);
       off('casa.cabine.decidir', aoDecidir); off('casa.mensagem', aoMsg); off('casa.reacao', aoReacao); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
       off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.cabine.esquentar', aoEsquentarCabine); off('casa.convite.sala', aoConviteSala); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
     };
@@ -727,6 +732,10 @@ export default function Casa() {
   }, [estado?.sala.id, estado?.eu.podeFalar, estado?.eu.pulseira, pulseiraDispensada]);
 
   const [respondidas, setRespondidas] = useState<Set<string>>(() => new Set());
+  // "Fulano está digitando…" (refs para os ouvintes do socket não se reinscreverem).
+  const digitando = useDigitando(salaAtual ? `/casa/${salaAtual}/digitando` : null, estado?.eu.idPublico);
+  const digitandoRef = useRef(digitando);
+  digitandoRef.current = digitando;
   const enviandoRapida = useRef(false);
   const enviar = async (direto?: string) => {
     const t = (direto ?? texto).trim();
@@ -1570,11 +1579,12 @@ export default function Casa() {
           >
             {enviandoMidia !== null ? <span className="text-[10px] tabular-nums">{enviandoMidia < 99 ? `${enviandoMidia}%` : "⏳"}</span> : <Camera className="h-4 w-4" />}
           </button>
+          {digitando.texto && !respondendo && <p aria-live="polite" className="pointer-events-none absolute bottom-full left-3 mb-1 rounded-full bg-black/60 px-2.5 py-0.5 text-[11px] italic text-white/75">{digitando.texto}</p>}
           <SugestoesDeMencao texto={texto} onEscolher={setTexto} className={respondendo ? 'mb-9' : undefined}
             pessoas={estado.presentes.filter((x) => x.id !== estado.eu.idPublico)} />
           <input
             value={texto}
-            onChange={(e) => setTexto(e.target.value)}
+            onChange={(e) => { setTexto(e.target.value); if (e.target.value.trim()) digitando.digitei(); }}
             maxLength={280}
             placeholder="Fale com a sala… (@ para marcar alguém)"
             className="min-w-0 flex-1 rounded-full bg-white/10 px-4 py-2.5 text-[16px] text-white placeholder:text-white/40 outline-none"

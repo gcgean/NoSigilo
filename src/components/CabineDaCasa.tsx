@@ -1,3 +1,4 @@
+import { useDigitando } from '@/utils/useDigitando';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Camera, ImagePlus, LogOut, Send, X } from 'lucide-react';
@@ -121,6 +122,10 @@ export default function CabineDaCasa({
   // O servidor diz quem sou eu nesta cabine: na sala anônima o id da sala muda quando a
   // pessoa cai e volta, e aí ela aparecia como "outro" e não conseguia escolher com quem agir.
   const meuIdPublico = cab?.eu ?? meuIdDaSala;
+  // "Fulano está digitando…" na cabine (ref para o ouvinte do socket não se reinscrever).
+  const digitando = useDigitando(cabineId ? `/casa/cabine/${cabineId}/digitando` : null, meuIdPublico);
+  const digitandoRef = useRef(digitando);
+  digitandoRef.current = digitando;
   const [escolhendoPara, setEscolhendoPara] = useState<string | null>(null);
   const [entradaAberta, setEntradaAberta] = useState<string | null>(null);
   const [texto, setTexto] = useState('');
@@ -177,6 +182,7 @@ export default function CabineDaCasa({
     const aoEstado = (d: { cabine: Cabine }) => { if (d.cabine.id === cabineId) setCab(d.cabine); };
     const aoMsg = (d: { cabineId: string; msg: Msg }) => {
       if (d.cabineId !== cabineId) return;
+      digitandoRef.current.falou(d.msg.autor?.id);
       setCab((c) => c ? { ...c, mensagens: [...c.mensagens.slice(-299), d.msg] } : c);
       if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
       else if (d.msg.tipo === 'lola' && /liberei/.test(d.msg.texto)) void tocarSomDaCasa('nivel');
@@ -205,8 +211,10 @@ export default function CabineDaCasa({
       if (d.cabineId === cabineId) setCab((c) => c ? { ...c, mensagens: c.mensagens.map((m) => m.id === d.mensagemId ? { ...m, reacoes: d.reacoes } : m) } : c);
     };
     on('casa.cabine.reacao', aoReacao);
+    const aoDigitando = (d: { cabineId: string; id: string; nome: string }) => { if (d.cabineId === cabineId) digitandoRef.current.chegou(d.id, d.nome); };
+    on('casa.cabine.digitando', aoDigitando);
     on('casa.cabine.estado', aoEstado); on('casa.cabine.mensagem', aoMsg); on('casa.cabine.fechou', aoFechou); on('casa.cabine.mensagem.removida', aoRemovida);
-    return () => { off('casa.cabine.esquentar', aoEsquentar); off('casa.cabine.reacao', aoReacao); off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); off('casa.cabine.mensagem.removida', aoRemovida); };
+    return () => { off('casa.cabine.digitando', aoDigitando); off('casa.cabine.esquentar', aoEsquentar); off('casa.cabine.reacao', aoReacao); off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); off('casa.cabine.mensagem.removida', aoRemovida); };
   }, [on, off, cabineId, toast, onSaiu, meuIdPublico]);
   // Rolagem estilo WhatsApp: só desce sozinho se a pessoa já está no fim.
   // @menções: só quem está dentro da cabine.
@@ -733,7 +741,8 @@ export default function CabineDaCasa({
           )}
           <SugestoesDeMencao texto={texto} onEscolher={setTexto} className={respondendo && enviando === null ? 'mb-9' : undefined}
             pessoas={(cab.membros ?? []).filter((x) => x.id !== meuIdPublico)} />
-          <input value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={280} placeholder="Escreva… (@ marca)"
+          {digitando.texto && !(respondendo && enviando === null) && <p aria-live="polite" className="pointer-events-none absolute bottom-full left-3 mb-1 rounded-full bg-black/60 px-2.5 py-0.5 text-[11px] italic text-white/75">{digitando.texto}</p>}
+          <input value={texto} onChange={(e) => { setTexto(e.target.value); if (e.target.value.trim()) digitando.digitei(); }} maxLength={280} placeholder="Escreva… (@ marca)"
             className="min-w-0 flex-1 rounded-full bg-white/10 px-4 py-2.5 text-[16px] text-white placeholder:text-white/40 outline-none" />
           <button type="submit" disabled={!texto.trim()} className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 disabled:opacity-40" aria-label="Enviar">
             <Send className="h-4 w-4" />

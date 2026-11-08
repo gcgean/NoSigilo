@@ -1485,6 +1485,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     }
     const [quem, outro] = d.falas % 2 === 0 ? [d.a, d.b] : [d.b, d.a];
     d.falas += 1;
+    emitirParaSala(sala, 'casa.digitando', { sala: sala.id, id: autorPromotor(quem).id, nome: quem.nome });
     const texto = await falaDoPromotor(sala, quem, outro, d);
     if (duplaNaSala.get(sala.id) !== d) return; // a sala engrenou enquanto a IA pensava
     const ultima = sala.mensagens.filter((m) => m.tipo === 'promotor').slice(-1)[0];
@@ -3024,6 +3025,37 @@ Sala: ${salaId}`).catch(() => {});
     const row = (await db.queryOne('SELECT autor_id FROM casa_mensagens WHERE id = ? AND sala = ? LIMIT 1', [msgId, sala.id])) as any;
     if (!row || String(row.autor_id) !== userId) { res.status(403).json({ error: 'nao_e_sua', message: 'Só dá para apagar o que você mandou.' }); return; }
     removerMsgDaSala(sala, msgId);
+    res.json({ ok: true });
+  });
+
+  // "Fulano está digitando…" na sala e na cabine. O app manda no máximo a cada 3 s
+  // enquanto a pessoa digita; aqui só repassa (com freio de 2 s por pessoa).
+  const ultimoDigitando = new Map<string, number>();
+  const podeAvisarDigitando = (chave: string) => {
+    const agora = Date.now();
+    if (agora - (ultimoDigitando.get(chave) ?? 0) < 2000) return false;
+    ultimoDigitando.set(chave, agora);
+    return true;
+  };
+  app.post('/api/casa/:sala/digitando', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const p = sala?.presentes.get(userDe(req));
+    if (!sala || !p || !p.podeFalar) { res.json({ ok: false }); return; }
+    p.ultimoPing = Date.now();
+    p.foraDaTela = false;
+    if (podeAvisarDigitando(`${sala.id}:${p.id}`)) emitirParaSala(sala, 'casa.digitando', { sala: sala.id, id: p.idPublico, nome: p.nome });
+    res.json({ ok: true });
+  });
+  app.post('/api/casa/cabine/:id/digitando', deps.requireAuth, async (req, res) => {
+    const c = cabineDe(req);
+    const userId = userDe(req);
+    const m = c?.membros.get(userId);
+    if (!c || !m) { res.json({ ok: false }); return; }
+    if (podeAvisarDigitando(`cab:${c.id}:${userId}`)) {
+      for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) {
+        if (id !== userId) emitirPara(id, 'casa.cabine.digitando', { cabineId: c.id, id: m.idPublico, nome: m.nome });
+      }
+    }
     res.json({ ok: true });
   });
 
