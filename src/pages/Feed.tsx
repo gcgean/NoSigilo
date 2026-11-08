@@ -2597,7 +2597,7 @@ export default function Feed() {
               <div className="flex shrink-0 items-center gap-1 rounded-xl bg-white/5 p-1 ring-1 ring-white/8" role="tablist">
                 {([
                   { id: 'all', rotulo: 'Feed', icone: <Home className="h-3.5 w-3.5" /> },
-                  { id: 'friends', rotulo: 'Perfis curtidos', icone: <Users className="h-3.5 w-3.5" /> },
+                  { id: 'friends', rotulo: 'Curtidos', icone: <Users className="h-3.5 w-3.5" /> },
                   { id: 'experiences', rotulo: 'Contos eróticos', icone: <span aria-hidden>✍️</span> },
                 ] as const).map((aba) => {
                   const ativa = feedFilter === aba.id;
@@ -2610,13 +2610,14 @@ export default function Feed() {
                       title={ativa ? `Você está em ${aba.rotulo}` : `Trocar para ${aba.rotulo}`}
                       onClick={() => setFeedFilter(aba.id)}
                       className={cn(
-                        'flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm transition-all duration-200',
+                        'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-[10px] px-2 py-1.5 text-sm transition-all duration-200 sm:gap-1.5 sm:px-3.5',
                         ativa
                           ? 'bg-gradient-primary font-bold text-white shadow-[0_2px_12px_rgba(139,92,246,0.45)]'
                           : 'border border-dashed border-white/20 font-medium text-muted-foreground hover:border-primary/40 hover:bg-white/5 hover:text-foreground'
                       )}
                     >
-                      {ativa && <Check className="h-3.5 w-3.5" />}
+                      {/* No celular o ✓ sai: o fundo preenchido já mostra a aba ativa e as três cabem. */}
+                      {ativa && <Check className="hidden h-3.5 w-3.5 sm:block" />}
                       {aba.icone}
                       {aba.rotulo}
                     </button>
@@ -2686,7 +2687,7 @@ export default function Feed() {
             {feedFilter !== 'all' && (
               <p className="mt-2 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                 <span className="font-semibold text-foreground">
-                  Você está em {feedFilter === 'experiences' ? 'Contos eróticos' : feedFilter === 'friends' ? 'Perfis curtidos' : 'Curtidos'}.
+                  Você está em {feedFilter === 'experiences' ? 'Contos eróticos' : feedFilter === 'friends' ? 'Curtidos' : 'Curtidos'}.
                 </span>
                 <button
                   type="button"

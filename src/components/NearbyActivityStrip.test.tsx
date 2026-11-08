@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router-dom';
 import NearbyActivityStrip from './NearbyActivityStrip';
 
 vi.mock('@/services/api', () => ({
+  chatService: { sendMessage: vi.fn() },
+  radarService: { contactFromRadar: vi.fn() },
   nearbyActivityService: {
     get: vi.fn().mockResolvedValue({
       radars: [{ id: 'r1', message: 'Casal discreto na cidade hoje', senderName: 'Casal Teste', senderAvatar: '/uploads/a.jpg', city: 'Fortaleza', state: 'CE', distanceKm: 3, createdAt: '', expiresAt: '' }],
@@ -19,6 +21,7 @@ describe('radar em "Perto de você"', () => {
     expect(screen.queryByText('Casal discreto na cidade hoje')).toBeNull();
     fireEvent.click(bolha);
     expect(await screen.findByText('Casal discreto na cidade hoje')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Ver no Radar e responder' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Sua resposta ao radar' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Ativar meu radar também/ })).toBeTruthy();
   });
 });

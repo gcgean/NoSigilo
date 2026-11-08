@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { textoDistancia } from '@/utils/distancia';
 import { useNavigate } from 'react-router-dom';
-import { Radio, Calendar, MapPin, User } from 'lucide-react';
+import { Radio, Calendar, MapPin, User, Send, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { nearbyActivityService, type NearbyRadar, type NearbyEvent } from '@/services/api';
+import { chatService, nearbyActivityService, radarService, type NearbyRadar, type NearbyEvent } from '@/services/api';
+import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 
 function formatEventDate(date: string): string {
@@ -53,6 +54,35 @@ export default function NearbyActivityStrip() {
   const [events, setEvents] = useState<NearbyEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [aberto, setAberto] = useState<NearbyRadar | null>(null);
+  const [resposta, setResposta] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const { toast } = useToast();
+
+  // Responder direto daqui: abre (ou acha) a conversa do radar e manda a mensagem.
+  const responder = async () => {
+    const texto = resposta.trim();
+    if (!aberto || !texto || enviando) return;
+    setEnviando(true);
+    try {
+      const { conversationId } = await radarService.contactFromRadar(aberto.id);
+      await chatService.sendMessage(String(conversationId), { content: texto });
+      setAberto(null);
+      setResposta('');
+      navigate('/chat', { state: { conversationId } });
+    } catch (err: any) {
+      const codigo = err?.response?.data?.error;
+      if (codigo === 'premium_required' || err?.response?.status === 402) { navigate('/subscriptions'); return; }
+      if (codigo === 'expired') {
+        toast({ title: 'Esse radar já acabou', description: 'Ative o seu: quem procura um perfil como o seu recebe na hora.' });
+        setRadars((l) => l.filter((r) => r.id !== aberto.id));
+        setAberto(null);
+        return;
+      }
+      toast({ title: 'Não foi possível responder', description: err?.response?.data?.message || 'Tente de novo.', variant: 'destructive' });
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -110,7 +140,7 @@ export default function NearbyActivityStrip() {
         ))}
       </div>
 
-      <Dialog open={!!aberto} onOpenChange={(v) => { if (!v) setAberto(null); }}>
+      <Dialog open={!!aberto} onOpenChange={(v) => { if (!v) { setAberto(null); setResposta(''); } }}>
         <DialogContent className="max-w-[92vw] sm:max-w-sm">
           <div className="flex items-center gap-3">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
@@ -129,8 +159,26 @@ export default function NearbyActivityStrip() {
             </div>
           </div>
           <p className="whitespace-pre-wrap break-words rounded-xl bg-muted/60 p-3 text-sm leading-6">{aberto?.message}</p>
-          <Button className="h-11 w-full" onClick={() => { setAberto(null); navigate('/radar'); }}>
-            Ver no Radar e responder
+          <form
+            className="space-y-2"
+            onSubmit={(e) => { e.preventDefault(); void responder(); }}
+          >
+            <textarea
+              value={resposta}
+              onChange={(e) => setResposta(e.target.value)}
+              placeholder={`Responder para ${nomeDoAberto}...`}
+              rows={2}
+              maxLength={1000}
+              className="w-full resize-none rounded-xl border border-input bg-background px-3 py-2 text-base sm:text-sm"
+              aria-label="Sua resposta ao radar"
+            />
+            <Button type="submit" className="h-11 w-full gap-2" disabled={!resposta.trim() || enviando}>
+              {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {enviando ? 'Enviando…' : 'Responder'}
+            </Button>
+          </form>
+          <Button variant="outline" className="h-11 w-full gap-2" onClick={() => { setAberto(null); navigate('/radar'); }}>
+            <Radio className="h-4 w-4 text-primary" /> Ativar meu radar também
           </Button>
         </DialogContent>
       </Dialog>
