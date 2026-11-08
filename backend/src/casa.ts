@@ -1296,10 +1296,10 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     }
   };
   // ─── Promotores da Casa ─────────────────────────────────────────────────────
-  // Perfis de vitrine que entram nas salas frias com o selo "Promotor da Casa" e
+  // Perfis de vitrine que entram nas salas frias e
   // conversam SÓ ENTRE ELES (a IA escreve), trocam drinks e vão pra cabine entre
-  // eles, para a pista não parecer vazia e os casais se soltarem. Ninguém de fora
-  // interage: não ficam na lista de presentes, não recebem drink, convite, @ nem
+  // eles, para a pista não parecer vazia e os casais se soltarem. O público pode
+  // reagir às falas e mídias; não ficam na lista de presentes, não recebem drink, convite, @ nem
   // entram em brincadeira. Calam quando o público real engrena.
   type Promotor = { id: string; nome: string; avatar: string | null; cat: Categoria; genero: string; cidade: string | null; bio: string; procura: string[] };
   let elenco: Promotor[] = [];
@@ -3108,7 +3108,7 @@ Sala: ${salaId}`).catch(() => {});
     if (!sala || !p) { res.status(404).json({ error: 'fora_da_sala' }); return; }
     const emoji = String((req.body as any)?.emoji || '');
     const msg = sala.mensagens.find((m) => m.id === String((req.body as any)?.mensagemId || ''));
-    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema' || msg.tipo === 'promotor' || msg.autor?.id.startsWith('promotor:')) { res.status(400).json({ error: 'reacao' }); return; }
+    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema') { res.status(400).json({ error: 'reacao' }); return; }
     msg.reacoes ??= {};
     const lista = msg.reacoes[emoji] ?? [];
     msg.reacoes[emoji] = lista.includes(p.idPublico) ? lista.filter((x) => x !== p.idPublico) : [...lista, p.idPublico];
@@ -4264,7 +4264,7 @@ Sala: ${salaId}`).catch(() => {});
     if (!c || !m) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
     const emoji = String((req.body as any)?.emoji || '');
     const msg = c.mensagens.find((x) => x.id === String((req.body as any)?.mensagemId || ''));
-    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema' || msg.tipo === 'promotor' || msg.autor?.id.startsWith('promotor:')) { res.status(400).json({ error: 'reacao' }); return; }
+    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema') { res.status(400).json({ error: 'reacao' }); return; }
     msg.reacoes ??= {};
     const lista = msg.reacoes[emoji] ?? [];
     msg.reacoes[emoji] = lista.includes(m.idPublico) ? lista.filter((x) => x !== m.idPublico) : [...lista, m.idPublico];

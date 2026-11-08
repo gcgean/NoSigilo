@@ -1692,3 +1692,106 @@
   .landing-perfis .landing-cta-pulso { width: 100%; }
 }
 .landing-perfis-outros { display: inline-block; margin-top: .7rem; font-size: .9rem; color: inherit; text-decoration: underline; opacity: .8; }
+/* Organização mobile: preserva a paleta, as fotos e a identidade do projeto. */
+@media (max-width: 760px) {
+  .landing-shell { width: calc(100% - 32px); }
+  .landing-header { padding-top: calc(6px + env(safe-area-inset-top, 0px)); }
+  .landing-nav { min-height: 60px; gap: 4px; padding: 6px 8px; }
+  .landing-brand-mark { width: 32px; height: 32px; }
+  .landing-brand-text { display: block; font-size: 16px; }
+  .landing-header-cta { display: none !important; }
+  .landing-login { height: 44px; min-width: 54px; font-size: 13px; }
+  .landing-menu-button { width: 44px; height: 44px; flex-shrink: 0; }
+  .landing-mobile-menu { position: absolute; left: 0; right: 0; max-height: calc(100dvh - 90px); overflow-y: auto; }
+  .landing-mobile-menu :is(a, button) { min-height: 48px; }
+  .landing-hero-content { padding-top: 232px; gap: 0; }
+  .landing-hero-image { height: 240px; }
+  .landing-hero-eyebrow { margin-bottom: 16px; letter-spacing: .14em; }
+  .landing-hero h1 { font-size: clamp(33px, 9vw, 44px); line-height: 1.06; }
+  .landing-hero-copy > p:not(.landing-hero-eyebrow) { font-size: 15px; line-height: 1.5; }
+  .landing-hero-copy > .landing-perfis-titulo { margin-top: 20px; font-size: 14px; }
+  .landing-perfis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .landing-perfis .landing-cta-pulso { flex-direction: column; gap: 5px; min-height: 76px; padding: 10px 5px; font-size: 12px; line-height: 1.25; border-radius: 14px; text-align: center; animation: none; box-shadow: 0 6px 18px rgba(194, 24, 91, .2); }
+  .landing-perfis .landing-cta-pulso span { font-size: 23px; }
+  .landing-perfis-outros { display: inline-flex; align-items: center; min-height: 44px; margin-top: 2px; }
+  .landing-hero-copy > .landing-cta-micro { margin-top: 2px; font-size: 11px; line-height: 1.5; }
+  .landing-hero-copy .landing-hero-discover { min-height: 44px; margin-top: 8px; }
+  /* As três escolhas acima já levam ao cadastro com o perfil selecionado. */
+  .landing-quick-register { display: none; }
+  .landing-section { padding-block: 48px; }
+  .landing-editorial section[id] { scroll-margin-top: 90px; }
+  .landing-desire-grid { gap: 20px; }
+  .landing-desire-lead { height: auto; aspect-ratio: 4 / 3; }
+  .landing-desire-copy { padding: 4px 0 12px; }
+  .landing-desire-copy h2, .landing-section-copy h2, .landing-privacy-copy h2, .landing-testimonials-heading h2, .landing-final-cta h2 { font-size: clamp(32px, 9vw, 42px); line-height: 1.1; }
+  .landing-desire-copy > span { margin-block: 18px; }
+  .landing-desire-portrait { height: 160px; min-height: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; }
+  .landing-desire-portrait img { height: 160px; }
+  .landing-desire-touch { display: none; }
+  .landing-experience-grid { display: flex; flex-direction: column; gap: 28px; }
+  .landing-section-copy { order: -1; padding-top: 0; }
+  .landing-section-intro { font-size: 16px; line-height: 1.6; }
+  .landing-feature-list { margin-top: 24px; gap: 20px; }
+  .landing-feature-row { gap: 12px; }
+  .landing-privacy { padding-top: 240px; }
+  .landing-privacy-image { height: 270px; }
+  .landing-privacy-fade { height: 280px; }
+  .landing-quotes { margin-top: 24px; }
+  .landing-quotes figure { padding: 24px 0; }
+  .landing-final-content { gap: 24px; }
+  .landing-final-actions { min-width: 0; }
+  .landing-final-actions .landing-primary-button { white-space: normal; min-height: 54px; text-align: center; }
+  .landing-cidades-lista { gap: 8px; }
+  .landing-cidades-lista a { min-height: 44px; display: inline-flex; align-items: center; }
+  .landing-fixo a { min-height: 52px; }
+  .landing-editorial { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .landing-footer nav a, .landing-seo button { min-height: 44px; display: inline-flex; align-items: center; }
+}
+@media (max-width: 360px) {
+  .landing-nav .landing-brand-text { font-size: 12px; }
+  .landing-nav .landing-brand-mark { width: 28px; height: 28px; }
+  .landing-nav .landing-login { min-width: 44px; padding-inline: 4px !important; }
+  .landing-nav-actions { gap: 0; }
+}
+@media (max-width: 760px) {
+  .landing-hero-copy > p.landing-cta-micro { font-size: 11px; margin-top: 2px; }
+}
+/* Uma chamada de cadastro consistente em cada seção. */
+.landing-community-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 54px;
+  margin-top: 24px;
+  padding: 15px 24px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f92d70, #bd1553);
+  color: #fff;
+  font: 700 16px/1.35 Inter, ui-sans-serif, system-ui, sans-serif;
+  text-decoration: none;
+  text-align: center;
+  box-shadow: 0 8px 26px rgba(194, 24, 91, .28);
+}
+.landing-community-cta:hover { filter: brightness(1.1); }
+.landing-community-cta:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+.landing-community-cta svg { width: 18px; height: 18px; flex-shrink: 0; }
+.landing-final-actions .landing-community-cta { margin-top: 0; }
+@media (max-width: 760px) {
+  .landing-community-cta { width: 100%; padding-inline: 16px; }
+  .landing-hero-content { padding-top: 208px; }
+  .landing-hero-image { height: 220px; }
+  .landing-hero-copy > .landing-perfis-titulo { margin-top: 16px; }
+}
+.landing-community-cta small, .landing-fixo a small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+@media (max-width: 760px) {
+  .landing-nav .landing-login { white-space: normal; max-width: 78px; line-height: 1.2; }
+  .landing-editorial { padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px)); }
+}

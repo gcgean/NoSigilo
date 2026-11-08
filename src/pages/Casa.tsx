@@ -768,7 +768,7 @@ export default function Casa() {
   // Tocar no nome ou na foto de quem escreveu abre o mesmo menu da lista de presentes.
   const abrirAutor = (autor: Msg['autor']) => {
     // Promotor da Casa: só conversa com outros promotores (sem menu de ações).
-    if (autor?.id.startsWith('promotor:')) { toast({ title: '🎤 Promotor da Casa', description: 'Anima a pista e conversa só com outros promotores.' }); return; }
+    if (autor?.id.startsWith('promotor:')) { toast({ title: 'Promotor da Casa', description: 'Anima a pista e conversa só com outros promotores.' }); return; }
     if (!autor || !estado) return;
     const pessoa = estado.presentes.find((x) => x.id === autor.id);
     if (pessoa) setPessoaAberta(pessoa);
@@ -1143,7 +1143,7 @@ export default function Casa() {
     return `· ${ROTULO_CAT[autor.cat]}${cidade ? ` · ${cidade}` : ''}`;
   };
   const AcoesDaMsg = ({ m }: { m: Msg }) => {
-    if (m.autor?.id.startsWith('promotor:')) return null;
+    const promotor = m.tipo === 'promotor' || !!m.autor?.id.startsWith('promotor:');
     const reacoes = Object.entries(m.reacoes ?? {}).filter(([, ids]) => ids.length > 0);
     return (
       <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -1156,9 +1156,9 @@ export default function Casa() {
         {estado?.eu.podeFalar && (
           <>
             <button type="button" onClick={() => setReagindoEm(reagindoEm === m.id ? null : m.id)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white" aria-label="Reagir">😈+</button>
-            <button type="button" onClick={() => setRespondendo(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white">
+            {!promotor && <button type="button" onClick={() => setRespondendo(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white">
               ↩️ {m.tipo === 'lola' ? 'Responder a Lola' : m.tipo === 'anfitriao' ? 'Responder ao casal' : 'Responder'}
-            </button>
+            </button>}
             {(m.tipo === 'pessoa' || m.tipo === 'midia') && m.autor?.id === meuId && (
               <button type="button" onClick={() => void apagarMinha(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-rose-300">🗑️ Apagar</button>
             )}
@@ -1353,7 +1353,7 @@ export default function Casa() {
           <div key={m.id} className="flex items-start gap-2">
             {m.autor && <button type="button" onClick={() => abrirAutor(m.autor)} aria-label={`Abrir ${m.autor.nome}`}><Avatar p={m.autor} tamanho="h-7 w-7" comStory={comStoryNovo.has(m.autor.id)} /></button>}
             <div className="min-w-0">
-              <button type="button" onClick={() => abrirAutor(m.autor)} className="block text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span>{m.autor?.id.startsWith('promotor:') && <span className="ml-1 opacity-70" title="Promotor da Casa">🎤</span>}</button>
+              <button type="button" onClick={() => abrirAutor(m.autor)} className="block text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span></button>
               {(() => {
                 const minha = m.autor?.id === (estado.eu.idPublico ?? user?.id);
                 const vista = estado.midiasVistas.includes(m.id);
@@ -1399,19 +1399,16 @@ export default function Casa() {
             </div>
           </div>
         ) : m.tipo === 'promotor' ? (
-          // Promotores da Casa: conversam só entre eles (sem responder, reagir ou abrir menu).
+          // Promotores conversam entre eles e recebem reações dos participantes.
           <div key={m.id} className="flex items-start gap-2">
             {m.autor && <Avatar p={m.autor} tamanho="h-7 w-7" />}
             <div className="min-w-0 max-w-[85%] rounded-2xl rounded-tl-sm bg-white/10 px-3 py-1.5">
               <p className="text-[11px] font-semibold text-white/80">
-                {m.autor?.nome} <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span>{' '}
-                {/* Selo discreto: só o 🎤; tocar explica quem é. */}
-                <button type="button" title="Promotor da Casa: anima a pista e conversa só com outros promotores" aria-label="Promotor da Casa"
-                  onClick={() => toast({ title: '🎤 Promotor da Casa', description: 'Anima a pista e conversa só com outros promotores.' })}
-                  className="align-middle text-[11px] opacity-70 hover:opacity-100">🎤</button>
+                {m.autor?.nome} <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span>
               </p>
               {m.resposta && <Citacao nome={m.resposta.nome} trecho={m.resposta.trecho} onIr={() => irParaCitada(m.resposta!.id)} className="border-amber-300/50 bg-black/20 text-white/70" />}
               <p className="whitespace-pre-line break-words text-sm leading-snug"><TextoComMencoes texto={m.texto} nomes={[...nomesNaSala, ...nomesDosPromotores]} meuNome={meuNomeNaSala} /></p>
+              <AcoesDaMsg m={m} />
             </div>
           </div>
         ) : m.tipo === 'anfitriao' ? (

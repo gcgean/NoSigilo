@@ -102,6 +102,14 @@ const PERFIS_DO_TOPO = [
   { evento: 'inicio_homem', perfil: 'Homem', rotulo: 'Sou homem', emoji: '👨' },
 ];
 
+function EntrarNaComunidade({ secao }: { secao: string }) {
+  return (
+    <Link className="landing-community-cta" to="/register" onClick={() => marcarPassoCadastro(`inicio_cadastro_${secao}`)}>
+      <span>Entrar na comunidade<small>Criar meu cadastro grátis</small></span> <ArrowRight aria-hidden="true" />
+    </Link>
+  );
+}
+
 export default function Landing() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -264,7 +272,7 @@ export default function Landing() {
 
           <div className="landing-nav-actions">
             <Button type="button" variant="ghost" className="landing-login" onClick={handleEnter}>
-              Entrar
+              Já tenho conta
             </Button>
             <Button asChild className="landing-primary-button landing-header-cta">
               <Link to="/register">Cadastrar</Link>
@@ -324,6 +332,7 @@ export default function Landing() {
               </p>
               {/* Chamada principal (mesmo botão das páginas regionais): antes o
                   topo só tinha o link "Conheça a experiência". */}
+              <EntrarNaComunidade secao="principal" />
               <p className="landing-perfis-titulo">Quem vai entrar?</p>
               <div className="landing-perfis">
                 {PERFIS_DO_TOPO.map((p) => (
@@ -421,10 +430,7 @@ export default function Landing() {
               <span aria-hidden="true" />
               <p className="landing-desire-statement">Máscaras escondem rostos. A química revela intenções.</p>
               <p className="landing-desire-support">Casais e singles. Swing, ménage e exibicionismo no seu tempo.</p>
-              <Link className="landing-cta-pulso" to="/register">
-                Quero fazer parte
-                <ArrowRight aria-hidden="true" />
-              </Link>
+              <EntrarNaComunidade secao="desejo" />
             </div>
 
             <figure className="landing-desire-image landing-desire-portrait">
@@ -498,12 +504,7 @@ export default function Landing() {
                 ))}
               </div>
 
-              <Button asChild variant="link" className="landing-text-link">
-                <Link to="/register">
-                  Começar a descobrir
-                  <ArrowRight data-icon="inline-end" />
-                </Link>
-              </Button>
+              <EntrarNaComunidade secao="experiencia" />
             </div>
           </div>
         </section>
@@ -511,10 +512,7 @@ export default function Landing() {
         <section className="landing-faixa">
           <blockquote>Toda fantasia começa com uma conversa.</blockquote>
           <p>Casais, mulheres e homens solteiros dizem logo o que procuram. Sem rodeio, sem julgamento, sem ninguém de fora ficar sabendo.</p>
-          <Link className="landing-cta-pulso" to="/register">
-            Começar a minha
-            <ArrowRight aria-hidden="true" />
-          </Link>
+          <EntrarNaComunidade secao="fantasia" />
         </section>
 
         <section id="privacidade" className="landing-privacy landing-section">
@@ -537,6 +535,7 @@ export default function Landing() {
                 ))}
               </div>
 
+              <EntrarNaComunidade secao="privacidade" />
               <Button asChild variant="link" className="landing-text-link">
                 <Link to="/privacy">
                   Ver como protegemos você
@@ -559,12 +558,13 @@ export default function Landing() {
 
             <div className="landing-quotes">
               {TESTIMONIALS.map((testimonial) => (
-                <figure key={testimonial.profile}>
+                <figure key={testimonial.text}>
                   <blockquote>“{testimonial.text}”</blockquote>
                   <figcaption>{testimonial.profile}</figcaption>
                 </figure>
               ))}
             </div>
+            <EntrarNaComunidade secao="relatos" />
           </div>
         </section>
 
@@ -576,12 +576,7 @@ export default function Landing() {
               <p>Entre com calma. Revele no seu tempo. Descubra quem está na mesma sintonia.</p>
             </div>
             <div className="landing-final-actions">
-              <Button asChild size="lg" className="landing-primary-button">
-                <Link to="/register">
-                  Crie seu perfil gratuitamente
-                  <ArrowRight data-icon="inline-end" />
-                </Link>
-              </Button>
+              <EntrarNaComunidade secao="final" />
               <Button type="button" variant="link" className="landing-text-link" onClick={handleEnter}>
                 Já tenho uma conta
               </Button>
@@ -623,6 +618,7 @@ export default function Landing() {
             <p className="landing-cidades-todas">
               Não tem casa de swing perto? <a href="/swing/casa-de-swing-online/">Conheça A Casa, a casa de swing online</a>
             </p>
+            <EntrarNaComunidade secao="cidades" />
           </div>
         </section>
 
@@ -654,15 +650,16 @@ export default function Landing() {
                 </p>
               </div>
             </div>
+            <EntrarNaComunidade secao="sobre" />
           </div>
         </section>
       </main>
 
       {/* Barra fixa no celular: o cadastro sempre a um toque. Só depois do topo,
           onde os botões de perfil já estão e ela cobriria o último. */}
-      {headerSolid && (
+      {headerSolid && !menuOpen && (
         <div className="landing-fixo">
-          <Link to="/register">Criar conta grátis</Link>
+          <Link to="/register" onClick={() => marcarPassoCadastro('inicio_cadastro_fixo')}>Entrar na comunidade <small>Criar meu cadastro grátis</small></Link>
         </div>
       )}
 

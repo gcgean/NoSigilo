@@ -32,3 +32,6 @@ dist-ssr
 # nao responde. Fora do git porque a rotina do cron o reescreve toda madrugada
 # e sujaria a arvore antes do proximo git pull.
 scripts/seo-lastmod.json
+
+# Material de marketing (vídeos, áudios, quadros): fica fora do repositório
+divulgacao/
