@@ -3227,6 +3227,43 @@ describe('nosigilo backend', () => {
   });
 
   // ── Contos: categoria, trava, lidos e admin ─────────────────────────────────
+  it('denúncias: contador de denúncias do perfil e a conversa entre os dois (só admin, com registro)', async () => {
+    const alvo = await registerInvitedUser(ctx, sponsorToken, { name: 'Alvo Denuncias', email: 'alvo-denuncias@example.com', password: 'senha123', gender: 'Homem' });
+    const d1 = await registerInvitedUser(ctx, sponsorToken, { name: 'Denunciante Um', email: 'denunciante-um@example.com', password: 'senha123', gender: 'Mulher' });
+    const d2 = await registerInvitedUser(ctx, sponsorToken, { name: 'Denunciante Dois', email: 'denunciante-dois@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    const admin = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Denuncias', email: 'admin-denuncias@example.com', password: 'senha123', gender: 'Homem' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.user.id]);
+    const alvoId = String(alvo.user.id);
+    const d1Id = String(d1.user.id);
+    // Conversa entre a denunciante 1 e o alvo.
+    const par = [d1Id, alvoId].sort((a, b) => a.localeCompare(b));
+    const agora = new Date().toISOString();
+    await run(ctx.db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', ['conv-denuncia', par[0], par[1], agora]);
+    await run(ctx.db, 'INSERT INTO messages (id, conversation_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)', ['msg-den-1', 'conv-denuncia', alvoId, 'mensagem ofensiva de teste', agora]);
+    await run(ctx.db, 'INSERT INTO messages (id, conversation_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)', ['msg-den-2', 'conv-denuncia', d1Id, 'para com isso', new Date(Date.now() + 1000).toISOString()]);
+    await ctx.db.persist();
+
+    await request(ctx.app).post('/api/reports').set({ Authorization: `Bearer ${d1.token}` }).send({ targetType: 'user', targetId: alvoId, reason: 'harassment' }).expect(201);
+    await request(ctx.app).post('/api/reports').set({ Authorization: `Bearer ${d2.token}` }).send({ targetType: 'user', targetId: alvoId, reason: 'spam' }).expect(201);
+
+    const lista = (await request(ctx.app).get('/api/admin/reports').set({ Authorization: `Bearer ${admin.token}` }).expect(200)).body;
+    const doAlvo = lista.filter((r: any) => r.perfilId === alvoId);
+    expect(doAlvo).toHaveLength(2);
+    expect(doAlvo[0].historico).toMatchObject({ total: 2, pessoas: 2, pendentes: 2 });
+    const daD1 = doAlvo.find((r: any) => r.reporterName === 'Denunciante Um');
+    const daD2 = doAlvo.find((r: any) => r.reporterName === 'Denunciante Dois');
+    expect(daD1.temConversa).toBe(true);
+    expect(daD2.temConversa).toBe(false);
+
+    // Só admin abre a conversa, e a leitura fica registrada.
+    await request(ctx.app).get(`/api/admin/reports/${daD1.id}/conversa`).set({ Authorization: `Bearer ${d2.token}` }).expect(403);
+    const conversa = (await request(ctx.app).get(`/api/admin/reports/${daD1.id}/conversa`).set({ Authorization: `Bearer ${admin.token}` }).expect(200)).body;
+    expect(conversa.denunciado.nome).toBe('Alvo Denuncias');
+    expect(conversa.mensagens.map((m: any) => [m.de, m.texto])).toEqual([['denunciado', 'mensagem ofensiva de teste'], ['denunciante', 'para com isso']]);
+    const registro = (await queryAll(ctx.db, 'SELECT admin_id, report_id FROM admin_leituras_conversa WHERE report_id = ?', [daD1.id])) as any[];
+    expect(registro).toEqual([expect.objectContaining({ admin_id: String(admin.user.id) })]);
+  });
+
   it('contos em áudio: sobe o áudio, conto só em áudio fica em revisão até o admin ouvir', async () => {
     const autor = await registerInvitedUser(ctx, sponsorToken, { name: 'Autor Audio', email: 'autor-audio@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
     const outro = await registerInvitedUser(ctx, sponsorToken, { name: 'Outro Audio', email: 'outro-audio@example.com', password: 'senha123', gender: 'Mulher' });
