@@ -1301,24 +1301,31 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   // eles, para a pista não parecer vazia e os casais se soltarem. Ninguém de fora
   // interage: não ficam na lista de presentes, não recebem drink, convite, @ nem
   // entram em brincadeira. Calam quando o público real engrena.
-  type Promotor = { id: string; nome: string; avatar: string | null; cat: Categoria };
+  type Promotor = { id: string; nome: string; avatar: string | null; cat: Categoria; genero: string; cidade: string | null; bio: string; procura: string[] };
   let elenco: Promotor[] = [];
   let elencoCarregadoEm = 0;
   const carregarElenco = async () => {
     if (elenco.length && Date.now() - elencoCarregadoEm < 30 * 60_000) return elenco;
     const rows = (await db.queryAll(
-      `SELECT id, name, avatar, gender FROM users
+      `SELECT id, name, avatar, gender, city, bio, looking_for_json FROM users
         WHERE COALESCE(is_showcase,0) = 1 AND COALESCE(is_banned,0) = 0 AND deleted_at IS NULL
           AND avatar IS NOT NULL AND TRIM(avatar) <> ''`, [],
     )) as any[];
-    elenco = rows.map((r) => ({ id: String(r.id), nome: String(r.name), avatar: r.avatar ? String(r.avatar) : null, cat: categoria(r.gender) }));
+    elenco = rows.map((r) => {
+      let procura: string[] = [];
+      try { const v = JSON.parse(String(r.looking_for_json || '[]')); if (Array.isArray(v)) procura = v.map(String); } catch { /* sem preferência */ }
+      return {
+        id: String(r.id), nome: String(r.name), avatar: r.avatar ? String(r.avatar) : null, cat: categoria(r.gender),
+        genero: String(r.gender || ''), cidade: r.city ? String(r.city) : null, bio: String(r.bio || '').replace(/\s+/g, ' ').trim().slice(0, 200), procura,
+      };
+    });
     elencoCarregadoEm = Date.now();
     return elenco;
   };
   type Dupla = { a: Promotor; b: Promotor; falas: number; proximaEm: number; cena: string };
-  const duplaNaSala = new Map<SalaId, Dupla>();
+  const duplasNaSala = new Map<SalaId, Dupla[]>();
   const ocupadosAte = new Map<string, number>(); // promotor -> até quando está em uso (sala ou cabine)
-  const PROMOTOR_INTERVALO_MS = [70_000, 130_000] as const;
+  const PROMOTOR_INTERVALO_MS = [80_000, 150_000] as const;
   const FALAS_ATE_A_CABINE = 10;
   const SALAS_DOS_PROMOTORES: SalaId[] = ['salao', 'cuckold', 'glory'];
   // Cada dupla ganha uma cena (um fio para a conversa ter começo, meio e fim).
@@ -1338,9 +1345,18 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     ];
     return sortear(opcoes);
   };
-  const vozDe = (p: Promotor) => p.cat === 'casal'
-    ? 'um CASAL (ele e ela): fala no plural ("a gente", "minha esposa", "meu marido")'
-    : p.cat === 'mulher' ? 'uma MULHER: fala no feminino, primeira pessoa' : 'uma pessoa: fala em primeira pessoa';
+  const vozDe = (p: Promotor) => {
+    const voz = p.genero === 'Casal (Ela/Ela)' ? 'um CASAL de duas mulheres: fala no plural, no feminino ("a gente", "minha mulher")'
+      : p.genero === 'Casal (Ele/Ele)' ? 'um CASAL de dois homens: fala no plural ("a gente", "meu marido")'
+      : p.cat === 'casal' ? 'um CASAL (ele e ela): fala no plural ("a gente", "minha esposa", "meu marido")'
+      : p.cat === 'mulher' ? 'uma MULHER: fala no feminino, primeira pessoa'
+      : p.cat === 'homem' ? 'um HOMEM solteiro: fala no masculino, primeira pessoa'
+      : `${p.genero || 'uma pessoa'}: fala em primeira pessoa`;
+    const extras = [p.cidade ? `de ${p.cidade}` : '', p.procura.length ? `curte ${p.procura.join(', ')}` : '', p.bio ? `bio do perfil: "${p.bio}"` : ''].filter(Boolean).join('; ');
+    return extras ? `${voz} (${extras})` : voz;
+  };
+  // Dupla que combina: um procura o tipo do outro (fica natural o que eles conversam).
+  const combina = (a: Promotor, b: Promotor) => a.procura.includes(b.genero) || b.procura.includes(a.genero);
   const autorPromotor = (p: Promotor) => ({ id: `promotor:${p.id}`, nome: p.nome, avatar: p.avatar, cat: p.cat });
   // Falas prontas (quando a IA falha): provocação safada entre os dois, no nível da sala.
   const FALAS_PRONTAS_PROMOTOR: Record<'quente' | 'muito_quente', string[]> = {
@@ -1398,6 +1414,7 @@ Quem fala agora: "${quem.nome}", ${vozDe(quem)}.
 Com quem fala: "${outro.nome}", ${vozDe(outro)}.
 Cena da conversa: ${d.cena}.
 Regras do diálogo:
+- Cada um age de acordo com o PRÓPRIO perfil (tipo, o que curte, a bio) e com o perfil do outro: um casal fala de trazer o outro pra eles, uma mulher fala do que quer com o casal ou com o homem, e assim por diante.
 - É uma conversa SÓ entre os dois, na frente da sala, para os casais que assistem se soltarem. Não fale com mais ninguém, não comente quem entrou ou saiu, não cite outros nomes.
 - Escreva o nome do outro EXATAMENTE assim: "${outro.nome}", seguido de vírgula quando chamar por ele.
 - ${primeira ? `É a primeira fala: comece chamando "${outro.nome}" pelo nome e abra a cena com uma provocação clara (sem pressupor nada que não foi dito).` : `Responda DIRETAMENTE à última fala de "${outro.nome}", retomando o que foi dito, e leve a cena um passo adiante.`}
@@ -1444,36 +1461,49 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     }, String(m.id));
     return true;
   };
+  const soltarDupla = (sala: Sala, d: Dupla, ate: number) => {
+    duplasNaSala.set(sala.id, (duplasNaSala.get(sala.id) ?? []).filter((x) => x !== d));
+    ocupadosAte.set(d.a.id, ate);
+    ocupadosAte.set(d.b.id, ate);
+  };
+  const formarDupla = async (agora: number): Promise<Dupla | null> => {
+    const livres = (await carregarElenco()).filter((p) => (ocupadosAte.get(p.id) ?? 0) <= agora);
+    if (livres.length < 2) return null;
+    const a = sortear(livres);
+    const combinam = livres.filter((x) => x.id !== a.id && combina(a, x));
+    const b = sortear(combinam.length ? combinam : livres.filter((x) => x.id !== a.id));
+    ocupadosAte.set(a.id, agora + 60 * 60_000);
+    ocupadosAte.set(b.id, agora + 60 * 60_000);
+    return { a, b, falas: 0, proximaEm: agora, cena: cenaDaDupla(a, b) };
+  };
+  // Quanto mais fria a sala, mais duplas conversando (até 3); some quando o público engrena.
+  const duplasQueASalaPede = (reais: number) => (reais === 0 ? 3 : reais <= 1 ? 2 : reais <= 3 ? 1 : 0);
   const animarComPromotores = async (sala: Sala, agora: number, chaveNoite: string) => {
     if (sala.anonima || guardada(sala) || sala.jogo || !SALAS_DOS_PROMOTORES.includes(sala.id)) return;
     if (SALAS_EXTRAS.includes(sala.id) && !liberadas.has(`${chaveNoite}:${sala.id}`)) return;
     // Só anima quando tem gente vendo e a conversa de verdade está fraca.
     const reais = new Set(sala.mensagens
-      .filter((m) => (m.tipo === 'pessoa' || m.tipo === 'midia') && agora - Date.parse(m.criadoEm) < 5 * 60_000)
+      .filter((m) => (m.tipo === 'pessoa' || m.tipo === 'midia') && !m.autor?.id.startsWith('promotor:') && agora - Date.parse(m.criadoEm) < 5 * 60_000)
       .map((m) => m.autor?.id));
-    let dupla = duplaNaSala.get(sala.id);
-    if (sala.presentes.size === 0 || reais.size >= 4) {
-      if (dupla) { duplaNaSala.delete(sala.id); ocupadosAte.set(dupla.a.id, agora); ocupadosAte.set(dupla.b.id, agora); }
-      return;
+    const alvo = sala.presentes.size === 0 ? 0 : duplasQueASalaPede(reais.size);
+    const duplas = duplasNaSala.get(sala.id) ?? [];
+    // Sala engrenou: as duplas saem uma a uma (a mais recente primeiro).
+    while (duplas.length > alvo) { const d = duplas.pop()!; ocupadosAte.set(d.a.id, agora); ocupadosAte.set(d.b.id, agora); }
+    // Sala fria: chega mais uma dupla (uma por ciclo, para não entrarem todas juntas).
+    if (duplas.length < alvo) {
+      const nova = await formarDupla(agora);
+      if (nova) { nova.proximaEm = agora + duplas.length * 25_000; duplas.push(nova); }
     }
-    if (!dupla) {
-      const livres = (await carregarElenco()).filter((p) => (ocupadosAte.get(p.id) ?? 0) <= agora);
-      if (livres.length < 2) return;
-      const a = sortear(livres);
-      const b = sortear(livres.filter((x) => x.id !== a.id));
-      dupla = { a, b, falas: 0, proximaEm: agora, cena: cenaDaDupla(a, b) };
-      duplaNaSala.set(sala.id, dupla);
-      ocupadosAte.set(a.id, agora + 60 * 60_000);
-      ocupadosAte.set(b.id, agora + 60 * 60_000);
-    }
-    if (agora < dupla.proximaEm) return;
-    dupla.proximaEm = agora + PROMOTOR_INTERVALO_MS[0] + Math.random() * (PROMOTOR_INTERVALO_MS[1] - PROMOTOR_INTERVALO_MS[0]);
-    const d = dupla;
+    duplasNaSala.set(sala.id, duplas);
+    // Uma fala por ciclo na sala inteira (a dupla mais atrasada fala), para o chat não virar enxurrada.
+    const davez = duplas.filter((d) => d.proximaEm <= agora).sort((x, y) => x.proximaEm - y.proximaEm)[0];
+    if (davez) await passoDaDupla(sala, davez, agora, chaveNoite);
+  };
+  const passoDaDupla = async (sala: Sala, d: Dupla, agora: number, chaveNoite: string) => {
+    d.proximaEm = agora + PROMOTOR_INTERVALO_MS[0] + Math.random() * (PROMOTOR_INTERVALO_MS[1] - PROMOTOR_INTERVALO_MS[0]);
     // Depois de uma boa conversa, vão pra cabine (somem por 20 min; outra dupla pode vir).
     if (d.falas >= FALAS_ATE_A_CABINE) {
-      duplaNaSala.delete(sala.id);
-      ocupadosAte.set(d.a.id, agora + 20 * 60_000);
-      ocupadosAte.set(d.b.id, agora + 20 * 60_000);
+      soltarDupla(sala, d, agora + 20 * 60_000);
       publicarMsg(sala, { tipo: 'sistema', texto: `🚪 ${d.a.nome} e ${d.b.nome} foram pra cabine 🔥` });
       return;
     }
@@ -1496,9 +1526,11 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     d.falas += 1;
     emitirParaSala(sala, 'casa.digitando', { sala: sala.id, id: autorPromotor(quem).id, nome: quem.nome });
     const texto = await falaDoPromotor(sala, quem, outro, d);
-    if (duplaNaSala.get(sala.id) !== d) return; // a sala engrenou enquanto a IA pensava
-    const ultima = sala.mensagens.filter((m) => m.tipo === 'promotor').slice(-1)[0];
-    const respondendo = ultima && ultima.autor?.id === `promotor:${outro.id}` && Math.random() < 0.5;
+    if (!(duplasNaSala.get(sala.id) ?? []).includes(d)) return; // a sala engrenou enquanto a IA pensava
+    const ultima = sala.mensagens.filter((m) => m.tipo === 'promotor' && m.autor?.id === `promotor:${outro.id}`).slice(-1)[0];
+    // Com várias duplas na sala, a fala cita a mensagem do par para ficar claro com quem é.
+    const outrasDuplas = (duplasNaSala.get(sala.id) ?? []).length > 1;
+    const respondendo = !!ultima && (outrasDuplas || Math.random() < 0.5);
     publicarMsg(sala, {
       tipo: 'promotor', autor: autorPromotor(quem), texto,
       ...(respondendo ? { resposta: { id: ultima.id, nome: outro.nome, trecho: ultima.texto.slice(0, 80) } } : {}),

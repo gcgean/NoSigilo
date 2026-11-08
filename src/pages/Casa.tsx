@@ -1344,7 +1344,7 @@ export default function Casa() {
         {estado.mensagens.map((m) => (
           <Fragment key={m.id}>
           {rolagem.marcador === m.id && <LinhaNaoLidas />}
-          <ArrastaParaResponder data-msg-id={m.id} ativo={!!estado.eu.podeFalar && m.tipo !== 'sistema'} destacada={rolagem.destacada === m.id} onResponder={() => setRespondendo(m)} onSegurar={() => setReagindoEm(m.id)}>
+          <ArrastaParaResponder data-msg-id={m.id} ativo={!!estado.eu.podeFalar && m.tipo !== 'sistema' && m.tipo !== 'promotor' && !m.autor?.id.startsWith('promotor:')} destacada={rolagem.destacada === m.id} onResponder={() => setRespondendo(m)} onSegurar={() => setReagindoEm(m.id)}>
           {m.tipo === 'sistema' ? (
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
         ) : m.tipo === 'midia' ? (
