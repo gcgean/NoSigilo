@@ -484,9 +484,24 @@ export default function Chat() {
         // Using env(safe-area-inset-bottom) for this avoids double-counting
         // because iOS includes the home-indicator zone inside the keyboard footprint
         // when kbHeight is calculated, so the two branches are mutually exclusive.
-        const bottomPad: React.CSSProperties['paddingBottom'] =
-          kbHeight > 0 ? kbHeight : 'env(safe-area-inset-bottom, 0px)';
-        setMobileStyle({
+        // Teclado aberto: o iPhone rola a área visível (offsetTop) para mostrar o
+        // campo. Ancorar em top:0 + paddingBottom deixava uma faixa vazia do
+        // tamanho dessa rolagem entre o campo e o teclado. Agora o painel ocupa
+        // exatamente a área visível: começa no offsetTop e tem a altura dela.
+        const vTop = viewport ? Math.max(0, Math.round(viewport.offsetTop)) : 0;
+        setMobileStyle(kbHeight > 0 ? {
+          position: 'fixed',
+          top: vTop,
+          height: Math.round(vh),
+          left: vLeft,
+          width: Math.max(vWidth, 280),
+          maxWidth: '100vw',
+          paddingTop: vTop > 0 ? 0 : 'env(safe-area-inset-top)',
+          paddingBottom: 0,
+          boxSizing: 'border-box',
+          zIndex: 60,
+          overflowX: 'hidden',
+        } : {
           position: 'fixed',
           top: 0,
           bottom: 0,
@@ -494,7 +509,7 @@ export default function Chat() {
           width: Math.max(vWidth, 280),
           maxWidth: '100vw',
           paddingTop: 'env(safe-area-inset-top)',
-          paddingBottom: bottomPad,
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           boxSizing: 'border-box',
           zIndex: 60,
           overflowX: 'hidden',
@@ -678,6 +693,12 @@ export default function Chat() {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages]);
+  // Bolha "digitando…" apareceu: se a pessoa está no fim da conversa, mostra a bolha.
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el || !otherTyping) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 120) el.scrollTop = el.scrollHeight;
+  }, [otherTyping]);
 
   // When the keyboard opens/closes on mobile the messages container shrinks/grows.
   // If the user was already at the bottom, keep them there so the latest message
@@ -2363,6 +2384,18 @@ export default function Chat() {
                   </div>
                 );
               })}
+              {/* "Digitando…" no fim da conversa, como no WhatsApp (o aviso do
+                  cabeçalho passava despercebido). */}
+              {otherTyping && activeConversation && (
+                <div className="flex items-end gap-2 px-1" aria-live="polite" aria-label={`${activeConversation.user.name} está digitando`}>
+                  <UserAvatar user={activeConversation.user} className="h-7 w-7" largura={120} />
+                  <div className="flex items-center gap-1 rounded-2xl rounded-bl-sm bg-muted px-3 py-2.5">
+                    {[0, 150, 300].map((atraso) => (
+                      <span key={atraso} className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/70" style={{ animationDelay: `${atraso}ms` }} />
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* Sentinel – keeps scroll-to-bottom target for future use */}
               <div aria-hidden />
             </div>{/* end inner flex-col messages wrapper */}

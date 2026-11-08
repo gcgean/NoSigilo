@@ -1829,7 +1829,7 @@ export default function Profile() {
             ) : null}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {/* Gênero e Idade já aparecem no topo do perfil — omitidos aqui para não duplicar */}
                 <InfoRow label="Estado civil" value={user?.maritalStatus} />
             <InfoRow label="Orientação Sexual" value={user?.sexualOrientation} />

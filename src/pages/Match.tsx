@@ -104,13 +104,19 @@ export default function Match() {
       const limite = (menu && menu.height > 0 ? menu.top : window.innerHeight) - 10;
       const abaixo = dica.bottom - card.bottom; // botões + dica
       const topo = card.top + window.scrollY;
-      const alvo = Math.round(Math.min(600, Math.max(240, limite - topo - abaixo)));
-      setAlturaCard((atual) => (atual === null || (forcar ? Math.abs(atual - alvo) > 2 : Math.abs(atual - alvo) > 110) ? alvo : atual));
+      // Tela baixa (iPhone SE): o card pode descer até 170px para os botões de
+      // curtir/passar caberem acima do menu de baixo.
+      const minimo = window.innerHeight < 700 ? 170 : 240;
+      const alvo = Math.round(Math.min(600, Math.max(minimo, limite - topo - abaixo)));
+      // Sem forcar, só muda a partir de 40 px: a barra do Safari que some ao rolar
+      // (~80 px) deixava um vão embaixo quando o limite era 110.
+      setAlturaCard((atual) => (atual === null || (forcar ? Math.abs(atual - alvo) > 2 : Math.abs(atual - alvo) > 40) ? alvo : atual));
     };
     const tempos = [0, 300, 800, 1500, 2500].map((ms) => setTimeout(() => medir(true), ms));
     const aoRedimensionar = () => medir(false);
     window.addEventListener('resize', aoRedimensionar);
     window.addEventListener('orientationchange', aoRedimensionar);
+    window.visualViewport?.addEventListener('resize', aoRedimensionar);
     // Aviso de cima fechado (GPS, assinatura…): o card sobe e precisa crescer.
     const conteudo = document.body;
     let topoAntes = cardRef.current?.getBoundingClientRect().top ?? 0;
@@ -119,11 +125,21 @@ export default function Match() {
       if (Math.abs(topo - topoAntes) > 4) { topoAntes = topo; medir(true); }
     }) : null;
     if (observador && conteudo) observador.observe(conteudo);
+    // Menu de baixo mudou de tamanho (compacto/normal) ou de lugar: mede de novo.
+    const menu = document.querySelector('[data-menu-baixo]');
+    let menuTopoAntes = menu?.getBoundingClientRect().top ?? 0;
+    const observaMenu = menu && 'ResizeObserver' in window ? new ResizeObserver(() => {
+      const t = menu.getBoundingClientRect().top;
+      if (Math.abs(t - menuTopoAntes) > 4) { menuTopoAntes = t; medir(true); }
+    }) : null;
+    if (observaMenu && menu) observaMenu.observe(menu);
     return () => {
       tempos.forEach(clearTimeout);
       window.removeEventListener('resize', aoRedimensionar);
       window.removeEventListener('orientationchange', aoRedimensionar);
+      window.visualViewport?.removeEventListener('resize', aoRedimensionar);
       observador?.disconnect();
+      observaMenu?.disconnect();
     };
   }, [isLoading]);
   const [likedProfiles, setLikedProfiles] = useState<LikedProfile[]>([]);

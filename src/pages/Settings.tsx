@@ -742,7 +742,7 @@ export default function Settings() {
               {/* Identidade */}
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Identidade</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="name">Nome</Label>
                     <div className="relative">
@@ -890,7 +890,7 @@ export default function Settings() {
               {/* Localização */}
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Localização</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="city">Cidade</Label>
                     <CitySearch
@@ -1137,7 +1137,7 @@ export default function Settings() {
               {/* Nascimento */}
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Nascimento</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {(!isCoupleProfile || profilePerson === 1) && (
                     <div className="space-y-2">
                       <Label htmlFor="birthDate">{isCoupleProfile ? `Nascimento — Pessoa 1` : 'Data de nascimento'}</Label>
@@ -1189,7 +1189,7 @@ export default function Settings() {
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Características físicas</h3>
                 {(!isCoupleProfile || profilePerson === 1) ? (
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Orientação Sexual</Label>
                       <Select value={profile.sexualOrientation} onValueChange={(v) => setProfile({ ...profile, sexualOrientation: v })}>
@@ -1257,7 +1257,7 @@ export default function Settings() {
                   </div>
                 ) : (
                   /* Pessoa 2 */
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Orientação Sexual</Label>
                       <Select value={profile.partnerSexualOrientation} onValueChange={(v) => setProfile({ ...profile, partnerSexualOrientation: v })}>
@@ -1332,7 +1332,7 @@ export default function Settings() {
                   <div className="border-t" />
                   <div>
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Estilo de vida</h3>
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Profissão</Label>
                         <Input value={profile.profession} onChange={(e) => setProfile({ ...profile, profession: e.target.value })} placeholder="Ex.: Empresário(a), Estudante..." className="h-12 sm:h-10" />

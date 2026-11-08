@@ -1218,7 +1218,9 @@ export default function Layout() {
               eligible={!isMobileChatRoute && !location.pathname.startsWith('/chat') && !location.pathname.startsWith('/reels') && avisoVerificacaoVisivel}
             >
               <div className="mb-4">
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-pink-600 via-fuchsia-600 to-sky-600 p-4 text-white shadow-[0_8px_28px_rgba(219,39,119,0.35)]">
+                {/* Tela baixa (iPhone SE, 667px): versão compacta, sem o texto do meio. Antes
+                    o aviso empurrava os botões de curtir/passar do Match para baixo do menu. */}
+                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-pink-600 via-fuchsia-600 to-sky-600 p-4 text-white shadow-[0_8px_28px_rgba(219,39,119,0.35)] [@media(max-height:760px)]:p-3">
                   <button
                     type="button"
                     aria-label="Fechar aviso"
@@ -1230,14 +1232,14 @@ export default function Layout() {
                   >
                     <X className="h-4 w-4" />
                   </button>
-                  <p className="pr-8 text-base font-bold">💖 Para mulheres, o NoSigilo é grátis para sempre</p>
-                  <p className="mt-0.5 pr-6 text-sm text-white/90">
+                  <p className="pr-8 text-base font-bold [@media(max-height:760px)]:text-sm">💖 Para mulheres, o NoSigilo é grátis para sempre</p>
+                  <p className="mt-0.5 pr-6 text-sm text-white/90 [@media(max-height:760px)]:hidden">
                     Verifique seu perfil com uma selfie e ganhe acesso vitalício e o selo de <strong>Verificada</strong> no seu perfil.
                   </p>
                   <button
                     type="button"
                     onClick={() => setVerificacaoAberta(true)}
-                    className="mt-3 rounded-full bg-white px-4 py-2 text-sm font-bold text-pink-600 shadow hover:bg-white/90"
+                    className="mt-3 rounded-full bg-white px-4 py-2 text-sm font-bold text-pink-600 shadow hover:bg-white/90 [@media(max-height:760px)]:mt-2 [@media(max-height:760px)]:py-1.5"
                   >
                     Verificar meu perfil
                   </button>

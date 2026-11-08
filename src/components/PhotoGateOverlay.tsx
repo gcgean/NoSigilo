@@ -101,8 +101,11 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
         <div className="absolute bottom-0 right-0 h-72 w-72 rounded-full bg-violet-500/15 blur-[80px]" />
       </div>
 
-      <div className="relative flex flex-1 items-center justify-center overflow-y-auto p-4">
-        <div className="w-full max-w-md">
+      {/* Espaço do menu de baixo (que fica por cima) + área da barra do iPhone: no
+          iPhone SE o "Continuar sem foto" ficava escondido atrás do menu. my-auto
+          centraliza quando cabe e deixa rolar quando a tela é baixa. */}
+      <div className="relative flex flex-1 justify-center overflow-y-auto p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-4">
+        <div className="my-auto w-full max-w-md">
 
           {/* Card */}
           <div className="relative overflow-hidden rounded-3xl border border-primary/20 bg-background/95 shadow-2xl shadow-primary/10">
