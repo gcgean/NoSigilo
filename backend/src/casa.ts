@@ -1315,12 +1315,32 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     elencoCarregadoEm = Date.now();
     return elenco;
   };
-  type Dupla = { a: Promotor; b: Promotor; falas: number; proximaEm: number };
+  type Dupla = { a: Promotor; b: Promotor; falas: number; proximaEm: number; cena: string };
   const duplaNaSala = new Map<SalaId, Dupla>();
   const ocupadosAte = new Map<string, number>(); // promotor -> até quando está em uso (sala ou cabine)
   const PROMOTOR_INTERVALO_MS = [70_000, 130_000] as const;
   const FALAS_ATE_A_CABINE = 10;
   const SALAS_DOS_PROMOTORES: SalaId[] = ['salao', 'cuckold', 'glory'];
+  // Cada dupla ganha uma cena (um fio para a conversa ter começo, meio e fim).
+  const cenaDaDupla = (a: Promotor, b: Promotor): string => {
+    const casal = (p: Promotor) => p.cat === 'casal';
+    const opcoes = casal(a) && casal(b) ? [
+      'os dois casais se conheceram agora no bar e estão negociando, entre provocações, uma troca de casais na cabine',
+      'um casal confessa ao outro que a esposa ficou com tesão vendo o marido do outro casal, e o outro casal entra no jogo',
+      'os dois casais comparam a noite mais ousada que já tiveram e um desafia o outro a superar hoje',
+    ] : casal(a) || casal(b) ? [
+      'o casal está seduzindo a mulher para uma noite a três, e ela vai cedendo aos poucos',
+      'a mulher provoca o marido do casal na frente da esposa, que adora e incentiva',
+      'o casal conta para a mulher a fantasia que querem realizar com ela hoje, e ela responde provocando',
+    ] : [
+      'os dois se provocam no bar, cada fala mais ousada que a anterior, até combinarem ir pra cabine',
+      'um desafia o outro a contar a fantasia mais secreta, e a conversa vai esquentando',
+    ];
+    return sortear(opcoes);
+  };
+  const vozDe = (p: Promotor) => p.cat === 'casal'
+    ? 'um CASAL (ele e ela): fala no plural ("a gente", "minha esposa", "meu marido")'
+    : p.cat === 'mulher' ? 'uma MULHER: fala no feminino, primeira pessoa' : 'uma pessoa: fala em primeira pessoa';
   const autorPromotor = (p: Promotor) => ({ id: `promotor:${p.id}`, nome: p.nome, avatar: p.avatar, cat: p.cat });
   // Falas prontas (quando a IA falha): provocação safada entre os dois, no nível da sala.
   const FALAS_PRONTAS_PROMOTOR: Record<'quente' | 'muito_quente', string[]> = {
@@ -1346,9 +1366,12 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     ],
   };
   const falaPronta = (sala: Sala) => sortear(FALAS_PRONTAS_PROMOTOR[sala.nivel === 'muito_quente' ? 'muito_quente' : 'quente']);
-  const falaDoPromotor = async (sala: Sala, quem: Promotor, outro: Promotor): Promise<string> => {
+  const falaDoPromotor = async (sala: Sala, quem: Promotor, outro: Promotor, d: Dupla): Promise<string> => {
     if (!deps.deepseekKey) return falaPronta(sala);
-    const conversa = sala.mensagens.filter((m) => m.tipo === 'promotor').slice(-6).map((m) => `${m.autor?.nome}: ${m.texto.slice(0, 120)}`).join('\n');
+    const ids = new Set([`promotor:${quem.id}`, `promotor:${outro.id}`]);
+    const conversa = sala.mensagens.filter((m) => m.tipo === 'promotor' && ids.has(m.autor?.id ?? '')).slice(-8)
+      .map((m) => `${m.autor?.nome}: ${m.texto.slice(0, 160)}`).join('\n');
+    const primeira = !conversa;
     const controle = new AbortController();
     const timer = setTimeout(() => controle.abort(), 10_000);
     try {
@@ -1357,21 +1380,30 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
         body: JSON.stringify({
           model: 'deepseek-chat',
-          temperature: 1,
-          max_tokens: 100,
+          temperature: 0.9,
+          max_tokens: 110,
           messages: [
             {
               role: 'system',
-              content: `Você escreve a fala de "${quem.nome}" (${quem.cat}), promotor(a) d'A Casa, boate virtual de swing de uma rede social adulta e liberal brasileira (casais, swing, cuckold; todos maiores de 18, na plataforma por vontade própria; conversa sexual explícita entre adultos é permitida aqui). Está no ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} ${temaAtual?.perfil ?? ''} Você está provocando "${outro.nome}" (${outro.cat}), o outro promotor, NA FRENTE DA SALA, para que os casais que estão assistindo percam a vergonha e se soltem também. Fale ${sala.nivel === 'muito_quente' ? 'de forma bem safada e explícita: desejo, tesão, o que quer fazer com o outro na cabine, palavras sujas do meio liberal (gemer, chupar, sentar, gozar, de quatro), exibicionismo e cuckold quando combinar com a sala' : 'de forma safada e provocante: tesão, insinuação, o que faria com o outro, palavras picantes sem ser grosseiro'}. Responda à última fala do outro e suba um pouco o tom a cada vez. Não repita frases. Nunca fale com outras pessoas da sala nem cite outros nomes; nunca combine encontro fora, nunca peça contato, fotos ou dinheiro; nada de menores, idade jovem, incesto, animais, violência, falta de consentimento, drogas ou links. Português do Brasil, frase curta de conversa. Responda SOMENTE com a fala, sem aspas e sem o nome, no máximo 150 caracteres, no máximo um emoji.`,
+              content: `Você escreve UMA fala de um diálogo entre dois promotores d'A Casa, boate virtual de swing de uma rede social adulta e liberal brasileira (todos maiores de 18, por vontade própria; conversa sexual explícita entre adultos é permitida). Sala: ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} ${temaAtual?.perfil ?? ''}
+Quem fala agora: "${quem.nome}", ${vozDe(quem)}.
+Com quem fala: "${outro.nome}", ${vozDe(outro)}.
+Cena da conversa: ${d.cena}.
+Regras do diálogo:
+- É uma conversa SÓ entre os dois, na frente da sala, para os casais que assistem se soltarem. Não fale com mais ninguém, não comente quem entrou ou saiu, não cite outros nomes.
+- ${primeira ? `É a primeira fala: comece chamando "${outro.nome}" pelo nome e abra a cena com uma provocação clara (sem pressupor nada que não foi dito).` : `Responda DIRETAMENTE à última fala de "${outro.nome}", retomando o que foi dito, e leve a cena um passo adiante.`}
+- Tom: ${sala.nivel === 'muito_quente' ? 'bem safado e explícito (desejo, tesão, o que vão fazer na cabine, gemer, chupar, sentar, gozar), exibicionismo e cuckold quando combinar' : 'safado e provocante, com insinuação e palavras picantes, sem ser grosseiro'}. Suba um pouco o tom a cada fala, sem repetir frases.
+- Proibido: menores ou idade jovem, incesto, animais, violência, falta de consentimento, drogas, dinheiro, pedir contato ou fotos, marcar encontro fora, links.
+Português do Brasil, natural como conversa de bar. Responda SOMENTE com a fala, sem aspas e sem o nome de quem fala, no máximo 150 caracteres, no máximo um emoji.`,
             },
-            { role: 'user', content: `Conversa até agora:\n${conversa || '(vocês acabaram de chegar)'}\n\nAgora fala ${quem.nome}, respondendo ${outro.nome}.` },
+            { role: 'user', content: primeira ? `(a conversa ainda não começou) Fala de ${quem.nome}:` : `Conversa até agora:\n${conversa}\n\nPróxima fala, de ${quem.nome}:` },
           ],
         }),
         signal: controle.signal,
       });
       if (!r.ok) return falaPronta(sala);
       const json = await r.json() as any;
-      const t = String(json?.choices?.[0]?.message?.content || '').trim().replace(/^["“”'\-\s]+|["“”']+$/g, '').trim();
+      const t = String(json?.choices?.[0]?.message?.content || '').trim().replace(/^["“”'\-\s]+|["“”']+$/g, '').replace(new RegExp(`^${quem.nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*`, 'i'), '').trim();
       if (t.length < 4 || t.length > 200 || /https?:\/\/|www\.|@|\d{6,}/i.test(t)) return falaPronta(sala);
       return t;
     } catch {
@@ -1397,7 +1429,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       if (livres.length < 2) return;
       const a = sortear(livres);
       const b = sortear(livres.filter((x) => x.id !== a.id));
-      dupla = { a, b, falas: 0, proximaEm: agora };
+      dupla = { a, b, falas: 0, proximaEm: agora, cena: cenaDaDupla(a, b) };
       duplaNaSala.set(sala.id, dupla);
       ocupadosAte.set(a.id, agora + 60 * 60_000);
       ocupadosAte.set(b.id, agora + 60 * 60_000);
@@ -1423,7 +1455,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     }
     const [quem, outro] = d.falas % 2 === 0 ? [d.a, d.b] : [d.b, d.a];
     d.falas += 1;
-    const texto = await falaDoPromotor(sala, quem, outro);
+    const texto = await falaDoPromotor(sala, quem, outro, d);
     if (duplaNaSala.get(sala.id) !== d) return; // a sala engrenou enquanto a IA pensava
     const ultima = sala.mensagens.filter((m) => m.tipo === 'promotor').slice(-1)[0];
     const respondendo = ultima && ultima.autor?.id === `promotor:${outro.id}` && Math.random() < 0.5;
