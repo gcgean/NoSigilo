@@ -260,6 +260,7 @@ function configureWebPush(env: Env) {
 }
 
 const PROFILE_VISIT_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const RADAR_AVISO_INTERVALO_MS = 6 * 60 * 60 * 1000;
 
 function addMinutesIso(iso: string, minutes: number) {
   const d = new Date(iso);
@@ -9093,7 +9094,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     try {
       // Quem vê resultado posta de novo: avisa o autor nos marcos de visualização.
       const total = Number(((await queryOne(db, 'SELECT COUNT(*) AS c FROM story_views WHERE story_id = ?', [storyId])) as any)?.c || 0);
-      if ([25, 50, 100, 200, 500].includes(total)) {
+      // Só dois marcos: 5 avisos por story era demais no celular.
+      if ([50, 200].includes(total)) {
         const titulo = `👀 Seu story já foi visto por ${total} pessoas`;
         const texto = 'Está bombando! Poste outro e continue no topo dos stories 🔥';
         void createNotification({ db, io: req.app.get('io') }, {
@@ -14675,6 +14677,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       });
 
       deliveredCount += 1;
+      // Avisa (sino, celular e Telegram) no máximo 1 vez a cada 6 h por pessoa:
+      // só 6% desses avisos eram lidos. A mensagem do radar continua no chat.
+      const avisoRadarRecente = await queryOne(
+        db,
+        "SELECT 1 FROM notifications WHERE user_id = ? AND type = 'radar.received' AND created_at > ? LIMIT 1",
+        [String(candidate.id), new Date(Date.now() - RADAR_AVISO_INTERVALO_MS).toISOString()]
+      );
+      if (avisoRadarRecente) continue;
       await createNotification(
         { db, io },
         {

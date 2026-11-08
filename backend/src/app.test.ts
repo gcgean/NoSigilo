@@ -5185,7 +5185,7 @@ describe('nosigilo backend', () => {
     expect(pos(estado.user.id)).toBeLessThan(pos(longe.user.id));
   });
 
-  it('stories: autor recebe aviso quando o story chega a 25 visualizações', async () => {
+  it('stories: autor recebe aviso quando o story chega a 50 visualizações', async () => {
     const autora = await registerInvitedUser(ctx, sponsorToken, { name: 'Lia Stories', email: 'lia-stories@example.com', password: 'senha123', gender: 'Mulher' });
     const fa = await registerInvitedUser(ctx, sponsorToken, { name: 'Fa Marco Stories', email: 'fa-marco-stories@example.com', password: 'senha123', gender: 'Homem' });
     const autoraId = String(autora.user.id);
@@ -5193,19 +5193,19 @@ describe('nosigilo backend', () => {
     const agora = new Date();
     await run(ctx.db, "INSERT INTO stories (id, user_id, media_id, text, background, audience, created_at, expires_at) VALUES (?, ?, '', 'oi', 'sunset', 'all', ?, ?)",
       [storyId, autoraId, agora.toISOString(), new Date(agora.getTime() + 86_400_000).toISOString()]);
-    // 24 visualizações de outras pessoas já registradas.
-    for (let i = 0; i < 24; i++) {
+    // 49 visualizações de outras pessoas já registradas (passou dos 25 sem aviso).
+    for (let i = 0; i < 49; i++) {
       await run(ctx.db, 'INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)', [`sv-${storyId}-${i}`, storyId, `viewer-falso-${i}`, agora.toISOString()]);
     }
     await ctx.db.persist();
-    // A 25ª, pela rota de verdade.
+    // A 50ª, pela rota de verdade.
     await request(ctx.app).post(`/api/stories/${storyId}/view`).set({ Authorization: `Bearer ${fa.token}` }).expect(200);
     let aviso: any = null;
     for (let i = 0; i < 20 && !aviso; i++) {
       aviso = await ctx.db.queryOne("SELECT title FROM notifications WHERE user_id = ? AND type = 'story.marco'", [autoraId]);
       if (!aviso) await new Promise((r) => setTimeout(r, 50));
     }
-    expect(aviso?.title).toContain('25 pessoas');
+    expect(aviso?.title).toContain('50 pessoas');
   });
 
   it('cadastro: nome em uso devolve sugestões livres; origem do 1º contato é gravada', async () => {
