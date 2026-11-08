@@ -47,6 +47,7 @@ export interface User {
   trialEndsAt?: string | null;
   allowMessages?: 'everyone' | 'matches' | 'friends' | 'nobody';
   blockOutsidePrefs?: boolean;
+  contactProfileTypes?: string[];
   lastSeenAt?: string | null;
   isOnline?: boolean;
   invitationStatus?: string | null;
@@ -117,7 +118,7 @@ interface RegisterData {
   lookingFor?: string[];
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
 // Billing PII fields — kept in memory but NOT persisted to localStorage

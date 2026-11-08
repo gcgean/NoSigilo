@@ -154,6 +154,7 @@ export type PublicUser = {
   meetingTagline?: string | null;
   availabilityStatus?: string | null;
   blockOutsidePrefs?: boolean;
+  contactProfileTypes?: string[];
   pedidosContato?: boolean;
   pedidosDireto?: string[];
   partnerName?: string | null;
@@ -2270,6 +2271,19 @@ async function isUserBlocked(options: { db: DbHandle }, data: { viewerId: string
 }
 
 async function conversaLiberadaEntre(db: DbHandle, fromUserId: string, toUserId: string): Promise<boolean> {
+  // A iniciativa precisa partir de quem recebe: curtir perfil ou conteúdo do remetente.
+  const initiative = await queryOne(db, `SELECT 1 FROM likes l
+    WHERE l.user_id = ? AND (
+      (l.target_type = 'user' AND l.target_id = ?)
+      OR (l.target_type = 'post' AND EXISTS (SELECT 1 FROM posts p WHERE p.id = l.target_id AND p.user_id = ?))
+      OR (l.target_type = 'photo' AND EXISTS (SELECT 1 FROM media m WHERE m.id = l.target_id AND m.user_id = ?))
+      OR (l.target_type = 'experience' AND EXISTS (SELECT 1 FROM experiences e WHERE e.id = l.target_id AND e.user_id = ?))
+    ) LIMIT 1`, [toUserId, fromUserId, fromUserId, fromUserId, fromUserId]);
+  if (initiative) return true;
+  const storyInitiative = await queryOne(db, 'SELECT 1 FROM story_likes l JOIN stories s ON s.id = l.story_id WHERE l.liker_id = ? AND s.user_id = ? LIMIT 1', [toUserId, fromUserId]);
+  if (storyInitiative) return true;
+  const casaInitiative = await queryOne(db, "SELECT 1 FROM casa_eventos WHERE user_id = ? AND outro_id = ? AND tipo = 'contato_iniciado' LIMIT 1", [toUserId, fromUserId]);
+  if (casaInitiative) return true;
   const match = await queryOne(
     db,
     `SELECT 1 AS x
@@ -2280,6 +2294,8 @@ async function conversaLiberadaEntre(db: DbHandle, fromUserId: string, toUserId:
     [toUserId, fromUserId, fromUserId, toUserId]
   );
   if (match) return true;
+  const accepted = await queryOne(db, `SELECT 1 FROM conversations WHERE pedido_aceito_em IS NOT NULL AND pedido_recusado_em IS NULL AND ((user_a_id = ? AND user_b_id = ?) OR (user_a_id = ? AND user_b_id = ?)) LIMIT 1`, [fromUserId, toUserId, toUserId, fromUserId]);
+  if (accepted) return true;
   const recebida = await queryOne(
     db,
     `SELECT 1 AS x
@@ -2293,12 +2309,14 @@ async function conversaLiberadaEntre(db: DbHandle, fromUserId: string, toUserId:
   return !!recebida;
 }
 
+const CONTACT_PROFILE_TYPES = ['Mulher', 'Homem', 'Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)', 'Transexual', 'Crossdresser (CD)', 'Travesti'] as const;
+
 async function canSendMessage(options: { db: DbHandle }, data: { fromUserId: string; toUserId: string }) {
   if (data.fromUserId === data.toUserId) return true;
   // Block check — if either party has blocked the other, no messages allowed
   const blocked = await isUserBlocked(options, { viewerId: data.fromUserId, targetId: data.toUserId });
   if (blocked) return false;
-  const row = (await queryOne(options.db, 'SELECT allow_messages, block_outside_prefs, looking_for_json FROM users WHERE id = ? LIMIT 1', [data.toUserId])) as any;
+  const row = (await queryOne(options.db, 'SELECT allow_messages, block_outside_prefs, contact_profile_types_json FROM users WHERE id = ? LIMIT 1', [data.toUserId])) as any;
   const setting = row?.allow_messages ? String(row.allow_messages) : 'everyone';
   if (setting === 'nobody') return false;
   // Curtida mútua, ou quem recebe já mandou mensagem pra quem envia: a conversa
@@ -2306,14 +2324,12 @@ async function canSendMessage(options: { db: DbHandle }, data: { fromUserId: str
   // ou "Apenas Amigos" (31/10/2026). Antes o casal puxava conversa com um perfil
   // fora do próprio filtro e o outro não conseguia responder.
   if (await conversaLiberadaEntre(options.db, data.fromUserId, data.toUserId)) return true;
-  // Check block_outside_prefs: if enabled, sender's gender must be in recipient's looking_for list
+  // Filtro explícito de contatos, independente dos interesses de descoberta.
   if (row?.block_outside_prefs) {
-    const lookingFor: string[] = safeJsonParse(row.looking_for_json) ?? [];
-    if (lookingFor.length > 0) {
-      const sender = (await queryOne(options.db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [data.fromUserId])) as any;
-      const senderGender = sender?.gender ? String(sender.gender) : '';
-      if (senderGender && !lookingFor.includes(senderGender)) return false;
-    }
+    const allowedTypes: string[] = safeJsonParse(row.contact_profile_types_json) ?? [];
+    const sender = (await queryOne(options.db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [data.fromUserId])) as any;
+    const senderGender = sender?.gender ? String(sender.gender) : '';
+    if (!allowedTypes.includes(senderGender)) return false;
   }
   if (setting === 'everyone') return true;
   if (setting === 'friends') {
@@ -2349,16 +2365,14 @@ async function motivoMensagemBloqueada(db: DbHandle, fromUserId: string, toUserI
   if (await isUserBlocked({ db }, { viewerId: fromUserId, targetId: toUserId })) {
     return 'Não é possível conversar com este perfil.';
   }
-  const row = (await queryOne(db, 'SELECT allow_messages, block_outside_prefs, looking_for_json FROM users WHERE id = ? LIMIT 1', [toUserId])) as any;
+  const row = (await queryOne(db, 'SELECT allow_messages, block_outside_prefs, contact_profile_types_json FROM users WHERE id = ? LIMIT 1', [toUserId])) as any;
   const setting = row?.allow_messages ? String(row.allow_messages) : 'everyone';
   if (setting === 'nobody') return 'Este perfil não está recebendo mensagens no momento.';
   if (row?.block_outside_prefs) {
-    const lookingFor: string[] = safeJsonParse(row.looking_for_json) ?? [];
-    if (lookingFor.length > 0) {
-      const sender = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [fromUserId])) as any;
-      if (sender?.gender && !lookingFor.includes(String(sender.gender))) {
-        return `Este perfil escolheu receber mensagens só de: ${lookingFor.join(', ')}. Curta o perfil: se a curtida for retribuída, a conversa libera.`;
-      }
+    const allowedTypes: string[] = safeJsonParse(row.contact_profile_types_json) ?? [];
+    const sender = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [fromUserId])) as any;
+    if (!allowedTypes.includes(String(sender?.gender || ''))) {
+      return 'Este perfil recebe novos contatos apenas dos tipos de perfil selecionados nas preferências.';
     }
   }
   if (setting === 'friends') return 'Este perfil só recebe mensagens de amigos. Envie um pedido de amizade primeiro.';
@@ -2368,9 +2382,8 @@ async function motivoMensagemBloqueada(db: DbHandle, fromUserId: string, toUserI
 
 // ─── Pedidos de contato ──────────────────────────────────────────────────────
 // Mensagem de quem a pessoa não conhece cai em "Pedidos" (não em Conversas) até
-// ela aceitar ou responder. Ligado por padrão para mulheres, casais, trans, travestis e CDs (que
-// recebem ~6-8 abordagens novas por mês e respondem só ~13%); quem é de um tipo
-// de perfil liberado, tem curtida mútua, é amigo ou já foi curtido vai direto.
+// ela aceitar ou responder. Ligado por padrão para todos; exceções explicitamente
+// escolhidas, amigos e pessoas já curtidas podem entrar diretamente.
 const CATEGORIAS_PEDIDO = ['mulher', 'casal', 'homem', 'outros'] as const;
 type CategoriaPedido = (typeof CATEGORIAS_PEDIDO)[number];
 const DESTAQUE_PEDIDO_TOKENS = 20;
@@ -2384,16 +2397,14 @@ function categoriaDoPerfil(gender: unknown): CategoriaPedido {
 }
 
 function configDePedidos(row: any): { ativo: boolean; direto: CategoriaPedido[] } {
-  const cat = categoriaDoPerfil(row?.gender);
-  // Ligado para mulheres, casais e "outros" (trans, travesti, CD): esses perfis
-  // recebem muito mais abordagem do que conseguem responder.
-  const padraoLigado = cat === 'mulher' || cat === 'casal' || cat === 'outros';
+  // Novos desconhecidos entram por pedido, para todos os tipos de perfil.
+  // Escolhas explícitas já salvas (off ou tipos diretos) continuam valendo.
   const modo = String(row?.pedidos_contato || '');
-  const ativo = modo === 'on' ? true : modo === 'off' ? false : padraoLigado;
+  const ativo = modo !== 'off';
   const salvo = safeJsonParse(row?.pedidos_direto_json);
   const direto = Array.isArray(salvo)
     ? (salvo as string[]).filter((c): c is CategoriaPedido => (CATEGORIAS_PEDIDO as readonly string[]).includes(c))
-    : (['mulher', 'casal'] as CategoriaPedido[]);
+    : [];
   return { ativo, direto };
 }
 
@@ -2402,6 +2413,7 @@ async function deveVirarPedido(db: DbHandle, fromUserId: string, toUserId: strin
   if (!destino) return false;
   const cfg = configDePedidos(destino);
   if (!cfg.ativo) return false;
+  if (await conversaLiberadaEntre(db, fromUserId, toUserId)) return false;
   const remetente = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [fromUserId])) as any;
   if (cfg.direto.includes(categoriaDoPerfil(remetente?.gender))) return false;
   // Quem a pessoa já curtiu (inclui curtida mútua) ou é amigo vai direto.
@@ -2654,6 +2666,7 @@ function rowToPublicUser(
     trialEndsAt: row.trial_ends_at ?? null,
     allowMessages: row.allow_messages ?? null,
     blockOutsidePrefs: !!row.block_outside_prefs,
+    contactProfileTypes: safeJsonParse(row.contact_profile_types_json) ?? [],
     pedidosContato: configDePedidos(row).ativo,
     pedidosDireto: configDePedidos(row).direto,
     createdAt: row.created_at ?? null,
@@ -3961,6 +3974,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await apagar('DELETE FROM testimonials WHERE author_user_id = ? OR profile_user_id = ?', uu);
     await apagar('DELETE FROM story_comments WHERE commenter_id = ?', u);
     await apagar('DELETE FROM story_likes WHERE liker_id = ?', u);
+    await apagar('DELETE FROM promoter_asset_views WHERE user_id = ?', u);
     await apagar('DELETE FROM story_views WHERE viewer_id = ?', u);
     await apagar('DELETE FROM story_favorites WHERE owner_id = ? OR favorite_id = ?', uu);
     await apagar('DELETE FROM story_pins WHERE user_id = ? OR pinned_user_id = ?', uu);
@@ -5675,11 +5689,22 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const invitesRow = await queryOne(db, "SELECT COUNT(*) as c FROM invite_links WHERE inviter_user_id = ? AND status != 'revoked'", [userId]) as any;
     const signupsRow = await queryOne(db, `SELECT COUNT(*) as c FROM invite_link_entries e JOIN invite_links l ON l.id = e.invite_link_id WHERE l.inviter_user_id = ?`, [userId]) as any;
     const commissions = (await queryAll(db, 'SELECT * FROM promoter_commissions WHERE promoter_user_id = ? ORDER BY created_at DESC LIMIT 100', [userId])) as any[];
-    const active = commissions.filter((c) => c.status !== 'cancelled');
-    const pending = commissions.filter((c) => c.status === 'pending');
-    const approved = commissions.filter((c) => c.status === 'approved');
-    const paid = commissions.filter((c) => c.status === 'paid');
-    const sum = (arr: any[]) => arr.reduce((s, c) => s + Number(c.commission_amount || 0), 0);
+    // Saldos abrangem todo o histórico, independentemente do limite do extrato.
+    const totals = await queryAll(db, 'SELECT status, COUNT(*) AS count, SUM(commission_amount) AS cents FROM promoter_commissions WHERE promoter_user_id = ? GROUP BY status', [userId]) as any[];
+    const balance = (status: string) => Number(totals.find((r) => r.status === status)?.cents || 0);
+    const since = new Date();
+    since.setUTCDate(1);
+    since.setUTCMonth(since.getUTCMonth() - 11);
+    const fromMonth = since.toISOString().slice(0, 7);
+    const earnings = await queryAll(db, `SELECT SUBSTR(created_at,1,7) AS month, COUNT(*) AS subscriptions, SUM(commission_amount) AS cents FROM promoter_commissions WHERE promoter_user_id = ? AND status != 'cancelled' AND created_at >= ? GROUP BY SUBSTR(created_at,1,7)`, [userId, fromMonth]) as any[];
+    const registrations = await queryAll(db, `SELECT SUBSTR(e.created_at,1,7) AS month, COUNT(DISTINCT e.invitee_user_id) AS signups FROM invite_link_entries e JOIN invite_links l ON l.id = e.invite_link_id WHERE l.inviter_user_id = ? AND e.created_at >= ? GROUP BY SUBSTR(e.created_at,1,7)`, [userId, fromMonth]) as any[];
+    const history = Array.from({ length: 12 }, (_, i) => {
+      const date = new Date(since);
+      date.setUTCMonth(date.getUTCMonth() + i);
+      const month = date.toISOString().slice(0, 7);
+      const earned = earnings.find((r) => r.month === month);
+      return { month, commissionCents: Number(earned?.cents || 0), subscriptions: Number(earned?.subscriptions || 0), signups: Number(registrations.find((r) => r.month === month)?.signups || 0) };
+    });
 
     // Usuários que entraram pelos links deste promotor, com o status atual de cada um
     // (assinante / trial / expirado / desativado / banido) para o promotor acompanhar.
@@ -5727,13 +5752,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       stats: {
         invitesSent: Number(invitesRow?.c ?? 0),
         totalSignups: Number(signupsRow?.c ?? 0),
-        totalSubscriptions: active.length,
-        totalCommissionCents: sum(active),
-        pendingCents: sum(pending),
-        approvedCents: sum(approved),
-        paidCents: sum(paid),
+        totalSubscriptions: totals.filter((r) => r.status !== 'cancelled').reduce((n, r) => n + Number(r.count), 0),
+        totalCommissionCents: balance('pending') + balance('approved') + balance('paid'),
+        pendingCents: balance('pending'),
+        approvedCents: balance('approved'),
+        paidCents: balance('paid'),
         minPayoutCents: PROMOTER_MIN_PAYOUT_CENTS,
       },
+      history,
       referredCounts,
       referredUsers,
       commissions: commissions.slice(0, 50).map((c) => ({
@@ -5746,6 +5772,45 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         createdAt: String(c.created_at),
       })),
     });
+  });
+
+  // Central compartilhada: somente admins publicam; promotores acessam com sua conta.
+  app.get('/api/promoter/assets', requireAuth(env, db), async (req, res) => {
+    const account = await queryOne(db, 'SELECT is_admin FROM users WHERE id = ?', [req.auth!.userId]) as any;
+    const promoter = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active'", [req.auth!.userId]);
+    if (Number(account?.is_admin) !== 1 && !promoter) { res.status(403).json({ error: 'promoter_required' }); return; }
+    const isAdmin = Number(account?.is_admin) === 1;
+    const rows = await queryAll(db, `SELECT a.*, m.filename, m.mime_type, m.processando, v.viewed_at FROM promoter_assets a JOIN media m ON m.id = a.media_id LEFT JOIN promoter_asset_views v ON v.asset_id = a.id AND v.user_id = ? WHERE m.is_private = 0 ${isAdmin ? '' : 'AND COALESCE(m.processando,0) = 0'} ORDER BY a.created_at DESC, a.id DESC`, [req.auth!.userId]) as any[];
+    const assets = rows.map((r) => ({ id: r.id, title: r.title, caption: r.caption, destination: r.destination, createdAt: r.created_at, url: '/uploads/' + r.filename, mimeType: r.mime_type, processing: !!Number(r.processando), isNew: !r.viewed_at && !Number(r.processando) }));
+    res.json({ assets, newCount: assets.filter((a) => a.isNew).length });
+  });
+  app.post('/api/promoter/assets/seen', requireAuth(env, db), async (req, res) => {
+    const promoter = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active'", [req.auth!.userId]);
+    if (!promoter) { res.status(403).json({ error: 'promoter_required' }); return; }
+    const parsed = z.object({ ids: z.array(z.string().min(1)).min(1).max(100) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    for (const id of new Set(parsed.data.ids)) {
+      await run(db, `INSERT INTO promoter_asset_views (user_id, asset_id, viewed_at) SELECT ?, a.id, ? FROM promoter_assets a JOIN media m ON m.id = a.media_id WHERE a.id = ? AND m.is_private = 0 AND COALESCE(m.processando,0) = 0 ON CONFLICT(user_id, asset_id) DO NOTHING`, [req.auth!.userId, nowIso(), id]);
+    }
+    await persist();
+    res.json({ ok: true });
+  });
+  app.post('/api/admin/promoter-assets', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const parsed = z.object({ title: z.string().trim().min(1).max(100), caption: z.string().trim().max(2000), mediaId: z.string().min(1), destination: z.enum(['community', 'casa']) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const data = parsed.data;
+    const media = await queryOne(db, "SELECT id FROM media WHERE id = ? AND user_id = ? AND is_private = 0 AND mime_type IN ('image/jpeg','image/png','image/webp','video/mp4','video/webm','video/quicktime')", [data.mediaId, req.auth!.userId]);
+    if (!media) { res.status(400).json({ error: 'invalid_media' }); return; }
+    const id = randomUUID();
+    await run(db, 'INSERT INTO promoter_assets (id, title, caption, media_id, destination, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, data.title, data.caption, data.mediaId, data.destination, nowIso()]);
+    await persist();
+    res.status(201).json({ id });
+  });
+  app.delete('/api/admin/promoter-assets/:id', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    await run(db, 'DELETE FROM promoter_asset_views WHERE asset_id = ?', [String(req.params.id)]);
+    await run(db, 'DELETE FROM promoter_assets WHERE id = ?', [String(req.params.id)]);
+    await persist();
+    res.json({ ok: true });
   });
 
   // Admin: list promoters
@@ -11399,6 +11464,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         pedidosContato: z.boolean().optional().nullable(),
         pedidosDireto: z.array(z.enum(CATEGORIAS_PEDIDO)).max(4).optional().nullable(),
         blockOutsidePrefs: z.boolean().optional().nullable(),
+        contactProfileTypes: z.array(z.enum(CONTACT_PROFILE_TYPES)).max(8).optional(),
         notificationVisits: z.boolean().optional().nullable(),
         notificationEmail: z.boolean().optional().nullable(),
         avisoNovosRegiao: z.boolean().optional().nullable(),
@@ -11431,6 +11497,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
 
     const data = parsed.data;
+    if ('blockOutsidePrefs' in data || 'contactProfileTypes' in data) {
+      const current = await queryOne(db, 'SELECT block_outside_prefs, contact_profile_types_json FROM users WHERE id = ?', [req.auth!.userId]) as any;
+      const enabled = data.blockOutsidePrefs ?? !!current?.block_outside_prefs;
+      const selected = data.contactProfileTypes ?? safeJsonParse(current?.contact_profile_types_json) ?? [];
+      if (enabled && selected.length === 0) {
+        res.status(400).json({ error: 'contact_types_required', message: 'Selecione pelo menos um tipo de perfil para o filtro de contatos ou desative o filtro.' });
+        return;
+      }
+    }
     const updatesProfileLocation = 'city' in data || 'state' in data;
     const currentLocation = updatesProfileLocation
       ? ((await queryOne(db, 'SELECT city, state, lat FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any)
@@ -11553,6 +11628,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       }
       setParts.push('bio_link = ?');
       values.push(normalized);
+    }
+    if ('contactProfileTypes' in data) {
+      setParts.push('contact_profile_types_json = ?');
+      values.push(JSON.stringify([...new Set(data.contactProfileTypes)]));
     }
     if ('pedidosContato' in data) {
       setParts.push('pedidos_contato = ?');
@@ -24407,6 +24486,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // A Casa: boate virtual de sexta e sábado (casa.ts).
   registrarCasa(app, {
     db,
+    motivoContatoBloqueado: async (de, para) => (await canSendMessage({ db }, { fromUserId: de, toUserId: para })) ? null : motivoMensagemBloqueada(db, de, para),
     deepseekKey: env.DEEPSEEK_API_KEY,
     requireAuth: requireAuth(env, db),
     getIo: () => app.get('io') as SocketIOServer | undefined,

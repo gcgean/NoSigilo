@@ -1,4 +1,5 @@
 import ConversaDaDenuncia from '@/components/ConversaDaDenuncia';
+import PromoterAssets from '@/components/PromoterAssets';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AdminCasaTab from '@/components/AdminCasaTab';
 import AdminAnuncios from '@/components/AdminAnuncios';
@@ -5666,6 +5667,8 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
   return (
     <div className="space-y-6">
       {modo === 'promotores' && (<>
+
+      <details className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4"><summary className="cursor-pointer font-semibold py-2">Central de divulgação · publicar fotos e vídeos</summary><div className="pt-4"><PromoterAssets admin /></div></details>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -1843,3 +1843,24 @@
   .landing-perfis .landing-cta-pulso { flex-direction: row; min-height: 52px; font-size: 11px; }
   .landing-perfis .landing-cta-pulso span { font-size: 18px; }
 }
+/* A primeira dobra mobile termina no convite; os perfis começam na próxima. */
+.landing-hero-body { max-width: 650px; min-width: 0; }
+@media (max-width: 760px) {
+  .landing-hero-intro {
+    padding-bottom: 32px;
+  }
+  .landing-profile-picker { padding-top: 24px; border-top: 1px solid var(--landing-line); }
+  .landing-profile-picker .landing-perfis-titulo { margin: 0 0 12px; font-size: 16px; }
+  .landing-profile-picker .landing-cta-micro { font-size: 11px; line-height: 1.5; }
+}
+@media (max-width: 760px) {
+  .landing-hero-intro { display: flex; flex-direction: column; align-items: flex-start; }
+  .landing-hero-intro > p:last-of-type { margin-bottom: 24px; }
+  .landing-hero-intro > .landing-community-cta { margin-top: 0; }
+}
+
+@media (max-width: 760px) {
+  .landing-hero-content { padding-top: var(--landing-photo-space, 208px); }
+  .landing-hero-image { height: calc(var(--landing-photo-space, 208px) + 12px); }
+  .landing-hero-vignette { background: linear-gradient(180deg, transparent 0, transparent calc(var(--landing-photo-space, 208px) - 64px), var(--landing-bg) calc(var(--landing-photo-space, 208px) + 12px)); }
+}

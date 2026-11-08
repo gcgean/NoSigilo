@@ -73,6 +73,7 @@ const GroupsList = lazy(() => import("./pages/GroupsList"));
 const GroupChat = lazy(() => import("./pages/GroupChat"));
 const Invites = lazy(() => import("./pages/Invites"));
 const Promoter = lazy(() => import("./pages/Promoter"));
+const PromoterAssets = lazy(() => import("./components/PromoterAssets"));
 const PromoterLanding = lazy(() => import("./pages/PromoterLanding"));
 const Tokens = lazy(() => import("./pages/Tokens"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -160,6 +161,7 @@ const App = () => (
                       <Route path="/chat/:conversationId" element={<Chat />} />
                       <Route path="/invites" element={<Invites />} />
                       <Route path="/promoter" element={<Promoter />} />
+                      <Route path="/promoter/artes" element={<PromoterAssets />} />
                       <Route path="/ganhe" element={<PromoterLanding />} />
                       <Route path="/tokens" element={<Tokens />} />
                       <Route path="/ambassador" element={<Navigate to="/invites?tab=ambassador" replace />} />

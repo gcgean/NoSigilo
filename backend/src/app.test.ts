@@ -1911,7 +1911,7 @@ describe('nosigilo backend', () => {
     const chamado = await reg('BloqChamado');
     const curtido = await reg('BloqCurtido');
     const estranho = await reg('BloqEstranho');
-    await run(ctx.db, 'UPDATE users SET block_outside_prefs = 1, looking_for_json = ? WHERE id = ?', [JSON.stringify(['Mulher']), seletivo.id]);
+    await run(ctx.db, 'UPDATE users SET block_outside_prefs = 1, contact_profile_types_json = ? WHERE id = ?', [JSON.stringify(['Mulher']), seletivo.id]);
 
     const abrir = (de: { token: string }, para: string) =>
       request(ctx.app).post('/api/conversations').set('Authorization', `Bearer ${de.token}`).send({ userId: para });
@@ -3466,6 +3466,35 @@ describe('nosigilo backend', () => {
   });
 
   // Pedidos de contato: mulher/casal recebe mensagem de desconhecido como pedido.
+  it('filtro de contatos independente dos interesses bloqueia tipos e sem filtro cria pedidos', async () => {
+    const casal = await registerInvitedUser(ctx, sponsorToken, { name: 'Filtro Casal', email: 'filtro-casal@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    const homem = await registerInvitedUser(ctx, sponsorToken, { name: 'Filtro Homem', email: 'filtro-homem@example.com', password: 'senha123', gender: 'Homem' });
+    const mulher = await registerInvitedUser(ctx, sponsorToken, { name: 'Filtro Mulher', email: 'filtro-mulher@example.com', password: 'senha123', gender: 'Mulher' });
+    for (const user of [casal, homem, mulher]) await grantPremium(ctx, user.user.id);
+    const C = { Authorization: `Bearer ${casal.token}` };
+    const H = { Authorization: `Bearer ${homem.token}` };
+    const M = { Authorization: `Bearer ${mulher.token}` };
+    await request(ctx.app).put('/api/profile').set(C).send({ blockOutsidePrefs: true, contactProfileTypes: [] }).expect(400);
+    await request(ctx.app).put('/api/profile').set(C).send({ blockOutsidePrefs: true, contactProfileTypes: ['tipo-invalido'] }).expect(400);
+    await request(ctx.app).put('/api/profile').set(C).send({ lookingFor: ['Homem'], blockOutsidePrefs: true, contactProfileTypes: ['Mulher'] }).expect(200);
+    const denied = await request(ctx.app).post('/api/conversations').set(H).send({ userId: casal.user.id }).expect(403);
+    expect(denied.body.message).toBe('Este perfil recebe novos contatos apenas dos tipos de perfil selecionados nas preferências.');
+    const permitted = await request(ctx.app).post('/api/conversations').set(M).send({ userId: casal.user.id }).expect(200);
+    expect(permitted.body.pedido).toBe(true);
+    await request(ctx.app).put('/api/profile').set(C).send({ lookingFor: ['Casal (Ele/Ele)'] }).expect(200);
+    await request(ctx.app).post('/api/conversations').set(H).send({ userId: casal.user.id }).expect(403);
+    await request(ctx.app).put('/api/profile').set(C).send({ blockOutsidePrefs: false }).expect(200);
+    const pending = await request(ctx.app).post('/api/conversations').set(H).send({ userId: casal.user.id }).expect(200);
+    expect(pending.body.pedido).toBe(true);
+    await request(ctx.app).put('/api/profile').set(C).send({ blockOutsidePrefs: true }).expect(200);
+    await request(ctx.app).post(`/api/conversations/${pending.body.id}/messages`).set(H).send({ content: 'Tentativa pelo chat existente' }).expect(403);
+    await request(ctx.app).post(`/api/conversations/${pending.body.id}/pedido/aceitar`).set(C).send({}).expect(200);
+    await request(ctx.app).post(`/api/conversations/${pending.body.id}/messages`).set(H).send({ content: 'Contato aceito' }).expect(200);
+    // Todos os tipos recebem desconhecidos como pedido por padrão, inclusive homens.
+    const maleRecipient = await request(ctx.app).post('/api/conversations').set(M).send({ userId: homem.user.id }).expect(200);
+    expect(maleRecipient.body.pedido).toBe(true);
+  });
+
   it('pedido de contato: mensagem de desconhecido vira pedido, aceitar vira conversa', async () => {
     const ela = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Ela Pedido', email: 'ela-pedido@example.com', password: 'senha123', gender: 'Mulher',
@@ -4611,6 +4640,40 @@ describe('nosigilo backend', () => {
     expect((await request(ctx.app).get('/api/conversations/unread-count').set(auth(ana.token)).expect(200)).body.gruposCount).toBe(0);
   });
 
+  it('A Casa respeita o filtro do cadastro e libera por iniciativa de quem recebe', async () => {
+    const casal = await registerInvitedUser(ctx, sponsorToken, { name: 'Casa Filtro', email: 'casa-filtro@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    const homem = await registerInvitedUser(ctx, sponsorToken, { name: 'Casa Contato', email: 'casa-contato@example.com', password: 'senha123', gender: 'Homem' });
+    const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+    const C = auth(casal.token); const H = auth(homem.token);
+    await grantPremium(ctx, homem.user.id);
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [casal.user.id]);
+    await request(ctx.app).post('/api/casa/abrir-agora').set(C).send({ minutos: 60 }).expect(200);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(C).expect(200);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(H).expect(200);
+    await request(ctx.app).put('/api/profile').set(C).send({ blockOutsidePrefs: true, contactProfileTypes: ['Mulher'] }).expect(200);
+    const denied = await request(ctx.app).post('/api/casa/salao/convidar').set(H).send({ para: casal.user.id }).expect(403);
+    expect(denied.body.message).toMatch(/tipos de perfil selecionados/);
+    await request(ctx.app).post('/api/casa/salao/olhar').set(H).send({ para: casal.user.id }).expect(403);
+    // Curtida do homem não libera o filtro do casal.
+    await run(ctx.db, "INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES ('casa-like-inverso', ?, 'user', ?, ?)", [homem.user.id, casal.user.id, new Date().toISOString()]);
+    await request(ctx.app).post('/api/casa/salao/convidar').set(H).send({ para: casal.user.id }).expect(403);
+    // A sala continua pública; a reação enviada pelo casal libera reciprocidade.
+    await request(ctx.app).post('/api/casa/salao/mensagem').set(H).send({ texto: 'Boa noite para todos' }).expect(200);
+    const state = await request(ctx.app).post('/api/casa/salao/entrar').set(C).expect(200);
+    const msg = state.body.mensagens.find((m: any) => m.texto === 'Boa noite para todos');
+    await request(ctx.app).post('/api/casa/salao/reagir').set(C).send({ mensagemId: msg.id, emoji: '😍' }).expect(200);
+    const invite = await request(ctx.app).post('/api/casa/salao/convidar').set(H).send({ para: casal.user.id }).expect(200);
+    expect(invite.body.id).toBeTruthy();
+    // A mesma iniciativa também vale no chat fora da Casa.
+    const conversation = await request(ctx.app).post('/api/conversations').set(H).send({ userId: casal.user.id }).expect(200);
+    expect(conversation.body.pedido).not.toBe(true);
+    // Bloqueio individual sempre tem prioridade.
+    await run(ctx.db, 'INSERT INTO blocks (id, blocker_user_id, blocked_user_id, created_at) VALUES (?, ?, ?, ?)', ['casa-filtro-block', casal.user.id, homem.user.id, new Date().toISOString()]);
+    await request(ctx.app).post('/api/casa/salao/olhar').set(H).send({ para: casal.user.id }).expect(404);
+    await request(ctx.app).post('/api/casa/salao/sair').set(H).expect(200);
+    await request(ctx.app).post('/api/casa/salao/sair').set(C).expect(200);
+  });
+
   it('A Casa: admin abre, cota de homens, sala dos casais, chat sem link e cabine com aceite', async () => {
     const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
     const casal = await registerInvitedUser(ctx, sponsorToken, { name: 'Casal Casa', email: 'casal-casa@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
@@ -5110,6 +5173,61 @@ describe('nosigilo backend', () => {
     expect(c.disponivel).toBe(false);
     await request(ctx.app).get('/api/admin/desempenho').set('Authorization', `Bearer ${sponsorToken}`).expect(403);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
+
+  it('central de promotores protege artes e calcula saldos além de 100 comissões', async () => {
+    const p = await registerInvitedUser(ctx, sponsorToken, { name: 'Central Promotor', email: 'central-promotor@example.com', password: 'senha123', gender: 'Homem' });
+    const admin = await registerInvitedUser(ctx, sponsorToken, { name: 'Central Admin', email: 'central-admin@example.com', password: 'senha123', gender: 'Homem' });
+    const auth = { Authorization: `Bearer ${p.token}` };
+    const adminAuth = { Authorization: `Bearer ${admin.token}` };
+    await request(ctx.app).get('/api/promoter/assets').expect(401);
+    await request(ctx.app).get('/api/promoter/assets').set(auth).expect(403);
+    await request(ctx.app).post('/api/promoter/activate').set(auth).send({ fullName: 'Central Promotor', pixKey: 'central@pix.com', acceptTerms: true }).expect(200);
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.user.id]);
+    const now = new Date().toISOString();
+    for (let i = 0; i < 105; i++) {
+      await run(ctx.db, "INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, created_at) VALUES (?, ?, ?, 990, 198, ?, ?)", [`central-${i}`, p.user.id, admin.user.id, i === 104 ? 'cancelled' : 'approved', now]);
+    }
+    const dash = await request(ctx.app).get('/api/promoter/dashboard').set(auth).expect(200);
+    expect(dash.body.stats.approvedCents).toBe(104 * 198);
+    expect(dash.body.stats.totalSubscriptions).toBe(104);
+    expect(dash.body.commissions).toHaveLength(50);
+    expect(dash.body.history).toHaveLength(12);
+    expect(dash.body.history.at(-1).commissionCents).toBe(104 * 198);
+    await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES ('central-art', ?, 'central-art.webp', 'image/webp', 0, 0, 'chat', ?)", [admin.user.id, now]);
+    const data = { title: 'Arte oficial', caption: 'Conheça a comunidade', mediaId: 'central-art', destination: 'casa' };
+    await request(ctx.app).post('/api/admin/promoter-assets').set(auth).send(data).expect(403);
+    await request(ctx.app).post('/api/admin/promoter-assets').set(adminAuth).send({ ...data, mediaId: 'missing' }).expect(400);
+    const notificationsBefore = await queryOne(ctx.db, 'SELECT COUNT(*) AS c FROM notifications WHERE user_id = ?', [p.user.id]) as any;
+    const published = await request(ctx.app).post('/api/admin/promoter-assets').set(adminAuth).send(data).expect(201);
+    const listed = await request(ctx.app).get('/api/promoter/assets').set(auth).expect(200);
+    expect(listed.body.assets).toEqual(expect.arrayContaining([expect.objectContaining({ id: published.body.id, destination: 'casa', url: '/uploads/central-art.webp' })]));
+    expect(listed.body.newCount).toBe(1);
+    expect(listed.body.assets[0]).toMatchObject({ mimeType: 'image/webp', processing: false, isNew: true });
+    await request(ctx.app).post('/api/promoter/assets/seen').send({ ids: [published.body.id] }).expect(401);
+    await request(ctx.app).post('/api/promoter/assets/seen').set(adminAuth).send({ ids: [published.body.id] }).expect(403);
+    await request(ctx.app).post('/api/promoter/assets/seen').set(auth).send({ ids: [published.body.id] }).expect(200);
+    const seen = await request(ctx.app).get('/api/promoter/assets').set(auth).expect(200);
+    expect(seen.body.newCount).toBe(0);
+    expect((await request(ctx.app).get('/api/promoter/assets').set(adminAuth).expect(200)).body.newCount).toBe(1);
+    await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, processando, created_at) VALUES ('central-video', ?, 'original.mov', 'video/quicktime', 0, 0, 'chat', 1, ?)", [admin.user.id, now]);
+    const video = await request(ctx.app).post('/api/admin/promoter-assets').set(adminAuth).send({ ...data, mediaId: 'central-video', title: 'Vídeo oficial' }).expect(201);
+    const hidden = await request(ctx.app).get('/api/promoter/assets').set(auth).expect(200);
+    expect(hidden.body.assets.some((a: any) => a.id === video.body.id)).toBe(false);
+    expect((await request(ctx.app).get('/api/promoter/assets').set(adminAuth).expect(200)).body.assets.find((a: any) => a.id === video.body.id).processing).toBe(true);
+    await request(ctx.app).post('/api/promoter/assets/seen').set(auth).send({ ids: [video.body.id] }).expect(200);
+    await run(ctx.db, "UPDATE media SET filename = 'final.mp4', mime_type = 'video/mp4', processando = 0 WHERE id = 'central-video'");
+    const ready = await request(ctx.app).get('/api/promoter/assets').set(auth).expect(200);
+    expect(ready.body.assets.find((a: any) => a.id === video.body.id)).toMatchObject({ url: '/uploads/final.mp4', mimeType: 'video/mp4', processing: false, isNew: true });
+    expect(ready.body.newCount).toBe(1);
+    const notificationsAfter = await queryOne(ctx.db, 'SELECT COUNT(*) AS c FROM notifications WHERE user_id = ?', [p.user.id]) as any;
+    expect(Number(notificationsAfter.c)).toBe(Number(notificationsBefore.c));
+    await run(ctx.db, "UPDATE media SET is_private = 1 WHERE id = 'central-video'");
+    await request(ctx.app).post('/api/admin/promoter-assets').set(adminAuth).send({ ...data, mediaId: 'central-video' }).expect(400);
+    await request(ctx.app).delete(`/api/admin/promoter-assets/${published.body.id}`).set(auth).expect(403);
+    await request(ctx.app).delete(`/api/admin/promoter-assets/${published.body.id}`).set(adminAuth).expect(200);
+    const removed = await request(ctx.app).get('/api/promoter/assets').set(auth).expect(200);
+    expect(removed.body.assets.some((a: any) => a.id === published.body.id)).toBe(false);
   });
 
   it('promotor troca a chave Pix só com a senha certa', async () => {

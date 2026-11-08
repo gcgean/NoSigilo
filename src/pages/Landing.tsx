@@ -150,6 +150,30 @@ export default function Landing() {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLElement>(null);
   const heroRef = useRef<HTMLElement>(null);
+  // Usa o espaço disponível na foto, mantendo texto e botão juntos.
+  useEffect(() => {
+    const hero = heroRef.current;
+    const intro = hero?.querySelector<HTMLElement>('.landing-hero-intro');
+    const header = headerRef.current;
+    if (!hero || !intro || !header) return;
+    const medir = () => {
+      if (window.innerWidth > 760) return;
+      const altura = window.visualViewport?.height ?? window.innerHeight;
+      const foto = Math.max(208, altura - header.offsetHeight - intro.offsetHeight);
+      hero.style.setProperty('--landing-photo-space', `${foto}px`);
+    };
+    const observer = new ResizeObserver(medir);
+    observer.observe(intro);
+    observer.observe(header);
+    window.addEventListener('resize', medir);
+    window.visualViewport?.addEventListener('resize', medir);
+    medir();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', medir);
+      window.visualViewport?.removeEventListener('resize', medir);
+    };
+  }, [isAuthenticated]);
   // Até onde quem não tem conta rola a página: mostra onde as pessoas desistem.
   useEffect(() => {
     if (isAuthenticated) return;
@@ -200,6 +224,7 @@ export default function Landing() {
     if (!el) return;
     const medir = () => {
       el.style.setProperty('--landing-header-h', `${el.offsetHeight}px`);
+      el.parentElement?.style.setProperty('--landing-header-height', `${el.offsetHeight}px`);
     };
     medir();
     const observer = new ResizeObserver(medir);
@@ -340,7 +365,8 @@ export default function Landing() {
           <div className="landing-hero-image" role="img" aria-label="Adultos em um encontro social descontraído em um bar" />
           <div className="landing-hero-vignette" />
           <div className="landing-shell landing-hero-content">
-            <div className="landing-hero-copy">
+            <div className="landing-hero-body">
+            <div className="landing-hero-copy landing-hero-intro">
               <p className="landing-hero-eyebrow">Comunidade liberal · 18+</p>
               <h1>
                 O que parece proibido lá fora, <em>aqui pode ser vivido.</em>
@@ -353,6 +379,8 @@ export default function Landing() {
               {/* Chamada principal (mesmo botão das páginas regionais): antes o
                   topo só tinha o link "Conheça a experiência". */}
               <EntrarNaComunidade secao="principal" />
+            </div>
+            <div className="landing-profile-picker">
               <p className="landing-perfis-titulo">Quem vai entrar?</p>
               <div className="landing-perfis" aria-label="Escolha seu tipo de perfil">
                 {PERFIS_DO_TOPO.map((p) => (
@@ -366,6 +394,7 @@ export default function Landing() {
                 Conheça a experiência
                 <ArrowRight aria-hidden="true" />
               </a>
+            </div>
             </div>
 
             <form className="landing-quick-register" onSubmit={handleQuickRegister}>

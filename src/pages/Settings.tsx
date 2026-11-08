@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
+import ContactProfileFilter from '@/components/ContactProfileFilter';
 import {
   User, Lock, Bell, Eye, Shield, Globe, Moon, Sun, LogOut,
   ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, MessageCircle, CheckCircle2, Clock, XCircle, Lightbulb, Send, Zap, Film, Loader2, Download
@@ -200,9 +201,10 @@ export default function Settings() {
     showDistance: true,
     allowMessages: (user?.allowMessages || 'everyone') as any,
     blockOutsidePrefs: !!((user as any)?.blockOutsidePrefs),
-    // Pedidos de contato (padrão do servidor: ligado para mulheres e casais).
-    pedidosContato: (user as any)?.pedidosContato ?? false,
-    pedidosDireto: ((user as any)?.pedidosDireto ?? ['mulher', 'casal']) as string[],
+    contactProfileTypes: user?.contactProfileTypes ?? [],
+    // Pedidos de contato: ligado por padrão, sem tipos liberados automaticamente.
+    pedidosContato: (user as any)?.pedidosContato ?? true,
+    pedidosDireto: ((user as any)?.pedidosDireto ?? []) as string[],
   });
 
   const [notifications, setNotifications] = useState({
@@ -327,16 +329,16 @@ export default function Settings() {
       const privacyPayload = {
         allowMessages: privacy.allowMessages,
         blockOutsidePrefs: privacy.blockOutsidePrefs,
+        contactProfileTypes: privacy.contactProfileTypes,
         pedidosContato: privacy.pedidosContato,
         pedidosDireto: privacy.pedidosDireto,
       };
 
-      await profileService.updateProfile(profilePayload);
-      try {
-        await profileService.updateProfile(privacyPayload);
-      } catch {
-        // privacidade: ignora falha silenciosamente para não bloquear o save principal
+      if (privacy.blockOutsidePrefs && !privacy.contactProfileTypes.length) {
+        toast({ title: 'Selecione quem pode entrar em contato', description: 'Marque pelo menos um tipo de perfil ou desative o filtro.', variant: 'destructive' });
+        return;
       }
+      await profileService.updateProfile({ ...profilePayload, ...privacyPayload });
 
       updateUser({ ...profilePayload, ...privacyPayload } as any);
       toast({ title: '✅ Perfil salvo!', description: 'Suas informações foram atualizadas com sucesso.' });
@@ -735,6 +737,15 @@ export default function Settings() {
                     <SelectItem value="nobody">Ninguém</SelectItem>
                   </SelectContent>
                 </Select>
+                <ContactProfileFilter
+                  enabled={privacy.blockOutsidePrefs}
+                  selected={privacy.contactProfileTypes}
+                  options={audienceOptions}
+                  onEnabledChange={(enabled) => setPrivacy({ ...privacy, blockOutsidePrefs: enabled })}
+                  onSelectionChange={(selected) => setPrivacy({ ...privacy, contactProfileTypes: selected })}
+                />
+                <p className="text-xs text-muted-foreground">{privacy.pedidosContato ? 'Pedidos de contato ativados. Você decide quais desconhecidos entram nas conversas.' : 'Pedidos de contato desativados: contatos permitidos entram diretamente nas conversas.'} Ajuste as exceções na aba Privacidade.</p>
+                <Button type="button" onClick={handleSaveProfile} disabled={isLoading} className="min-h-11 w-full">{isLoading ? 'Salvando...' : 'Salvar minhas preferências'}</Button>
               </div>
 
               <div className="border-t" />
@@ -1620,19 +1631,13 @@ export default function Settings() {
               </SelectContent>
             </Select>
 
-            <div className="flex items-start justify-between gap-4 pt-2 border-t border-border/50">
-              <div>
-                <p className="font-medium">Bloquear fora do meu interesse</p>
-                <p className="text-sm text-muted-foreground">
-                  Somente perfis do tipo que você busca podem enviar mensagens.
-                  Baseado em "Perfis que você quer encontrar".
-                </p>
-              </div>
-              <Switch
-                checked={privacy.blockOutsidePrefs}
-                onCheckedChange={(v) => setPrivacy({ ...privacy, blockOutsidePrefs: v })}
-              />
-            </div>
+            <ContactProfileFilter
+              enabled={privacy.blockOutsidePrefs}
+              selected={privacy.contactProfileTypes}
+              options={audienceOptions}
+              onEnabledChange={(enabled) => setPrivacy({ ...privacy, blockOutsidePrefs: enabled })}
+              onSelectionChange={(selected) => setPrivacy({ ...privacy, contactProfileTypes: selected })}
+            />
 
             {/* Pedidos de contato: quem não é dos tipos marcados cai em "Pedidos". */}
             <div className="space-y-3 pt-2 border-t border-border/50">

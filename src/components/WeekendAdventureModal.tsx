@@ -32,7 +32,7 @@ export default function WeekendAdventureModal() {
     dismiss();
     setVisible(false);
     // Pass state so Feed.tsx opens the experience form even if already mounted
-    navigate('/feed', { state: { openExperienceForm: true, modelo: 'rolou-ontem' } });
+    navigate('/feed', { state: { openExperienceForm: true } });
   };
 
   const handleSkip = () => {

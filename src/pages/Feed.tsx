@@ -148,28 +148,6 @@ const EXP_REACTIONS: Array<{ id: PhotoReaction; emoji: string; label: string }> 
 ];
 const EXP_REACTION_EMOJI: Record<string, string> = Object.fromEntries(EXP_REACTIONS.map((r) => [r.id, r.emoji]));
 
-// Writing templates for the experience composer
-const EXP_TEMPLATES: Array<{ emoji: string; label: string; title: string; body: string }> = [
-  {
-    emoji: '🌙',
-    label: 'Primeiro encontro',
-    title: 'Nosso primeiro encontro no swing',
-    body: 'Foi nossa primeira vez. A gente estava nervoso, mas quando chegamos ao local tudo mudou...\n\n',
-  },
-  {
-    emoji: '📖',
-    label: 'Conto erótico',
-    title: '',
-    body: 'Era uma noite diferente. Recebemos uma mensagem de um casal que nos chamou atenção e...\n\n',
-  },
-  {
-    emoji: '⚡',
-    label: 'Relato rápido',
-    title: 'Rolou ontem!',
-    body: 'Sem spoilers, mas foi incrível. Resumindo: encontramos um casal em [cidade], a vibe estava perfeita e...\n\nQuem quiser detalhes, chama no chat 😈',
-  },
-];
-
 // Weekly theme — update this object each week
 const WEEKLY_THEME = {
   emoji: '🔥',
@@ -351,7 +329,6 @@ export default function Feed() {
   // Partes em áudio do conto (gravadas ou escolhidas do celular).
   const [audiosConto, setAudiosConto] = useState<ParteDeAudio[]>([]);
   const [soComAudio, setSoComAudio] = useState(false);
-  const [expTemplatesOpen, setExpTemplatesOpen] = useState(false);
   const [reelsOnly, setReelsOnly] = useState(false);
   // Tema do vídeo anexado (obrigatório quando há vídeo) e o post cujo tema o dono está trocando.
   const [temasVideo, setTemasVideo] = useState<string[]>([]);
@@ -971,13 +948,6 @@ export default function Feed() {
     if ((location.state as any)?.openExperienceForm || vindoDoPush) {
       setFeedFilter('experiences');
       setEscrevendoConto(true);
-      if ((location.state as any)?.modelo === 'rolou-ontem' || vindoDoPush) {
-        const modelo = EXP_TEMPLATES.find((t) => t.title === 'Rolou ontem!');
-        if (modelo) {
-          setExperienceTitle((atual) => atual || modelo.title);
-          setExperienceDescription((atual) => atual || modelo.body);
-        }
-      }
       // Clear state so back-navigation doesn't re-trigger
       window.history.replaceState({}, '', location.pathname);
       window.setTimeout(() => {
@@ -2184,17 +2154,10 @@ export default function Feed() {
             <div className="flex items-center justify-between gap-2">
               <p className="min-w-0 truncate text-sm font-semibold text-foreground">Compartilhe sua história 😈</p>
               <div className="flex shrink-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setExpTemplatesOpen((v) => !v)}
-                  className="flex items-center gap-1 whitespace-nowrap rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-brand-pink hover:bg-primary/10 transition-colors"
-                >
-                  ✍️ {expTemplatesOpen ? 'Fechar modelos' : 'Usar modelo'}
-                </button>
                 {/* Fechar guarda o rascunho: o texto continua aí ao abrir de novo. */}
                 <button
                   type="button"
-                  onClick={() => { setEscrevendoConto(false); setExpTemplatesOpen(false); }}
+                  onClick={() => { setEscrevendoConto(false); }}
                   className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
                   aria-label="Fechar e voltar a ler os contos"
                 >
@@ -2202,31 +2165,6 @@ export default function Feed() {
                 </button>
               </div>
             </div>
-
-            {/* Writing templates */}
-            {expTemplatesOpen && (
-              <div className="rounded-xl border border-primary/15 bg-primary/5 p-3 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Escolha um modelo para começar</p>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {EXP_TEMPLATES.map((tpl) => (
-                    <button
-                      key={tpl.label}
-                      type="button"
-                      onClick={() => {
-                        setExperienceTitle(tpl.title);
-                        setExperienceDescription(tpl.body);
-                        setExpTemplatesOpen(false);
-                      }}
-                      className="flex flex-col items-start gap-1 rounded-lg border border-primary/20 bg-background p-3 text-left text-sm hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                    >
-                      <span className="text-lg leading-none">{tpl.emoji}</span>
-                      <span className="font-semibold text-foreground">{tpl.label}</span>
-                      <span className="line-clamp-2 text-xs text-muted-foreground">{tpl.body.slice(0, 60)}…</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <select
               value={expCategoria}
@@ -2240,14 +2178,14 @@ export default function Feed() {
               ))}
             </select>
             <Input
-              placeholder="Título do conto (ex.: Nossa noite mais quente 🔥)"
+              placeholder="Escreva um título para sua história"
               value={experienceTitle}
               onChange={(e) => setExperienceTitle(e.target.value)}
               maxLength={120}
             />
             <div className="relative">
               <Textarea
-                placeholder={"Conta pra gente… o que rolou? 😈\nPode escrever à vontade — aqui é lugar seguro."}
+                placeholder={"Conte sua experiência com suas próprias palavras."}
                 value={experienceDescription}
                 onChange={(e) => setExperienceDescription(e.target.value)}
                 maxLength={50000}

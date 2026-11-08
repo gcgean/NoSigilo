@@ -218,6 +218,7 @@ export type DependenciasDaCasa = {
   requireAuth: express.RequestHandler;
   getIo: () => SocketIOServer | undefined;
   temPremium: (userId: string) => Promise<boolean>;
+  motivoContatoBloqueado: (de: string, para: string) => Promise<string | null>;
   premiar: (userId: string, acao: 'casa_entrada' | 'casa_casal_cedo' | 'casa_mulher_noite' | 'casa_quiz' | 'casa_desafio' | 'casa_duelo' | 'casa_relampago', refId: string) => Promise<void>;
   /** Passa tokens de uma pessoa para outra (revelação paga). false = saldo insuficiente. */
   transferirTokens: (de: string, para: string, valor: number, refId: string) => Promise<boolean>;
@@ -1681,6 +1682,18 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     [a, b, b, a],
   ));
 
+  const contatoPermitido = async (res: express.Response, de: string, para: string) => {
+    const message = await deps.motivoContatoBloqueado(de, para);
+    if (!message) return true;
+    res.status(403).json({ error: 'message_not_allowed', message });
+    return false;
+  };
+  const registrarIniciativa = async (de: string, para: string, referencia: string = randomUUID()) => {
+    if (de === para) return;
+    await db.run("INSERT INTO casa_eventos (id, noite, sala, tipo, user_id, outro_id, created_at) VALUES (?, ?, NULL, 'contato_iniciado', ?, ?, ?) ON CONFLICT(id) DO NOTHING", [`contato:${referencia}:${de}`, chaveDaNoite, de, para, new Date().toISOString()]);
+    await db.persist();
+  };
+
   // Salão chama a turma para a sala quente mais animada (no máximo a cada 20 min).
   let ultimaChamadaDoSalao = 0;
   const chamarParaSalaQuente = (salao: Sala) => {
@@ -2075,7 +2088,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       void (async () => {
         await db.run('DELETE FROM casa_midia_vistas WHERE mensagem_id IN (SELECT id FROM casa_mensagens WHERE created_at < ?)', [limite]);
         await db.run('DELETE FROM casa_mensagens WHERE created_at < ?', [limite]);
-        await db.run('DELETE FROM casa_eventos WHERE created_at < ?', [limite]);
+        await db.run("DELETE FROM casa_eventos WHERE created_at < ? AND tipo <> 'contato_iniciado'", [limite]);
         await db.run('DELETE FROM casa_reservas WHERE created_at < ?', [limite]);
       })().catch((e) => console.error('[casa] limpeza do histórico', e));
     }
@@ -3048,6 +3061,12 @@ Sala: ${salaId}`).catch(() => {});
     const resposta = respondida && respondida.tipo !== 'sistema' && respondida.tipo !== 'promotor' && !respondida.autor?.id.startsWith('promotor:')
       ? { id: respondida.id, nome: respondida.autor?.nome ?? 'Lola', trecho: respondida.tipo === 'midia' ? (respondida.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondida.texto.slice(0, 80) }
       : undefined;
+    const contatos = new Set(quemFoiMarcado(texto, [...sala.presentes.values()]).map((alvo) => alvo.id));
+    const autorRespondido = respondida?.autor ? acharPublico(sala, respondida.autor.id) : undefined;
+    if (autorRespondido) contatos.add(autorRespondido.id);
+    contatos.delete(p.id);
+    for (const alvoId of contatos) if (!(await contatoPermitido(res, p.id, alvoId))) return;
+    for (const alvoId of contatos) await registrarIniciativa(p.id, alvoId);
     const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
     moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id), contextoDe(sala.mensagens, publicada.id));
     void avisarMarcados(sala, p, texto);
@@ -3109,10 +3128,17 @@ Sala: ${salaId}`).catch(() => {});
     const emoji = String((req.body as any)?.emoji || '');
     const msg = sala.mensagens.find((m) => m.id === String((req.body as any)?.mensagemId || ''));
     if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema') { res.status(400).json({ error: 'reacao' }); return; }
+    const autor = msg.autor ? acharPublico(sala, msg.autor.id) : undefined;
+    const removendo = msg.reacoes?.[emoji]?.includes(p.idPublico);
+    if (autor && autor.id !== p.id && !removendo && !(await contatoPermitido(res, p.id, autor.id))) return;
     msg.reacoes ??= {};
     const lista = msg.reacoes[emoji] ?? [];
     msg.reacoes[emoji] = lista.includes(p.idPublico) ? lista.filter((x) => x !== p.idPublico) : [...lista, p.idPublico];
     if (msg.reacoes[emoji].length === 0) delete msg.reacoes[emoji];
+    if (autor && autor.id !== p.id) {
+      if (Object.values(msg.reacoes).some((ids) => ids.includes(p.idPublico))) await registrarIniciativa(p.id, autor.id, msg.id);
+      else { await db.run('DELETE FROM casa_eventos WHERE id = ?', [`contato:${msg.id}:${p.id}`]); await db.persist(); }
+    }
     // Reagir também é responder: quem falou já não está sozinho.
     oiFoiRespondido(sala, msg.id, p.id);
     emitirParaSala(sala, 'casa.reacao', { sala: sala.id, mensagemId: msg.id, reacoes: msg.reacoes });
@@ -3225,6 +3251,7 @@ Sala: ${salaId}`).catch(() => {});
     if (minhas.length >= 3) { res.status(429).json({ error: 'muitas', message: 'Você já tem 3 desafios esperando resposta.' }); return; }
     if (minhas.some((x) => x.para === alvo.id)) { res.status(409).json({ error: 'repetida', message: 'Você já tem um desafio esperando essa pessoa.' }); return; }
     if (await bloqueados(userId, alvo.id)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    if (!(await contatoPermitido(res, userId, alvo.id))) return;
     const id = randomUUID();
     const pago = await deps.debitar(userId, tokens, 'casa_desafio_reservado', `casa-proposta-${id}`);
     if (!pago) { res.status(402).json({ error: 'insufficient_tokens', message: `Você não tem ${tokens} tokens.` }); return; }
@@ -3521,6 +3548,7 @@ Sala: ${salaId}`).catch(() => {});
     const ultimo = p.olhares.get(`bater:${alvo.id}`) ?? 0;
     if (Date.now() - ultimo < 3 * 60_000) { res.status(429).json({ error: 'devagar', message: 'Espere um pouco antes de bater de novo 😏' }); return; }
     if (await bloqueados(userId, alvo.id)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    if (!(await contatoPermitido(res, userId, alvo.id))) return;
     p.olhares.set(`bater:${alvo.id}`, Date.now());
     emitirPara(alvo.id, 'casa.batida', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat } });
     res.json({ ok: true });
@@ -3560,6 +3588,7 @@ Sala: ${salaId}`).catch(() => {});
     if (sala.anonima || destino.anonima || destino.semHomens) { res.status(400).json({ error: 'destino', message: 'Essa sala não aceita convite.' }); return; }
     if (trancada(destino, noite)) { res.status(409).json({ error: 'trancada', message: `O ${destino.nome} ainda não abriu.` }); return; }
     if (await bloqueados(userId, alvo.id)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    if (!(await contatoPermitido(res, userId, alvo.id))) return;
     convitesDeSala.set(alvo.id, { sala: destino.id, ate: Date.now() + 5 * 60_000 });
     emitirPara(alvo.id, 'casa.convite.sala', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, sala: destino.id, nome: `${destino.emoji} ${destino.nome}` });
     avisarSeFora(alvo.id, `🎟️ ${p.nome} te chamou para o ${destino.nome}!`, 'Você entra sem fila nos próximos 5 minutos 😈');
@@ -3577,6 +3606,7 @@ Sala: ${salaId}`).catch(() => {});
     const ultimo = p.olhares.get(paraId) ?? 0;
     if (Date.now() - ultimo < 10 * 60_000) { res.json({ ok: true, repetido: true }); return; }
     if (await bloqueados(userId, paraId)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    if (!(await contatoPermitido(res, userId, paraId))) return;
     p.olhares.set(paraId, Date.now());
     const devolveu = (alvo.olhares.get(userId) ?? 0) > Date.now() - 20 * 60_000;
     if (devolveu) {
@@ -3608,6 +3638,7 @@ Sala: ${salaId}`).catch(() => {});
       if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
     }
     if (await bloqueados(userId, paraId)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    if (!(await contatoPermitido(res, userId, paraId))) return;
     const pagou = await deps.transferirTokens(userId, paraId, drink.tokens, `casa-drink-${randomUUID()}`);
     if (!pagou) { res.status(402).json({ error: 'insufficient_tokens', message: `${drink.nome[0].toUpperCase()}${drink.nome.slice(1)} custa ${drink.tokens} tokens.` }); return; }
     publicarMsg(sala, { tipo: 'sistema', texto: `${drink.emoji} ${p.nome} pagou ${drink.nome} pra ${alvo.nome} 😏`, efeito: drinkId });
@@ -3642,8 +3673,10 @@ Sala: ${salaId}`).catch(() => {});
     if (!p.podeFalar) { res.status(403).json({ error: 'premium_required' }); return; }
     if (Date.now() - p.ultimoConvite < 45_000) { res.status(429).json({ error: 'devagar', message: 'Espere um pouquinho antes de chamar de novo.' }); return; }
     if (await bloqueados(userId, paraId)) { res.status(404).json({ error: 'fora_da_sala', message: 'Essa pessoa não está disponível.' }); return; }
+    if (!(await contatoPermitido(res, userId, paraId))) return;
     p.ultimoConvite = Date.now();
     const id = randomUUID();
+    await registrarIniciativa(userId, paraId);
     convites.set(id, { de: userId, para: paraId, sala: sala.id, criadoEm: Date.now() });
     emitirPara(paraId, 'casa.convite', { id, de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, sala: sala.nome });
     avisarSeFora(paraId, `🚪 ${p.nome} te chamou pra cabine na Casa!`, 'Toque para abrir a Casa e responder.');
@@ -4133,6 +4166,7 @@ Sala: ${salaId}`).catch(() => {});
       return;
     }
     if (!sala || !de || !eu || (await bloqueados(c.de, userId))) { res.status(409).json({ error: 'indisponivel', message: 'A pessoa saiu da sala.' }); return; }
+    await registrarIniciativa(userId, c.de);
     const cab = criarCabine(sala, de, eu);
     lolaExtra(sala, `🚪 ${de.nome} e ${eu.nome} foram pra cabine 🔥`);
     res.json({ ok: true, cabineId: cab.id, com: de.nome });
@@ -4205,6 +4239,7 @@ Sala: ${salaId}`).catch(() => {});
       ? { id: respondida.id, nome: respondida.autor?.nome ?? 'Lola', trecho: respondida.tipo === 'midia' ? (respondida.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondida.texto.slice(0, 80) }
       : undefined;
     const publicada = msgCabine(c, { tipo: 'pessoa', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat }, texto, ...(resposta ? { resposta } : {}) });
+    for (const id of c.membros.keys()) if (id !== userId) await registrarIniciativa(userId, id);
     // Conversa quente sobe o tesão da cabine (é o que a Lola usa para liberar os níveis).
     const antesDoCalor = c.calor;
     aquecer(c, PALAVRAS_QUENTES.test(texto) ? 5 : 1);
@@ -4512,6 +4547,7 @@ Sala: ${salaId}`).catch(() => {});
     if (!p && [...salas.values()].some((s) => s.espiando.has(userId))) { res.status(403).json({ error: 'premium_required', message: 'Assine para entrar nas cabines.' }); return; }
     if (!p) { res.status(409).json({ error: 'entre_na_casa', sala: sala.id, message: 'Entre numa sala da Casa para pedir.' }); return; }
     for (const id of c.membros.keys()) if (await bloqueados(userId, id)) { res.status(404).json({ error: 'fora' }); return; }
+    for (const id of c.membros.keys()) if (!(await contatoPermitido(res, userId, id))) return;
     if (c.membros.size >= MAX_NA_CABINE) { res.status(409).json({ error: 'lotada', message: 'A cabine está cheia.' }); return; }
     if (c.semPedidos && !c.aberta) { res.status(409).json({ error: 'sem_pedidos', message: 'Essa cabine não está aceitando pedidos agora 😉' }); return; }
     if (!c.entradas.has(userId) && Date.now() - (c.pedidosEm.get(userId) ?? 0) < 10 * 60_000) {
@@ -4579,9 +4615,11 @@ Sala: ${salaId}`).catch(() => {});
     if (!alvo.podeFalar) { res.status(409).json({ error: 'nao_pode', message: 'Essa pessoa está só espiando a Casa.' }); return; }
     if (c.membros.size >= MAX_NA_CABINE) { res.status(409).json({ error: 'lotada', message: 'A cabine está cheia.' }); return; }
     for (const id of c.membros.keys()) if (await bloqueados(alvo.id, id)) { res.status(404).json({ error: 'fora' }); return; }
+    for (const id of c.membros.keys()) if (!(await contatoPermitido(res, id, alvo.id))) return;
     const existente = c.entradas.get(alvo.id);
     const e: Entrada = existente ?? { tipo: 'convite', pessoa: membroDe(alvo), aprovados: new Set(), convidadoAceitou: false, criadoEm: Date.now() };
     if (quemDecide(c).includes(userId)) e.aprovados.add(userId);
+    await registrarIniciativa(userId, alvo.id);
     c.entradas.set(alvo.id, e);
     const decidem = quemDecide(c);
     msgCabine(c, { tipo: 'sistema', texto: `${m.nome} quer convidar ${alvo.nome} (${decidem.filter((id) => e.aprovados.has(id)).length}/${decidem.length} aprovaram)` });
@@ -4615,6 +4653,7 @@ Sala: ${salaId}`).catch(() => {});
       return;
     }
     e.aprovados.add(userId);
+    await registrarIniciativa(userId, alvoId);
     if (e.tipo === 'convite' && todosQueDecidemAprovaram(c, e) && !e.convidadoAceitou) {
       emitirPara(alvoId, 'casa.cabine.convite', { cabineId: c.id, membros: [...c.membros.values()].map((x) => x.nome) });
     }
@@ -4637,6 +4676,7 @@ Sala: ${salaId}`).catch(() => {});
       return;
     }
     e.convidadoAceitou = true;
+    for (const id of c.membros.keys()) await registrarIniciativa(userId, id);
     tentarEntrar(c, userId);
     avisarCabine(c);
     res.json({ ok: true, cabine: c.membros.has(userId) ? cabinePublica(c, userId) : null });

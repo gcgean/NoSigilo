@@ -1030,7 +1030,13 @@ export type PromoterStats = { invitesSent: number; totalSignups: number; totalSu
 export type PromoterReferredStatus = 'subscriber' | 'trial' | 'expired' | 'deactivated' | 'banned';
 export type PromoterReferredUser = { id: string; name: string; avatar: string | null; status: PromoterReferredStatus; joinedAt: string; licenseEndAt: string | null };
 
+export type PromoterHistory = { month: string; commissionCents: number; subscriptions: number; signups: number };
+export type PromoterAsset = { id: string; title: string; caption: string; destination: 'community' | 'casa'; createdAt: string; url: string; mimeType: string; processing: boolean; isNew: boolean };
 export const promoterService = {
+  assets: async (): Promise<{ assets: PromoterAsset[]; newCount: number }> => (await apiClient.get('/promoter/assets')).data,
+  markAssetsSeen: async (ids: string[]) => (await apiClient.post('/promoter/assets/seen', { ids })).data,
+  publishAsset: async (data: { title: string; caption: string; mediaId: string; destination: 'community' | 'casa' }) => (await apiClient.post('/admin/promoter-assets', data)).data,
+  removeAsset: async (id: string) => (await apiClient.delete(`/admin/promoter-assets/${encodeURIComponent(id)}`)).data,
   // Posição do próprio promotor no ranking do mês (sem expor os outros).
   minhaPosicao: async (): Promise<{ posicao: number | null; total: number; periodo: string }> => {
     const response = await apiClient.get('/promoter/ranking');
@@ -1057,7 +1063,7 @@ export const promoterService = {
     const response = await apiClient.get('/promoter/profile');
     return response.data;
   },
-  getDashboard: async (): Promise<{ promoter: PromoterProfile; stats: PromoterStats; commissions: PromoterCommission[]; referredUsers: PromoterReferredUser[]; referredCounts: Record<string, number> }> => {
+  getDashboard: async (): Promise<{ promoter: PromoterProfile; stats: PromoterStats; history: PromoterHistory[]; commissions: PromoterCommission[]; referredUsers: PromoterReferredUser[]; referredCounts: Record<string, number> }> => {
     const response = await apiClient.get('/promoter/dashboard');
     return response.data;
   },

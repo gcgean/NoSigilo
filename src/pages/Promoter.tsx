@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import PromoterPerformance from '@/components/PromoterPerformance';
+import PromoterAssetsNotice from '@/components/PromoterAssetsNotice';
+import type { PromoterHistory } from '@/services/api';
 import NomePerfil from '@/components/NomePerfil';
 import {
   AlertCircle,
@@ -73,6 +76,7 @@ export default function Promoter() {
   const [saindo, setSaindo] = useState(false);
   const [confirmandoSaida, setConfirmandoSaida] = useState(false);
   const [stats, setStats] = useState<PromoterStats | null>(null);
+  const [history, setHistory] = useState<PromoterHistory[]>([]);
   const [posicaoRanking, setPosicaoRanking] = useState<{ posicao: number | null; total: number } | null>(null);
   useEffect(() => {
     promoterService.minhaPosicao().then(setPosicaoRanking).catch(() => setPosicaoRanking(null));
@@ -117,6 +121,7 @@ export default function Promoter() {
           invitesService.listMine().catch(() => []),
         ]);
         setStats(dash.stats);
+        setHistory(dash.history ?? []);
         setCommissions(dash.commissions);
         setReferredUsers(dash.referredUsers ?? []);
         setSupportMessages(supportData.messages);
@@ -543,6 +548,9 @@ export default function Promoter() {
             </Button>
           </div>
         </div>
+
+        <PromoterAssetsNotice />
+        {stats && <PromoterPerformance stats={stats} history={history} />}
 
         {/* Share invite */}
         {inviteUrl && (
