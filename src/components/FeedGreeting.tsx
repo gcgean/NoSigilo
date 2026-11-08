@@ -64,7 +64,7 @@ export default function FeedGreeting({ userName, summary }: { userName?: string 
   const [now, setNow] = useState(() => new Date());
   // Aparece só na primeira abertura do feed no dia; nas outras some (o dono
   // pediu: a saudação repetida a cada visita virava ruído).
-  const [jaViuHoje] = useState(() => {
+  const [jaViuHoje, setJaViuHoje] = useState(() => {
     const hoje = new Date().toLocaleDateString('sv-SE');
     try {
       const visto = localStorage.getItem('nosigilo:saudacao-do-dia') === hoje;
@@ -76,6 +76,13 @@ export default function FeedGreeting({ userName, summary }: { userName?: string 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 5 * 60 * 1000);
     return () => clearInterval(t);
+  }, []);
+  // App que fica aberto em segundo plano: ao sair, o tema já foi visto e não
+  // volta a aparecer quando a pessoa retorna horas depois.
+  useEffect(() => {
+    const aoSair = () => { if (document.visibilityState === 'hidden') setJaViuHoje(true); };
+    document.addEventListener('visibilitychange', aoSair);
+    return () => document.removeEventListener('visibilitychange', aoSair);
   }, []);
 
   const theme = useMemo(() => DAY_THEMES[now.getDay()] ?? DAY_THEMES[0], [now]);
