@@ -250,7 +250,6 @@ export default function Events() {
       const result = await profileService.uploadMedia(file, { isPrivate: false });
       if (result?.url) {
         setNewEvent(prev => ({ ...prev, image: result.url }));
-        toast({ title: 'Imagem enviada', description: 'Capa do evento atualizada com sucesso.' });
       }
     } catch (error) {
       toast({ 

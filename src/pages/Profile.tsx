@@ -696,7 +696,6 @@ export default function Profile() {
     try {
       await profileService.deleteMedia(mediaId);
       setMyVideos((prev) => prev.filter((v) => v.id !== mediaId));
-      toast({ title: 'Vídeo removido' });
     } catch {
       toast({ title: 'Falha ao remover', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -826,7 +825,6 @@ export default function Profile() {
     try {
       setIsUploading(true);
       await profileService.uploadMedia(file, { isPrivate: false });
-      toast({ title: 'Foto enviada', description: 'Sua foto foi adicionada à galeria.' });
       await loadPhotos();
     } catch (e: any) {
       toast({ title: 'Falha ao enviar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
@@ -867,7 +865,6 @@ export default function Profile() {
       await profileService.updateProfile({ bio: nextBio || null });
       updateUser({ bio: nextBio || '' });
       setIsEditingBio(false);
-      toast({ title: 'Descrição atualizada' });
     } catch (e: any) {
       toast({ title: 'Falha ao salvar descrição', description: e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -941,7 +938,6 @@ export default function Profile() {
     try {
       setIsUploading(true);
       await profileService.uploadMedia(file, { isPrivate: true });
-      toast({ title: 'Foto privada enviada', description: 'Sua foto privada foi enviada com sucesso.' });
       await loadPhotos();
     } catch (e: any) {
       toast({ title: 'Falha ao enviar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
@@ -962,7 +958,6 @@ export default function Profile() {
         const nextAvatar = uploaded?.url ? resolveMediaUrl(String(uploaded.url)) : resp?.avatar ? resolveMediaUrl(String(resp.avatar)) : '';
         if (nextAvatar) updateUser({ avatar: nextAvatar });
       }
-      toast({ title: 'Foto de perfil atualizada' });
       await loadPhotos();
       if (firstAccessPhotoMode && user?.id) {
         const key = `nosigilo:first-access-flow:${user.id}`;
@@ -985,7 +980,6 @@ export default function Profile() {
       const resp = await profileService.setMainPhoto(mediaId);
       if (resp?.avatar) updateUser({ avatar: resolveMediaUrl(String(resp.avatar)) });
       await loadPhotos();
-      toast({ title: 'Foto principal atualizada' });
     } catch {
       toast({ title: 'Falha ao atualizar', description: 'Tente novamente.', variant: 'destructive' });
     }
@@ -997,7 +991,6 @@ export default function Profile() {
       await profileService.deleteMedia(mediaId);
       await loadPhotos();
       if (wasMain) updateUser({ avatar: undefined });
-      toast({ title: 'Foto removida' });
     } catch {
       toast({ title: 'Falha ao remover', description: 'Tente novamente.', variant: 'destructive' });
     }
@@ -2198,7 +2191,6 @@ export default function Profile() {
           try {
             const r = await feedService.setTemasVideo(alvo.postId, temas);
             setMyVideos((prev) => prev.map((v) => (v.postId === alvo.postId ? { ...v, temas: r.temas } : v)));
-            toast({ title: 'Tema do vídeo salvo' });
           } catch {
             toast({ title: 'Não foi possível salvar o tema', variant: 'destructive' });
           }

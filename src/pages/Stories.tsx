@@ -2049,7 +2049,6 @@ export default function Stories() {
     setDeleting(storyId);
     try {
       await storiesService.remove(storyId);
-      toast({ title: 'Story removido' });
       await load();
     } catch {
       toast({ title: 'Erro ao remover', variant: 'destructive' });

@@ -85,7 +85,6 @@ export default function FriendsPage() {
     try {
       await friendsService.removeFriend(friendId);
       setFriends(prev => prev.filter(f => f.id !== friendId));
-      toast({ title: `${friendName} removido(a) dos amigos` });
     } catch {
       toast({ title: 'Erro ao remover amigo', variant: 'destructive' });
     }

@@ -125,7 +125,6 @@ export default function ProfilePostCard({
       const r = await feedService.updatePost(post.id, novo);
       setTexto(r.content);
       setEditando(false);
-      toast({ title: 'Publicação atualizada' });
     } catch {
       toast({ title: 'Não foi possível salvar', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -137,7 +136,6 @@ export default function ProfilePostCard({
     setExcluindo(true);
     try {
       await feedService.deletePost(post.id);
-      toast({ title: 'Publicação removida' });
       setConfirmarExclusao(false);
       onRemovido?.(post.id);
     } catch {

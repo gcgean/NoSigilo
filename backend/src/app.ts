@@ -9326,8 +9326,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     await persist();
     if (myReaction !== null && myReaction !== 'hot') await awardTokens(db, likerId, 'like', storyId, req.app.get('io'));
-    // Notifica o dono do story quando alguém reage (não no toggle-off nem no próprio story)
-    if (myReaction !== null && String(story.user_id) !== likerId) {
+    // Notifica o dono do story quando alguém reage (não no toggle-off nem no próprio story).
+    // Trocar de emoji não avisa de novo; só a troca para Coração Quente (que é paga).
+    const reacaoNova = !existing || myReaction === 'hot';
+    if (myReaction !== null && reacaoNova && String(story.user_id) !== likerId) {
       try {
         const io = req.app.get('io') as SocketIOServer | undefined;
         const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [likerId])) as any;
@@ -13170,6 +13172,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const st = String(existing.status);
       if (st === 'approved') {
         res.json({ id: String(existing.id), status: 'approved' });
+        return;
+      }
+      // Já está pendente: pedir de novo não avisa o dono outra vez.
+      if (st === 'pending') {
+        res.json({ id: String(existing.id), status: 'pending' });
         return;
       }
       await run(db, 'UPDATE private_photo_access_requests SET status = ?, updated_at = ? WHERE id = ?', ['pending', now, String(existing.id)]);

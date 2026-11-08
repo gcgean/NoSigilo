@@ -1632,6 +1632,15 @@ describe('nosigilo backend', () => {
     expect(notif).toBeTruthy();
     expect(notif.data.requesterId).toBe(viewerId);
 
+    // Pedir de novo enquanto está pendente não avisa o dono outra vez.
+    await request(ctx.app)
+      .post('/api/private-photos/requests')
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .send({ userId: ownerId })
+      .expect(200);
+    const depoisDoRepeteco = await request(ctx.app).get('/api/notifications').set('Authorization', `Bearer ${ownerToken}`).expect(200);
+    expect(depoisDoRepeteco.body.filter((n: any) => n.type === 'private_photos.request')).toHaveLength(1);
+
     const pendingList = await request(ctx.app)
       .get('/api/private-photos/requests')
       .set('Authorization', `Bearer ${ownerToken}`)

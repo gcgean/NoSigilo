@@ -435,7 +435,6 @@ export default function Settings() {
       await profileService.deleteMedia(fotoParaExcluir.id);
       if (fotoParaExcluir.isMain) updateUser({ avatar: undefined });
       await loadPhotos();
-      toast({ title: 'Foto removida' });
       setFotoParaExcluir(null);
     } catch {
       toast({ title: 'Não foi possível remover', description: 'Tente novamente.', variant: 'destructive' });
@@ -449,7 +448,6 @@ export default function Settings() {
     try {
       await profileService.deleteMedia(mediaId);
       setMyVideos((prev) => prev.filter((v) => v.id !== mediaId));
-      toast({ title: 'Vídeo removido', description: 'O vídeo foi excluído do seu perfil.' });
     } catch {
       toast({ title: 'Erro ao remover', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -475,7 +473,6 @@ export default function Settings() {
       }
       if (mediaId) await profileService.setMainPhoto(mediaId);
       if (url) updateUser({ avatar: resolveMediaUrl(url) });
-      toast({ title: 'Foto de perfil atualizada' });
       await loadPhotos();
     } catch (e: any) {
       toast({ title: 'Falha ao atualizar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
@@ -488,7 +485,6 @@ export default function Settings() {
     try {
       setIsUploading(true);
       await profileService.uploadMedia(file, { isPrivate: true });
-      toast({ title: 'Foto privada enviada' });
       await loadPhotos();
     } catch (e: any) {
       toast({ title: 'Falha ao enviar', description: e?.message || 'Tente novamente.', variant: 'destructive' });

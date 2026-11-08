@@ -749,7 +749,6 @@ export default function Casa() {
     try {
       await apiClient.post(`/casa/${salaAtual}/mensagem/${m.id}/apagar`);
       setEstado((e) => e ? { ...e, mensagens: e.mensagens.filter((x) => x.id !== m.id) } : e);
-      toast({ title: 'Apagado 🗑️' });
     } catch (e) { toast({ title: erroDe(e, 'Não foi possível apagar.') }); }
   };
   const reagir = async (m: Msg, emoji: string) => {
@@ -1816,7 +1815,7 @@ export default function Casa() {
                     const minha = (reacoesAgora?.[e] ?? []).includes(meuId);
                     return (
                       <button key={e} type="button"
-                        onClick={() => { const m = vendo.msg!; void reagir(m, e); toast({ title: `${e} enviado pra ${m.autor?.nome ?? 'a pessoa'}` }); }}
+                        onClick={() => { void reagir(vendo.msg!, e); }}
                         className={cn('rounded-full px-1.5 py-1 text-lg transition hover:scale-110 sm:px-2.5 sm:py-1.5 sm:text-xl', minha ? 'bg-fuchsia-600/70' : 'bg-white/15')}>{e}</button>
                     );
                   })}

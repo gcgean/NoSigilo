@@ -647,7 +647,6 @@ export default function Chat() {
       );
       setSelectedChat(null);
       setMessages([]);
-      toast({ title: 'Marcada como não lida' });
     } catch {
       toast({ title: 'Erro ao marcar como não lida', variant: 'destructive' });
     }
@@ -1284,7 +1283,6 @@ export default function Chat() {
       setSelectedChat(null);
       setMessages([]);
       setConfirmDeleteConv(false);
-      toast({ title: 'Conversa apagada' });
     } catch {
       setConfirmDeleteConv(false);
       toast({ title: 'Erro ao apagar conversa', variant: 'destructive' });
@@ -1312,7 +1310,6 @@ export default function Chat() {
       await chatService.deleteConversation(convId);
       setConversations(prev => prev.filter(c => c.id !== convId));
       if (selectedChat === convId) { setSelectedChat(null); setMessages([]); }
-      toast({ title: 'Conversa apagada' });
     } catch {
       toast({ title: 'Erro ao apagar conversa', variant: 'destructive' });
     }
@@ -1347,7 +1344,6 @@ export default function Chat() {
         )
       );
       setHighlightDialogOpen(false);
-      toast({ title: 'Conversa destacada' });
       void loadConversations();
     } catch {
       toast({ title: 'Erro ao destacar conversa', description: 'Tente novamente.', variant: 'destructive' });
@@ -1369,7 +1365,6 @@ export default function Chat() {
             : conversation
         )
       );
-      toast({ title: 'Destaque removido' });
       void loadConversations();
     } catch {
       toast({ title: 'Erro ao remover destaque', description: 'Tente novamente.', variant: 'destructive' });
@@ -2007,7 +2002,6 @@ export default function Chat() {
                           try {
                             await matchService.like(alvo);
                             setIsFollowingFromChat(true);
-                            toast({ title: 'Perfil curtido' });
                           } catch (err) {
                             const status = (err as { response?: { status?: number } })?.response?.status;
                             if (status === 403) redirectToPlans();

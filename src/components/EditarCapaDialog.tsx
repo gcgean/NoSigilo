@@ -51,7 +51,6 @@ export default function EditarCapaDialog({
     try {
       const r = await capaService.salvar({ mediaIds: automatico ? [] : escolhidas, borrada });
       aoSalvar(r);
-      toast({ title: 'Capa atualizada' });
       aoFechar();
     } catch {
       toast({ title: 'Não foi possível salvar a capa', variant: 'destructive' });

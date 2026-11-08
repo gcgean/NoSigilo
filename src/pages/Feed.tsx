@@ -2811,7 +2811,6 @@ export default function Feed() {
                               onClick={async () => {
                                 try {
                                   await experienceService.delete(experience.id);
-                                  toast({ title: 'Experiência removida' });
                                   await reloadExperiences();
                                 } catch {
                                   toast({ title: 'Falha ao remover', description: 'Tente novamente.', variant: 'destructive' });
@@ -3255,7 +3254,6 @@ export default function Feed() {
                           onClick={async () => {
                             try {
                               await feedService.deletePost(item.post.id);
-                              toast({ title: 'Publicação removida' });
                               await reload();
                             } catch {
                               toast({ title: 'Falha ao remover', description: 'Tente novamente.', variant: 'destructive' });
@@ -4038,7 +4036,6 @@ export default function Feed() {
           try {
             const r = await feedService.setTemasVideo(post.id, temas);
             setAllPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, temas: r.temas } : p)));
-            toast({ title: 'Tema do vídeo salvo' });
           } catch {
             toast({ title: 'Não foi possível salvar o tema', variant: 'destructive' });
           }
