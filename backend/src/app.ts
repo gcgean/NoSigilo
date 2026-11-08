@@ -12932,8 +12932,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       db,
       `SELECT u.created_at, u.last_seen_at,
         (SELECT COUNT(*) FROM media m WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'image/%' AND (m.source IS NULL OR m.source != 'chat')) as photos_count,
-        (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id) as likes_received,
-        (SELECT COUNT(*) FROM conversations c WHERE (c.user_a_id = u.id OR c.user_b_id = u.id) AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id LIMIT 1)) as conversations_count
+        (SELECT COUNT(*) FROM (SELECT 1 FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id LIMIT ${BADGE_THRESHOLDS.popular.likes}) t) as likes_received,
+        (SELECT COUNT(*) FROM (SELECT 1 FROM conversations c WHERE (c.user_a_id = u.id OR c.user_b_id = u.id) AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id) LIMIT ${BADGE_THRESHOLDS.connected.convs}) t) as conversations_count
        FROM users u WHERE u.id = ? LIMIT 1`,
       [userId]
     )) as any;
@@ -13995,16 +13995,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           FROM media m
           WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'video/%' AND (m.source IS NULL OR m.source != 'chat')
         ) as videos_count,
+        -- Contagens só até o limite do selo (Popular: 10 curtidas; Conectado: 3
+        -- conversas): é só para o selo, e contar tudo de perfil famoso era a
+        -- consulta que mais pesava no banco (~60 ms de 100 cards → ~10 ms).
         (
-          SELECT COUNT(*)
-          FROM likes l2
-          WHERE l2.target_type = 'user' AND l2.target_id = u.id
+          SELECT COUNT(*) FROM (
+            SELECT 1 FROM likes l2
+            WHERE l2.target_type = 'user' AND l2.target_id = u.id
+            LIMIT ${BADGE_THRESHOLDS.popular.likes}
+          ) t
         ) as likes_received,
         (
-          SELECT COUNT(*)
-          FROM conversations c
-          WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
-            AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id LIMIT 1)
+          SELECT COUNT(*) FROM (
+            SELECT 1 FROM conversations c
+            WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
+              AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id)
+            LIMIT ${BADGE_THRESHOLDS.connected.convs}
+          ) t
         ) as conversations_count
            FROM users u WHERE u.id IN (${escolhidos.map(() => '?').join(', ')})`,
         escolhidos

@@ -591,6 +591,26 @@ describe('nosigilo backend', () => {
     expect(sugAudiencePriority.body[0]?.gender).toContain('Casal');
   });
 
+  it('selos Popular e Conectado continuam saindo com a contagem limitada', async () => {
+    const alvo = await registerInvitedUser(ctx, sponsorToken, { name: 'Selo Popular', email: 'selo-popular@example.com', password: 'senha123', gender: 'Mulher' });
+    const alvoId = String(alvo.user.id);
+    const agora = new Date().toISOString();
+    const semSelo = await request(ctx.app).get(`/api/users/${alvoId}/badges`).set('Authorization', `Bearer ${alvo.token}`).expect(200);
+    expect(semSelo.body.badges).not.toContain('popular');
+    expect(semSelo.body.badges).not.toContain('connected');
+    for (let i = 0; i < 12; i++) {
+      await run(ctx.db, 'INSERT INTO likes (id, user_id, target_type, target_id, reaction, created_at) VALUES (?, ?, ?, ?, ?, ?)', [`selo-like-${i}`, `fa-${i}`, 'user', alvoId, 'like', agora]);
+    }
+    for (let i = 0; i < 4; i++) {
+      await run(ctx.db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [`selo-conv-${i}`, alvoId, `par-${i}`, agora]);
+      await run(ctx.db, 'INSERT INTO messages (id, conversation_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)', [`selo-msg-${i}`, `selo-conv-${i}`, `par-${i}`, 'oi', agora]);
+    }
+    await ctx.db.persist();
+    const comSelo = await request(ctx.app).get(`/api/users/${alvoId}/badges`).set('Authorization', `Bearer ${alvo.token}`).expect(200);
+    expect(comSelo.body.badges).toContain('popular');
+    expect(comSelo.body.badges).toContain('connected');
+  });
+
   it('match cards hide liked/passed profiles and liked list returns liked users', async () => {
     const me = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Matcher',
