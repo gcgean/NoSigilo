@@ -756,6 +756,8 @@ export default function Casa() {
   };
   // Tocar no nome ou na foto de quem escreveu abre o mesmo menu da lista de presentes.
   const abrirAutor = (autor: Msg['autor']) => {
+    // Promotor da Casa: só conversa com outros promotores (sem menu de ações).
+    if (autor?.id.startsWith('promotor:')) { toast({ title: '🎤 Promotor da Casa', description: 'Anima a pista e conversa só com outros promotores.' }); return; }
     if (!autor || !estado) return;
     const pessoa = estado.presentes.find((x) => x.id === autor.id);
     if (pessoa) setPessoaAberta(pessoa);
@@ -1130,6 +1132,7 @@ export default function Casa() {
     return `· ${ROTULO_CAT[autor.cat]}${cidade ? ` · ${cidade}` : ''}`;
   };
   const AcoesDaMsg = ({ m }: { m: Msg }) => {
+    if (m.autor?.id.startsWith('promotor:')) return null;
     const reacoes = Object.entries(m.reacoes ?? {}).filter(([, ids]) => ids.length > 0);
     return (
       <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -1339,7 +1342,7 @@ export default function Casa() {
           <div key={m.id} className="flex items-start gap-2">
             {m.autor && <button type="button" onClick={() => abrirAutor(m.autor)} aria-label={`Abrir ${m.autor.nome}`}><Avatar p={m.autor} tamanho="h-7 w-7" comStory={comStoryNovo.has(m.autor.id)} /></button>}
             <div className="min-w-0">
-              <button type="button" onClick={() => abrirAutor(m.autor)} className="block text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span></button>
+              <button type="button" onClick={() => abrirAutor(m.autor)} className="block text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} {m.autor?.id.startsWith('promotor:') ? <span className="opacity-70" title="Promotor da Casa">🎤</span> : <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span>}</button>
               {(() => {
                 const minha = m.autor?.id === (estado.eu.idPublico ?? user?.id);
                 const vista = estado.midiasVistas.includes(m.id);

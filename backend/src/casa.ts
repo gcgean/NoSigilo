@@ -1414,6 +1414,27 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       clearTimeout(timer);
     }
   };
+  // Mídia já postada por promotor nesta noite (não repete a mesma foto).
+  const midiasDePromotorUsadas = new Set<string>();
+  const postarMidiaDoPromotor = async (sala: Sala, quem: Promotor, chaveNoite: string) => {
+    const opcoes = (await db.queryAll(
+      `SELECT id, mime_type FROM media
+        WHERE user_id = ? AND COALESCE(is_private, 0) = 0 AND (source IS NULL OR source <> 'chat')
+          AND (mime_type LIKE 'image/%' OR mime_type LIKE 'video/%')`,
+      [quem.id],
+    )) as any[];
+    const livres = opcoes.filter((m) => !midiasDePromotorUsadas.has(`${chaveNoite}:${m.id}`));
+    if (livres.length === 0) return false;
+    const m = sortear(livres);
+    midiasDePromotorUsadas.add(`${chaveNoite}:${m.id}`);
+    const tipo: 'foto' | 'video' = String(m.mime_type || '').startsWith('video/') ? 'video' : 'foto';
+    publicarMsg(sala, {
+      tipo: 'midia', autor: autorPromotor(quem),
+      texto: tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única',
+      midia: { tipo },
+    }, String(m.id));
+    return true;
+  };
   const animarComPromotores = async (sala: Sala, agora: number, chaveNoite: string) => {
     if (sala.anonima || guardada(sala) || sala.jogo || !SALAS_DOS_PROMOTORES.includes(sala.id)) return;
     if (SALAS_EXTRAS.includes(sala.id) && !liberadas.has(`${chaveNoite}:${sala.id}`)) return;
@@ -1446,6 +1467,13 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       ocupadosAte.set(d.b.id, agora + 20 * 60_000);
       publicarMsg(sala, { tipo: 'sistema', texto: `🚪 ${d.a.nome} e ${d.b.nome} foram pra cabine 🔥` });
       return;
+    }
+    // Na 3ª e na 7ª vez, quem é da vez solta uma foto ou vídeo da própria galeria, em
+    // visualização única (abre pelo mesmo /ver de qualquer mídia da sala).
+    if (d.falas === 2 || d.falas === 6) {
+      const quemPosta = d.falas === 2 ? d.a : d.b;
+      d.falas += 1;
+      if (await postarMidiaDoPromotor(sala, quemPosta, chaveNoite)) return;
     }
     // De vez em quando, um drink entre eles (sem tokens: não é dinheiro de ninguém).
     if (d.falas === 4 || d.falas === 8) {
@@ -2973,7 +3001,7 @@ Sala: ${salaId}`).catch(() => {});
     if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
     const respondida = sala.mensagens.find((m) => m.id === String((req.body as any)?.respostaA || ''));
     // Promotores da Casa conversam só entre eles: não dá para responder a eles.
-    const resposta = respondida && respondida.tipo !== 'sistema' && respondida.tipo !== 'promotor'
+    const resposta = respondida && respondida.tipo !== 'sistema' && respondida.tipo !== 'promotor' && !respondida.autor?.id.startsWith('promotor:')
       ? { id: respondida.id, nome: respondida.autor?.nome ?? 'Lola', trecho: respondida.tipo === 'midia' ? (respondida.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondida.texto.slice(0, 80) }
       : undefined;
     const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
@@ -3005,7 +3033,7 @@ Sala: ${salaId}`).catch(() => {});
     if (!sala || !p) { res.status(404).json({ error: 'fora_da_sala' }); return; }
     const emoji = String((req.body as any)?.emoji || '');
     const msg = sala.mensagens.find((m) => m.id === String((req.body as any)?.mensagemId || ''));
-    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema' || msg.tipo === 'promotor') { res.status(400).json({ error: 'reacao' }); return; }
+    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema' || msg.tipo === 'promotor' || msg.autor?.id.startsWith('promotor:')) { res.status(400).json({ error: 'reacao' }); return; }
     msg.reacoes ??= {};
     const lista = msg.reacoes[emoji] ?? [];
     msg.reacoes[emoji] = lista.includes(p.idPublico) ? lista.filter((x) => x !== p.idPublico) : [...lista, p.idPublico];
@@ -4098,7 +4126,7 @@ Sala: ${salaId}`).catch(() => {});
     // Responder/comentar uma mensagem ou mídia da cabine (como no WhatsApp).
     const respondida = c.mensagens.find((x) => x.id === String((req.body as any)?.respostaA || ''));
     // Promotores da Casa conversam só entre eles: não dá para responder a eles.
-    const resposta = respondida && respondida.tipo !== 'sistema' && respondida.tipo !== 'promotor'
+    const resposta = respondida && respondida.tipo !== 'sistema' && respondida.tipo !== 'promotor' && !respondida.autor?.id.startsWith('promotor:')
       ? { id: respondida.id, nome: respondida.autor?.nome ?? 'Lola', trecho: respondida.tipo === 'midia' ? (respondida.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondida.texto.slice(0, 80) }
       : undefined;
     const publicada = msgCabine(c, { tipo: 'pessoa', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat }, texto, ...(resposta ? { resposta } : {}) });
@@ -4161,7 +4189,7 @@ Sala: ${salaId}`).catch(() => {});
     if (!c || !m) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
     const emoji = String((req.body as any)?.emoji || '');
     const msg = c.mensagens.find((x) => x.id === String((req.body as any)?.mensagemId || ''));
-    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema' || msg.tipo === 'promotor') { res.status(400).json({ error: 'reacao' }); return; }
+    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema' || msg.tipo === 'promotor' || msg.autor?.id.startsWith('promotor:')) { res.status(400).json({ error: 'reacao' }); return; }
     msg.reacoes ??= {};
     const lista = msg.reacoes[emoji] ?? [];
     msg.reacoes[emoji] = lista.includes(m.idPublico) ? lista.filter((x) => x !== m.idPublico) : [...lista, m.idPublico];
