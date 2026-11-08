@@ -1345,24 +1345,24 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   // Falas prontas (quando a IA falha): provocação safada entre os dois, no nível da sala.
   const FALAS_PRONTAS_PROMOTOR: Record<'quente' | 'muito_quente', string[]> = {
     quente: [
-      'Essa sua boca tá me deixando com vontade de te provocar a noite toda 😏',
-      'Confessa: você reparou em mim quando eu entrei e já ficou com tesão 🔥',
-      'Se eu sentar no seu colo agora, você aguenta ou vai pedir pra eu parar? 😈',
-      'Tô sem calcinha hoje… só pra você saber 💋',
-      'Me paga mais um drink que eu te conto o que eu quero fazer com você na cabine 🍸',
-      'Para de me olhar assim que eu fico molhadinha aqui na frente de todo mundo 😏',
-      'Sua mulher sabe que você me encara desse jeito? Porque eu tô adorando 😈',
-      'Fala baixinho no meu ouvido o que você faria comigo agora 🔥',
+      'nossa vc sabe provocar né kkk',
+      'confessa q vc ficou com tesão qdo eu cheguei 🔥',
+      'se eu sentar no seu colo agora vc aguenta? 😈',
+      'tô sem calcinha hj, só avisando kkk',
+      'me paga mais um drink q eu te conto o q quero fazer cvc na cabine 🍸',
+      'para de me olhar assim q eu fico molhadinha aqui na frente de todo mundo',
+      'tua mulher sabe q vc me olha desse jeito? pq eu tô amando 😈',
+      'fala no meu ouvido o q vc faria comigo agora',
     ],
     muito_quente: [
-      'Quero ver você me pegando de jeito aqui na frente de todo mundo 😈',
-      'Meu marido adora assistir… e hoje ele quer ver você me fazendo gemer 🔥',
-      'Tô louca pra sentar em você até não aguentar mais 💦',
-      'Me chama pra cabine que eu vou te chupar devagarinho até você implorar 😏',
-      'Quero sentir você bem fundo enquanto a sala inteira fica olhando 😈',
-      'Minha esposa tá molhada só de ver vocês provocando… vem que tem pra todo mundo 🔥',
-      'Tira essa roupa agora, que eu quero você de quatro na minha frente 😈',
-      'Hoje eu vim pra gozar gostoso e sem vergonha nenhuma 💦',
+      'quero vc me pegando de jeito aqui na frente de todo mundo 😈',
+      'meu marido ama assistir e hj ele quer ver vc me fazendo gemer 🔥',
+      'tô doida pra sentar em vc até não aguentar mais 💦',
+      'me chama pra cabine q eu te chupo devagarinho até vc implorar',
+      'quero sentir vc bem fundo com a sala toda olhando 😈',
+      'minha mulher tá molhada só de ver vcs provocando kkk vem q tem pra todo mundo',
+      'tira essa roupa agora q eu quero vc de quatro na minha frente 😈',
+      'hj eu vim pra gozar gostoso, sem vergonha nenhuma 💦',
     ],
   };
   const falaPronta = (sala: Sala) => sortear(FALAS_PRONTAS_PROMOTOR[sala.nivel === 'muito_quente' ? 'muito_quente' : 'quente']);
@@ -1380,8 +1380,8 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
         body: JSON.stringify({
           model: 'deepseek-chat',
-          temperature: 0.9,
-          max_tokens: 110,
+          temperature: 1.05,
+          max_tokens: 90,
           messages: [
             {
               role: 'system',
@@ -1392,9 +1392,11 @@ Cena da conversa: ${d.cena}.
 Regras do diálogo:
 - É uma conversa SÓ entre os dois, na frente da sala, para os casais que assistem se soltarem. Não fale com mais ninguém, não comente quem entrou ou saiu, não cite outros nomes.
 - ${primeira ? `É a primeira fala: comece chamando "${outro.nome}" pelo nome e abra a cena com uma provocação clara (sem pressupor nada que não foi dito).` : `Responda DIRETAMENTE à última fala de "${outro.nome}", retomando o que foi dito, e leve a cena um passo adiante.`}
-- Tom: ${sala.nivel === 'muito_quente' ? 'bem safado e explícito (desejo, tesão, o que vão fazer na cabine, gemer, chupar, sentar, gozar), exibicionismo e cuckold quando combinar' : 'safado e provocante, com insinuação e palavras picantes, sem ser grosseiro'}. Suba um pouco o tom a cada fala, sem repetir frases.
+- Tom: conversa BEM safada${sala.nivel === 'muito_quente' ? ' e explícita (tesão, o que vão fazer na cabine, chupar, sentar, meter, gozar, de quatro), com exibicionismo e cuckold quando combinar' : ', cheia de tesão e putaria leve (o que fariam um com o outro, onde iam pegar, como iam provocar)'}. Suba o tom a cada fala, sem repetir frases.
+- Jeito de falar: brasileiro de verdade conversando no chat de um app de swing, NÃO texto escrito. Mensagem curta (1 frase, às vezes 2), informal, com abreviações e gírias do dia a dia: vc, tá, tô, pra, né, mó, tipo, aí, kkkk, nossa, eita, delícia, gostosa, safado(a), tesão, putaria. Pode começar com letra minúscula e sem pontuação certinha. Nada de frase de efeito, nada de "Desafio aceito!", nada de palavras rebuscadas.
+- Exemplos do JEITO (não copie): "nossa vc sabe provocar né kkk", "tô aqui imaginando minha mulher sentando em vc 😈", "para que eu fico molhada aqui na frente de todo mundo", "vem pra cabine que a gente te mostra", "eita, assim a sala inteira vai ficar com tesão kkkk"
 - Proibido: menores ou idade jovem, incesto, animais, violência, falta de consentimento, drogas, dinheiro, pedir contato ou fotos, marcar encontro fora, links.
-Português do Brasil, natural como conversa de bar. Responda SOMENTE com a fala, sem aspas e sem o nome de quem fala, no máximo 150 caracteres, no máximo um emoji.`,
+Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo 120 caracteres, no máximo um emoji (às vezes nenhum).`,
             },
             { role: 'user', content: primeira ? `(a conversa ainda não começou) Fala de ${quem.nome}:` : `Conversa até agora:\n${conversa}\n\nPróxima fala, de ${quem.nome}:` },
           ],
