@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { GenteNaRegiao } from '@/components/GenteNaRegiao';
 import AvisoLocalizacao from '@/components/AvisoLocalizacao';
 import { textoDistancia } from '@/utils/distancia';
 import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, ChevronDown, Check, Loader2 } from 'lucide-react';
@@ -1036,6 +1037,13 @@ export default function SearchPage() {
       {/* Celular: uma linha (o quadro grande empurrava os perfis para baixo). */}
       <div className="sm:hidden"><AvisoLocalizacao compacto aoAtivar={() => void fetchFirstPage()} /></div>
       <div className="hidden sm:block"><AvisoLocalizacao aoAtivar={() => void fetchFirstPage()} /></div>
+
+      {/* Quem mora em cidade pequena ao lado de uma capital: convida a ver o raio com mais gente. */}
+      {!onlyLiked && (
+        <div className="mb-3">
+          <GenteNaRegiao raioAtualKm={radar === 'all' ? null : Number(radar)} onVer={(km) => setRadar(String(km))} />
+        </div>
+      )}
 
       {/* Filters Panel */}
       {showFilters && (

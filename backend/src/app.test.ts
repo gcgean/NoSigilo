@@ -2910,6 +2910,33 @@ describe('nosigilo backend', () => {
     const final = await request(ctx.app).get('/api/promoter/support').set(auth(cliente.token)).expect(200);
     expect(final.body.humanRequested).toBe(false);
   });
+  // ── Cidade: grava a oficial com coordenadas; bairro/endereço é recusado ─────
+  it('cidade digitada vira a cidade oficial e endereço é recusado', async () => {
+    const u = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Cidade Torta', email: 'cidade-torta@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)',
+    });
+    const auth = { Authorization: `Bearer ${u.token}` };
+    if (!(await queryOne(ctx.db, "SELECT 1 AS ok FROM cities WHERE name_norm = 'fortaleza' AND state = 'CE'", []))) {
+      await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', ['Fortaleza', 'fortaleza', 'CE', -3.7319, -38.5267]);
+    }
+    await request(ctx.app).put('/api/profile').set(auth).send({ city: 'Fortaleza ce', state: 'CE' }).expect(200);
+    let row = (await queryOne(ctx.db, 'SELECT city, state, lat, location_source FROM users WHERE id = ?', [u.user.id])) as any;
+    expect(row.city).toBe('Fortaleza');
+    expect(row.state).toBe('CE');
+    expect(row.lat).not.toBeNull();
+    expect(row.location_source).toBe('profile_city');
+
+    await request(ctx.app).put('/api/profile').set(auth).send({ city: 'sabiaguaba', state: 'CE' }).expect(200);
+    row = (await queryOne(ctx.db, 'SELECT city FROM users WHERE id = ?', [u.user.id])) as any;
+    expect(row.city).toBe('Fortaleza');
+
+    const ruim = await request(ctx.app).put('/api/profile').set(auth).send({ city: 'Rua Araguari, 349', state: 'SP' }).expect(400);
+    expect(ruim.body.error).toBe('cidade_nao_encontrada');
+
+    // Região: responde sem erro (com poucos perfis no teste, não mostra o aviso).
+    const regiao = await request(ctx.app).get('/api/location/regiao').set(auth).expect(200);
+    expect(typeof regiao.body.mostrar).toBe('boolean');
+  });
   // ── Perfil de casal: dados do parceiro ──────────────────────────────────────
   it('casal salva os dados do parceiro junto com o resto do perfil', async () => {
     const casal = await registerInvitedUser(ctx, sponsorToken, {

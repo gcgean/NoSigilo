@@ -61,8 +61,9 @@ export default function PrimeirosPassos() {
       updateUser(dados);
       marcarPassoCadastro('pp_cidade');
       setPasso(1);
-    } catch {
-      setErro('Não foi possível salvar. Tente de novo.');
+    } catch (e: any) {
+      // Cidade que não existe (bairro, endereço): o servidor explica o que fazer.
+      setErro(e?.response?.data?.message || 'Não foi possível salvar. Tente de novo.');
     } finally {
       setSalvando(false);
     }

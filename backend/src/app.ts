@@ -23,6 +23,7 @@ import { melhorarMotivoRecusa } from './verificacaoIa.js';
 import { melhorarRespostaSuporte } from './respostaSuporteIa.js';
 import { filtroMarcaDagua, textoDaMarca } from './marcaDagua.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
+import { resolverCidade } from './cidades.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { registrarCasa } from './casa.js';
 import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.js';
@@ -2227,27 +2228,10 @@ function sanitizeSignupSource(value: unknown): string | null {
   return `/${v}/`;
 }
 
+// Cidade digitada -> cidade oficial com coordenadas (aceita "Fortaleza ce",
+// bairro conhecido, região do DF etc.). Ver cidades.ts.
 async function findCityCoordinates(db: DbHandle, city: unknown, state: unknown) {
-  const sanitizedCity = sanitizeCityValue(city);
-  const normalizedState = String(state || '').trim().toUpperCase();
-  if (!sanitizedCity || normalizedState.length !== 2) return null;
-
-  const row = (await queryOne(
-    db,
-    `SELECT name, state, lat, lon
-     FROM cities
-     WHERE name_norm = ? AND UPPER(state) = ?
-     LIMIT 1`,
-    [normalizeText(sanitizedCity), normalizedState]
-  )) as any;
-  if (!row || row.lat == null || row.lon == null) return null;
-
-  return {
-    city: String(row.name || sanitizedCity),
-    state: String(row.state || normalizedState).toUpperCase(),
-    lat: Number(row.lat),
-    lon: Number(row.lon),
-  };
+  return resolverCidade(db, city, state);
 }
 
 async function ensureConversationBetweenUsers(db: DbHandle, userAId: string, userBId: string) {
@@ -6835,8 +6819,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         const name   = stateClaims.name
           ? await uniqueGoogleName(stateClaims.name)
           : await uniqueGoogleName(googleName);
-        const city   = sanitizeCityValue(stateClaims.city);
-        const state  = stateClaims.state || null;
+        // Antes gravava a cidade sem coordenadas: quem entrava pelo Google
+        // ficava fora da busca por distância para sempre.
+        const localGoogle = await findCityCoordinates(db, stateClaims.city, stateClaims.state);
+        const city   = localGoogle?.city ?? sanitizeCityValue(stateClaims.city);
+        const state  = localGoogle?.state ?? (stateClaims.state || null);
         const signupSource = sanitizeSignupSource(stateClaims.origem);
         const email  = googleEmail || `google_${googleId}@nosigilo.internal`;
 
@@ -6859,6 +6846,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
             registrationIpHash, googleId, signupSource,
           ]
         );
+        if (localGoogle) {
+          await run(db, "UPDATE users SET lat = ?, lon = ?, location_source = 'profile_city' WHERE id = ?", [localGoogle.lat, localGoogle.lon, id]);
+        }
         if (stateClaims.termos) {
           await run(db, 'UPDATE users SET termos_aceitos_em = ?, termos_versao = ? WHERE id = ?', [createdAt, String(stateClaims.termos), id]);
         }
@@ -11271,8 +11261,37 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const data = parsed.data;
     const updatesProfileLocation = 'city' in data || 'state' in data;
     const currentLocation = updatesProfileLocation
-      ? ((await queryOne(db, 'SELECT city, state FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any)
+      ? ((await queryOne(db, 'SELECT city, state, lat FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any)
       : null;
+
+    // Cidade: grava sempre a cidade oficial (com coordenadas). Recalcula também
+    // quando o perfil está sem coordenadas — antes só recalculava se a cidade
+    // mudasse, e quem tinha entrado pelo Google ficava fora da busca por
+    // distância. Cidade nova que não existe (bairro, endereço) é recusada.
+    let localDoPerfil: { mudou: boolean; resolvida: Awaited<ReturnType<typeof findCityCoordinates>> } | null = null;
+    if (updatesProfileLocation) {
+      const cidadeDigitada = 'city' in data ? data.city : currentLocation?.city;
+      const ufDigitada = 'state' in data ? data.state : currentLocation?.state;
+      const cityChanged = normalizeText(sanitizeCityValue(cidadeDigitada) || '') !== normalizeText(String(currentLocation?.city || ''));
+      const stateChanged = String(ufDigitada || '').trim().toUpperCase() !== String(currentLocation?.state || '').trim().toUpperCase();
+      if (cityChanged || stateChanged || currentLocation?.lat == null) {
+        const resolvida = sanitizeCityValue(cidadeDigitada) ? await findCityCoordinates(db, cidadeDigitada, ufDigitada) : null;
+        // Só recusa com a tabela de cidades carregada (ambiente novo/teste sem cidades aceita).
+        const temCidades = !resolvida && !!(await queryOne(db, 'SELECT 1 AS ok FROM cities LIMIT 1', []));
+        if (!resolvida && temCidades && cityChanged && sanitizeCityValue(cidadeDigitada)) {
+          res.status(400).json({
+            error: 'cidade_nao_encontrada',
+            message: 'Não encontramos essa cidade. Digite o nome da cidade (não do bairro) e escolha na lista.',
+          });
+          return;
+        }
+        if (resolvida) {
+          (data as any).city = resolvida.city;
+          (data as any).state = resolvida.state;
+        }
+        localDoPerfil = { mudou: cityChanged || stateChanged, resolvida };
+      }
+    }
 
     // Nome só muda via solicitação ao suporte + aprovação do admin — nunca pelo
     // update direto do perfil. Ignora silenciosamente qualquer 'name' enviado.
@@ -11343,21 +11362,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         values.push(key === 'city' ? sanitizeCityValue((data as any)[key]) : (data as any)[key]);
       }
     }
-    if (updatesProfileLocation) {
-      const nextCity = 'city' in data ? sanitizeCityValue(data.city) : sanitizeCityValue(currentLocation?.city);
-      const nextState = String(('state' in data ? data.state : currentLocation?.state) || '').trim().toUpperCase();
-      const cityChanged = normalizeText(nextCity || '') !== normalizeText(String(currentLocation?.city || ''));
-      const stateChanged = nextState !== String(currentLocation?.state || '').trim().toUpperCase();
-
-      if (cityChanged || stateChanged) {
-        const cityCoordinates = await findCityCoordinates(db, nextCity, nextState);
-        setParts.push('lat = ?', 'lon = ?', 'location_source = ?');
-        values.push(
-          cityCoordinates?.lat ?? null,
-          cityCoordinates?.lon ?? null,
-          cityCoordinates ? 'profile_city' : null
-        );
-      }
+    if (localDoPerfil && (localDoPerfil.mudou || localDoPerfil.resolvida)) {
+      const r = localDoPerfil.resolvida;
+      setParts.push('lat = ?', 'lon = ?', 'location_source = ?');
+      values.push(r?.lat ?? null, r?.lon ?? null, r ? 'profile_city' : null);
     }
     if ('bioLink' in data) {
       // Normaliza e valida o link da bio (só http/https; bloqueia javascript:, etc.)
@@ -17296,6 +17304,51 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     res.json(nearest);
+  });
+
+  // Quanta gente ativa existe na região de quem está vendo. Quem mora numa
+  // cidade pequena ao lado de uma capital (Aquiraz, Camaçari) olhava só a própria
+  // cidade e achava que não havia ninguém. A tela mostra o raio com MAIS gente
+  // por perto — nunca diz que a cidade da pessoa tem pouca gente.
+  app.get('/api/location/regiao', requireAuth(env, db), async (req, res) => {
+    const eu = (await queryOne(db, 'SELECT lat, lon, city, state FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const lat = Number(eu?.lat);
+    const lon = Number(eu?.lon);
+    if (eu?.lat == null || eu?.lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      res.json({ mostrar: false });
+      return;
+    }
+    const RAIOS = [25, 50, 100];
+    const maior = RAIOS[RAIOS.length - 1];
+    const dLat = maior / 111;
+    const dLon = maior / (111 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
+    const desde = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
+    const linhas = (await queryAll(
+      db,
+      `SELECT lat, lon, city, state FROM users
+        WHERE id <> ? AND lat IS NOT NULL AND lon IS NOT NULL
+          AND CAST(lat AS REAL) BETWEEN ? AND ? AND CAST(lon AS REAL) BETWEEN ? AND ?
+          AND last_seen_at >= ? AND deleted_at IS NULL
+          AND COALESCE(is_banned, 0) = 0 AND COALESCE(is_deactivated, 0) = 0 AND COALESCE(is_showcase, 0) = 0`,
+      [req.auth!.userId, lat - dLat, lat + dLat, lon - dLon, lon + dLon, desde]
+    )) as any[];
+    const minhaCidade = normalizeText(String(eu.city || ''));
+    const meuEstado = String(eu.state || '').toUpperCase();
+    let naCidade = 0;
+    const distancias: number[] = [];
+    for (const l of linhas) {
+      if (minhaCidade && normalizeText(String(l.city || '')) === minhaCidade && String(l.state || '').toUpperCase() === meuEstado) naCidade += 1;
+      distancias.push(haversineReal({ lat, lon }, { lat: Number(l.lat), lon: Number(l.lon) }));
+    }
+    // Menor raio que já mostra bem mais gente que a cidade.
+    for (const raioKm of RAIOS) {
+      const naRegiao = distancias.filter((d) => d <= raioKm).length;
+      if (naRegiao >= 20 && naRegiao >= naCidade * 2 && naRegiao - naCidade >= 15) {
+        res.json({ mostrar: true, raioKm, naRegiao });
+        return;
+      }
+    }
+    res.json({ mostrar: false });
   });
 
   app.put('/api/location', requireAuth(env, db), async (req, res) => {

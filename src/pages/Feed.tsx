@@ -1,4 +1,5 @@
 import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
+import { GenteNaRegiao } from '@/components/GenteNaRegiao';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import SugestoesPerfis from '@/components/SugestoesPerfis';
 import StoriesNaoVistos from '@/components/StoriesNaoVistos';
@@ -2707,6 +2708,14 @@ export default function Feed() {
                     </button>
                   )}
                 </div>
+              </div>
+            ) : null}
+            {feedFilter !== 'experiences' && (user?.lat || user?.city) ? (
+              <div className="mt-2.5">
+                <GenteNaRegiao
+                  raioAtualKm={nearbyRadius}
+                  onVer={(km) => { if ((NEARBY_OPTIONS as readonly number[]).includes(km)) handleNearbyRadius(km as NearbyOption); }}
+                />
               </div>
             ) : null}
             {/* Missões do dia saíram do feed (17/10/2026): poluíam o topo no celular. */}

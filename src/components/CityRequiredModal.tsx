@@ -82,8 +82,8 @@ export default function CityRequiredModal() {
       await profileService.updateProfile({ city: nome, state: state.trim() || undefined });
       updateUser({ city: nome, state: state.trim() || undefined });
       toast({ title: '📍 Pronto!', description: 'Agora você vê e aparece para quem está por perto.' });
-    } catch {
-      toast({ title: 'Não foi possível salvar', description: 'Tente novamente.', variant: 'destructive' });
+    } catch (e: any) {
+      toast({ title: 'Não foi possível salvar', description: e?.response?.data?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setSaving(false);
     }

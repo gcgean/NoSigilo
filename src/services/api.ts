@@ -1656,6 +1656,12 @@ export const locationService = {
     return response.data;
   },
 
+  // Quanta gente ativa há na região (raio com mais gente que a própria cidade).
+  getRegiao: async (): Promise<{ mostrar: boolean; raioKm?: number; naRegiao?: number }> => {
+    const response = await apiClient.get('/location/regiao');
+    return response.data;
+  },
+
   getNearestCity: async (lat: number, lon: number) => {
     const response = await apiClient.get('/cities/nearest', { params: { lat, lon } });
     return response.data;
