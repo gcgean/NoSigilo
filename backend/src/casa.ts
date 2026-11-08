@@ -1442,7 +1442,7 @@ Português do Brasil, natural como conversa de bar. Responda SOMENTE com a fala,
       duplaNaSala.delete(sala.id);
       ocupadosAte.set(d.a.id, agora + 20 * 60_000);
       ocupadosAte.set(d.b.id, agora + 20 * 60_000);
-      publicarMsg(sala, { tipo: 'sistema', texto: `🚪 ${d.a.nome} e ${d.b.nome} (promotores da Casa) foram pra cabine 🔥` });
+      publicarMsg(sala, { tipo: 'sistema', texto: `🚪 ${d.a.nome} e ${d.b.nome} foram pra cabine 🔥` });
       return;
     }
     // De vez em quando, um drink entre eles (sem tokens: não é dinheiro de ninguém).
