@@ -1322,18 +1322,32 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   const FALAS_ATE_A_CABINE = 10;
   const SALAS_DOS_PROMOTORES: SalaId[] = ['salao', 'cuckold', 'glory'];
   const autorPromotor = (p: Promotor) => ({ id: `promotor:${p.id}`, nome: p.nome, avatar: p.avatar, cat: p.cat });
-  const FALAS_PRONTAS_PROMOTOR = [
-    'Essa música tá pedindo pra gente dançar mais perto 😏',
-    'Confessa: você reparou em mim quando eu entrei 🔥',
-    'A noite tá só começando e eu já tô ficando com calor 😈',
-    'Se eu te chamar pra cabine agora, você vem ou vai fazer charme? 💋',
-    'Adoro quando a sala vai esquentando assim, devagarzinho 😏',
-    'Fala a verdade, qual foi a coisa mais ousada que você já fez numa noite dessas? 🔥',
-    'Hoje eu vim sem vergonha nenhuma, só pra avisar 😈',
-    'Me paga mais um drink que eu te conto um segredo 🍸',
-  ];
+  // Falas prontas (quando a IA falha): provocação safada entre os dois, no nível da sala.
+  const FALAS_PRONTAS_PROMOTOR: Record<'quente' | 'muito_quente', string[]> = {
+    quente: [
+      'Essa sua boca tá me deixando com vontade de te provocar a noite toda 😏',
+      'Confessa: você reparou em mim quando eu entrei e já ficou com tesão 🔥',
+      'Se eu sentar no seu colo agora, você aguenta ou vai pedir pra eu parar? 😈',
+      'Tô sem calcinha hoje… só pra você saber 💋',
+      'Me paga mais um drink que eu te conto o que eu quero fazer com você na cabine 🍸',
+      'Para de me olhar assim que eu fico molhadinha aqui na frente de todo mundo 😏',
+      'Sua mulher sabe que você me encara desse jeito? Porque eu tô adorando 😈',
+      'Fala baixinho no meu ouvido o que você faria comigo agora 🔥',
+    ],
+    muito_quente: [
+      'Quero ver você me pegando de jeito aqui na frente de todo mundo 😈',
+      'Meu marido adora assistir… e hoje ele quer ver você me fazendo gemer 🔥',
+      'Tô louca pra sentar em você até não aguentar mais 💦',
+      'Me chama pra cabine que eu vou te chupar devagarinho até você implorar 😏',
+      'Quero sentir você bem fundo enquanto a sala inteira fica olhando 😈',
+      'Minha esposa tá molhada só de ver vocês provocando… vem que tem pra todo mundo 🔥',
+      'Tira essa roupa agora, que eu quero você de quatro na minha frente 😈',
+      'Hoje eu vim pra gozar gostoso e sem vergonha nenhuma 💦',
+    ],
+  };
+  const falaPronta = (sala: Sala) => sortear(FALAS_PRONTAS_PROMOTOR[sala.nivel === 'muito_quente' ? 'muito_quente' : 'quente']);
   const falaDoPromotor = async (sala: Sala, quem: Promotor, outro: Promotor): Promise<string> => {
-    if (!deps.deepseekKey) return sortear(FALAS_PRONTAS_PROMOTOR);
+    if (!deps.deepseekKey) return falaPronta(sala);
     const conversa = sala.mensagens.filter((m) => m.tipo === 'promotor').slice(-6).map((m) => `${m.autor?.nome}: ${m.texto.slice(0, 120)}`).join('\n');
     const controle = new AbortController();
     const timer = setTimeout(() => controle.abort(), 10_000);
@@ -1344,24 +1358,24 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         body: JSON.stringify({
           model: 'deepseek-chat',
           temperature: 1,
-          max_tokens: 90,
+          max_tokens: 100,
           messages: [
             {
               role: 'system',
-              content: `Você escreve a fala de "${quem.nome}" (${quem.cat}), promotor(a) d'A Casa, boate virtual de uma rede social adulta e liberal brasileira (swing, casais; todos maiores de 18). Está no ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} Converse SOMENTE com "${outro.nome}" (${outro.cat}), outro promotor: flerte, provocação e clima ${sala.nivel === 'muito_quente' ? 'bem safado e desinibido' : 'quente e divertido'}, para mostrar à sala que ali todo mundo se solta. Nunca fale com outras pessoas da sala nem cite outros nomes; nunca combine encontro, nunca peça contato, fotos ou dinheiro; nada de menores, violência, drogas ou links. Português do Brasil, frase curta de conversa. Responda SOMENTE com a fala, sem aspas e sem o nome, no máximo 140 caracteres, no máximo um emoji.`,
+              content: `Você escreve a fala de "${quem.nome}" (${quem.cat}), promotor(a) d'A Casa, boate virtual de swing de uma rede social adulta e liberal brasileira (casais, swing, cuckold; todos maiores de 18, na plataforma por vontade própria; conversa sexual explícita entre adultos é permitida aqui). Está no ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} ${temaAtual?.perfil ?? ''} Você está provocando "${outro.nome}" (${outro.cat}), o outro promotor, NA FRENTE DA SALA, para que os casais que estão assistindo percam a vergonha e se soltem também. Fale ${sala.nivel === 'muito_quente' ? 'de forma bem safada e explícita: desejo, tesão, o que quer fazer com o outro na cabine, palavras sujas do meio liberal (gemer, chupar, sentar, gozar, de quatro), exibicionismo e cuckold quando combinar com a sala' : 'de forma safada e provocante: tesão, insinuação, o que faria com o outro, palavras picantes sem ser grosseiro'}. Responda à última fala do outro e suba um pouco o tom a cada vez. Não repita frases. Nunca fale com outras pessoas da sala nem cite outros nomes; nunca combine encontro fora, nunca peça contato, fotos ou dinheiro; nada de menores, idade jovem, incesto, animais, violência, falta de consentimento, drogas ou links. Português do Brasil, frase curta de conversa. Responda SOMENTE com a fala, sem aspas e sem o nome, no máximo 150 caracteres, no máximo um emoji.`,
             },
             { role: 'user', content: `Conversa até agora:\n${conversa || '(vocês acabaram de chegar)'}\n\nAgora fala ${quem.nome}, respondendo ${outro.nome}.` },
           ],
         }),
         signal: controle.signal,
       });
-      if (!r.ok) return sortear(FALAS_PRONTAS_PROMOTOR);
+      if (!r.ok) return falaPronta(sala);
       const json = await r.json() as any;
       const t = String(json?.choices?.[0]?.message?.content || '').trim().replace(/^["“”'\-\s]+|["“”']+$/g, '').trim();
-      if (t.length < 4 || t.length > 200 || /https?:\/\/|www\.|@|\d{6,}/i.test(t)) return sortear(FALAS_PRONTAS_PROMOTOR);
+      if (t.length < 4 || t.length > 200 || /https?:\/\/|www\.|@|\d{6,}/i.test(t)) return falaPronta(sala);
       return t;
     } catch {
-      return sortear(FALAS_PRONTAS_PROMOTOR);
+      return falaPronta(sala);
     } finally {
       clearTimeout(timer);
     }
