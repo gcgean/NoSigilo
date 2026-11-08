@@ -1,3 +1,4 @@
+import ConversaDaDenuncia from '@/components/ConversaDaDenuncia';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AdminCasaTab from '@/components/AdminCasaTab';
 import AdminAnuncios from '@/components/AdminAnuncios';
@@ -159,6 +160,10 @@ type AdminReport = {
   targetName: string | null;
   perfilId?: string | null;
   storyMedia?: { url: string; mimeType: string } | null;
+  // Quantas denúncias o denunciado já recebeu (perfil, posts e stories) e de quantas pessoas.
+  historico?: { total: number; pessoas: number; pendentes: number } | null;
+  // Há conversa no chat entre quem denunciou e o denunciado.
+  temConversa?: boolean;
   reason: string;
   details: string | null;
   status: string;
@@ -480,6 +485,7 @@ export default function Admin() {
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
   // Perfil do denunciado aberto por cima da lista (inclusive banido: admin vê).
   const [perfilDenunciado, setPerfilDenunciado] = useState<string | null>(null);
+  const [conversaDaDenuncia, setConversaDaDenuncia] = useState<string | null>(null);
   const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalytics>(DEFAULT_VISIT_ANALYTICS);
   const [visitAnalyticsLoading, setVisitAnalyticsLoading] = useState(false);
   const [visitAnalyticsError, setVisitAnalyticsError] = useState(false);
@@ -666,6 +672,8 @@ export default function Admin() {
                   targetId: String(item.targetId || ''),
                   targetName: item.targetName ? String(item.targetName) : null,
                   perfilId: item.perfilId ? String(item.perfilId) : null,
+                  historico: (item as any).historico ?? null,
+                  temConversa: !!(item as any).temConversa,
                   reason: String(item.reason || ''),
                   details: item.details ? String(item.details) : null,
                   status: String(item.status || 'pending'),
@@ -1195,6 +1203,8 @@ export default function Admin() {
           targetId: String(item.targetId || ''),
           targetName: item.targetName ? String(item.targetName) : null,
           perfilId: item.perfilId ? String(item.perfilId) : null,
+          historico: item.historico ?? null,
+          temConversa: !!item.temConversa,
           reason: String(item.reason || ''),
           details: item.details ? String(item.details) : null,
           status: String(item.status || 'pending'),
@@ -2087,6 +2097,7 @@ export default function Admin() {
           <div className="glass rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold">Denúncias pendentes</h3>
+              <ConversaDaDenuncia reportId={conversaDaDenuncia} onFechar={() => setConversaDaDenuncia(null)} />
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -2176,10 +2187,25 @@ export default function Admin() {
                             )
                           )}
                         </p>
+                        {report.historico && (
+                          <p className={cn('inline-flex flex-wrap items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold',
+                            report.historico.pessoas >= 3 ? 'bg-destructive/15 text-destructive' : report.historico.total >= 2 ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400' : 'bg-muted text-muted-foreground')}>
+                            🚩 {report.historico.total} {report.historico.total === 1 ? 'denúncia' : 'denúncias'} contra este perfil
+                            {' '}· de {report.historico.pessoas} {report.historico.pessoas === 1 ? 'pessoa' : 'pessoas diferentes'}
+                            {report.historico.pendentes > 1 ? ` · ${report.historico.pendentes} pendentes` : ''}
+                            {report.historico.pessoas >= 3 ? ' · ⚠️ padrão: avalie com cuidado' : ''}
+                          </p>
+                        )}
                         <p className="text-sm text-muted-foreground">
                           Por: {report.reporterName}
                           {report.reporterEmail ? ` (${report.reporterEmail})` : ''}
                         </p>
+                        {report.temConversa && (
+                          <button type="button" onClick={() => setConversaDaDenuncia(report.id)}
+                            className="inline-flex items-center gap-1 rounded-full border border-primary/30 px-3 py-1 text-xs font-semibold text-brand-pink hover:bg-primary/5">
+                            💬 Ver conversa entre os dois
+                          </button>
+                        )}
                         {report.details && (
                           <p className="text-sm text-muted-foreground italic">"{report.details}"</p>
                         )}

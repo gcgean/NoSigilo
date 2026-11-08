@@ -22785,8 +22785,40 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          LIMIT 100`,
         [status]
       );
+      // Histórico de cada denunciado: quantas denúncias já recebeu (no perfil, posts
+      // e stories) e de quantas pessoas diferentes, para saber se é um padrão.
+      const perfilDe = (r: any) => (r.target_type === 'user' ? String(r.target_id) : r.post_author_id ? String(r.post_author_id) : r.story_author_id ? String(r.story_author_id) : null);
+      const perfis = [...new Set((rows as any[]).map(perfilDe).filter(Boolean))] as string[];
+      const historico = new Map<string, { total: number; pessoas: number; pendentes: number }>();
+      if (perfis.length) {
+        const linhas = (await queryAll(db,
+          `SELECT alvo, COUNT(*) AS total, COUNT(DISTINCT reporter_user_id) AS pessoas,
+                  SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendentes
+             FROM (
+               SELECT r.reporter_user_id, r.status,
+                      CASE WHEN r.target_type = 'user' THEN r.target_id
+                           WHEN r.target_type = 'post' THEN p.user_id
+                           WHEN r.target_type = 'story' THEN st.user_id END AS alvo
+                 FROM reports r
+                 LEFT JOIN posts p ON r.target_type = 'post' AND p.id = r.target_id
+                 LEFT JOIN stories st ON r.target_type = 'story' AND st.id = r.target_id
+             ) x
+            WHERE alvo IN (${perfis.map(() => '?').join(', ')})
+            GROUP BY alvo`, perfis)) as any[];
+        for (const l of linhas) historico.set(String(l.alvo), { total: Number(l.total || 0), pessoas: Number(l.pessoas || 0), pendentes: Number(l.pendentes || 0) });
+      }
+      // Existe conversa entre quem denunciou e o denunciado? (para o botão "Ver conversa")
+      const comConversa = new Set<string>();
+      for (const r of rows as any[]) {
+        const alvo = perfilDe(r);
+        if (!alvo || !r.reporter_user_id) continue;
+        const par = [String(r.reporter_user_id), alvo].sort((a, b) => a.localeCompare(b));
+        if (await queryOne(db, 'SELECT 1 AS x FROM conversations WHERE user_a_id = ? AND user_b_id = ? LIMIT 1', [par[0], par[1]])) comConversa.add(String(r.id));
+      }
       res.json(
         rows.map((r: any) => ({
+          historico: (() => { const a = perfilDe(r); return a ? historico.get(a) ?? null : null; })(),
+          temConversa: comConversa.has(String(r.id)),
           id: String(r.id),
           reporterName: r.reporter_name ? String(r.reporter_name) : 'Usuário',
           reporterEmail: r.reporter_email ? String(r.reporter_email) : null,
@@ -22817,6 +22849,50 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       console.error('[admin/reports]', err);
       res.status(500).json({ error: 'internal' });
     }
+  });
+
+  // Moderação: a conversa entre quem denunciou e o denunciado, para entender o que
+  // houve. Só a partir de uma denúncia, só as duas pessoas dela, e cada leitura fica
+  // registrada (admin_leituras_conversa).
+  app.get('/api/admin/reports/:id/conversa', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const r = (await queryOne(db,
+      `SELECT r.id, r.reporter_user_id, r.target_type, r.target_id, p.user_id AS post_author_id, st.user_id AS story_author_id
+         FROM reports r
+         LEFT JOIN posts p ON r.target_type = 'post' AND p.id = r.target_id
+         LEFT JOIN stories st ON r.target_type = 'story' AND st.id = r.target_id
+        WHERE r.id = ? LIMIT 1`, [String(req.params.id)])) as any;
+    if (!r) { res.status(404).json({ error: 'not_found' }); return; }
+    const alvo = r.target_type === 'user' ? String(r.target_id) : r.post_author_id ? String(r.post_author_id) : r.story_author_id ? String(r.story_author_id) : null;
+    if (!alvo || !r.reporter_user_id) { res.status(404).json({ error: 'sem_conversa' }); return; }
+    const par = [String(r.reporter_user_id), alvo].sort((a, b) => a.localeCompare(b));
+    const conv = (await queryOne(db, 'SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ? LIMIT 1', [par[0], par[1]])) as any;
+    await run(db, 'INSERT INTO admin_leituras_conversa (id, admin_id, report_id, conversation_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      [randomUUID(), req.auth!.userId, String(r.id), conv?.id ? String(conv.id) : null, nowIso()]);
+    await persist();
+    const pessoas = (await queryAll(db, 'SELECT id, name FROM users WHERE id IN (?, ?)', [String(r.reporter_user_id), alvo])) as any[];
+    const nomeDe = (id: string) => String(pessoas.find((x) => String(x.id) === id)?.name || 'Conta apagada');
+    if (!conv?.id) {
+      res.json({ conversa: null, denunciante: { id: String(r.reporter_user_id), nome: nomeDe(String(r.reporter_user_id)) }, denunciado: { id: alvo, nome: nomeDe(alvo) }, mensagens: [] });
+      return;
+    }
+    const msgs = (await queryAll(db,
+      `SELECT m.id, m.sender_id, m.content, m.created_at, m.is_view_once, m.deleted_for_all, m.via_radar, med.filename, med.mime_type
+         FROM messages m LEFT JOIN media med ON med.id = m.media_id
+        WHERE m.conversation_id = ? ORDER BY m.created_at DESC LIMIT 300`, [String(conv.id)])) as any[];
+    res.json({
+      conversa: String(conv.id),
+      denunciante: { id: String(r.reporter_user_id), nome: nomeDe(String(r.reporter_user_id)) },
+      denunciado: { id: alvo, nome: nomeDe(alvo) },
+      mensagens: msgs.reverse().map((m) => ({
+        id: String(m.id),
+        de: String(m.sender_id) === alvo ? 'denunciado' : 'denunciante',
+        texto: m.content ? String(m.content) : '',
+        em: String(m.created_at),
+        apagada: !!Number(m.deleted_for_all || 0),
+        viaRadar: !!Number(m.via_radar || 0),
+        midia: m.filename ? { url: `/uploads/${m.filename}`, tipo: String(m.mime_type || '').startsWith('video/') ? 'video' : 'foto', unica: !!Number(m.is_view_once || 0) } : null,
+      })),
+    });
   });
 
   // Triagem das denúncias pendentes pela IA. Ela só recomenda: a punição
