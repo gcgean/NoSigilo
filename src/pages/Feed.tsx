@@ -2160,12 +2160,12 @@ export default function Feed() {
           <div className="space-y-3">
             {/* Header */}
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-foreground">Compartilhe sua história 😈</p>
-              <div className="flex items-center gap-1.5">
+              <p className="min-w-0 truncate text-sm font-semibold text-foreground">Compartilhe sua história 😈</p>
+              <div className="flex shrink-0 items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setExpTemplatesOpen((v) => !v)}
-                  className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-brand-pink hover:bg-primary/10 transition-colors"
+                  className="flex items-center gap-1 whitespace-nowrap rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-brand-pink hover:bg-primary/10 transition-colors"
                 >
                   ✍️ {expTemplatesOpen ? 'Fechar modelos' : 'Usar modelo'}
                 </button>

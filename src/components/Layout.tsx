@@ -701,17 +701,6 @@ export default function Layout() {
     setPromoterBannerDismissed(true);
   };
 
-  // Cartão das primeiras semanas (ver BannerSlot "casal-privacidade").
-  const idadeDaContaMs = user?.trialStartedAt ? Date.now() - new Date(user.trialStartedAt).getTime() : Infinity;
-  const casalNovoPrivacidade = String(user?.gender || '').startsWith('Casal') && idadeDaContaMs < 14 * 86400_000;
-  const [casalPrivacidadeFechado, setCasalPrivacidadeFechado] = useState(() => {
-    try { return localStorage.getItem('nosigilo:casal-privacidade-fechado') === '1'; } catch { return false; }
-  });
-  const fecharCasalPrivacidade = () => {
-    try { localStorage.setItem('nosigilo:casal-privacidade-fechado', '1'); } catch { /* ok */ }
-    setCasalPrivacidadeFechado(true);
-  };
-
   const dismissInterestsNudge = () => {
     localStorage.setItem(INTERESTS_NUDGE_DISMISS_KEY, new Date().toISOString().slice(0, 10));
     setInterestsNudgeDismissed(true);
@@ -1188,27 +1177,6 @@ export default function Layout() {
                         Ver como instalar
                       </Button>
                     </div>
-                  </div>
-                </div>
-              </div>
-            </BannerSlot>
-
-            {/* Casal nas 2 primeiras semanas: o incômodo nº 1 de casal é single
-                masculino insistindo. As opções já existem; só mostra onde ficam. */}
-            <BannerSlot id="casal-privacidade" priority={15} eligible={!isMobileChatRoute && casalNovoPrivacidade && !casalPrivacidadeFechado}>
-              <div className="mb-4 rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="font-semibold">🔒 Vocês decidem quem chama vocês</p>
-                    <p className="text-sm text-muted-foreground">
-                      Mensagem de quem vocês não conhecem chega em "Pedidos", e vocês escolhem quais perfis podem mandar mensagem (por exemplo, só casais e mulheres).
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button type="button" size="sm" variant="outline" onClick={fecharCasalPrivacidade}>Agora não</Button>
-                    <Button type="button" size="sm" className="bg-sky-600 text-white hover:bg-sky-700" onClick={() => { navigate('/settings?aba=privacy'); fecharCasalPrivacidade(); }}>
-                      Ajustar privacidade
-                    </Button>
                   </div>
                 </div>
               </div>

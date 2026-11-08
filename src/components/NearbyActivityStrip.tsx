@@ -20,7 +20,7 @@ function BolhaDoRadar({ radar, onAbrir }: { radar: NearbyRadar; onAbrir: () => v
     <button
       type="button"
       onClick={onAbrir}
-      className="flex w-[76px] shrink-0 flex-col items-center gap-1 text-center"
+      className="flex w-[84px] shrink-0 flex-col items-center gap-1 text-center"
       aria-label={`${radar.senderName || 'Um perfil discreto'} está procurando alguém como você. Toque para ver a mensagem.`}
     >
       <span className="relative">
@@ -37,7 +37,7 @@ function BolhaDoRadar({ radar, onAbrir }: { radar: NearbyRadar; onAbrir: () => v
           <Radio className="h-3.5 w-3.5 animate-pulse" />
         </span>
       </span>
-      <span className="line-clamp-2 text-[11px] font-medium leading-tight text-foreground/80">Procura alguém como você</span>
+      <span className="text-[10.5px] font-medium leading-tight text-foreground/80">Procura alguém<br />como você</span>
     </button>
   );
 }
