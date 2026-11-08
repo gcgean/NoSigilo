@@ -258,8 +258,8 @@ function pisoDoChromeIOS(): number {
  * deixava uma faixa preta vazia entre a caixa de resposta e a barra (relato de
  * 17/10/2026). No app instalado e nos outros navegadores segue a área segura.
  */
-function recuoInferior(bottomInset: number): number | string {
-  if (bottomInset > 0) return bottomInset;
+function recuoInferior(r: RecuosDaTela): number | string {
+  if (r.cobre) return r.baixo;
   if (typeof navigator !== 'undefined' && typeof window !== 'undefined') {
     const ua = navigator.userAgent;
     const safariIPhone = /iPhone|iPad/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
@@ -270,15 +270,33 @@ function recuoInferior(bottomInset: number): number | string {
   return 'env(safe-area-inset-bottom, 0px)';
 }
 
-function useBottomChromeInset() {
-  const [inset, setInset] = useState(0);
+/** Recuo de cima: área segura + o quanto o iOS deslocou a tela visível. */
+function recuoSuperior(r: RecuosDaTela): string {
+  return r.topo > 0 ? `calc(env(safe-area-inset-top, 0px) + ${r.topo}px)` : 'env(safe-area-inset-top, 0px)';
+}
+
+type RecuosDaTela = { baixo: number; topo: number; cobre: boolean };
+
+/**
+ * Ao abrir o teclado, o iOS também DESLOCA a área visível para baixo
+ * (visualViewport.offsetTop) para mostrar o campo focado. Somar a altura
+ * inteira do teclado no padding de baixo contava esse deslocamento duas vezes:
+ * a caixa de resposta subia para fora da tela e sobrava só preto acima do
+ * teclado (relato de 07/11/2026, responder story no iPhone). Agora o conteúdo
+ * ocupa exatamente a faixa visível: em cima, o deslocamento; embaixo, o resto.
+ */
+function useBottomChromeInset(): RecuosDaTela {
+  const [recuos, setRecuos] = useState<RecuosDaTela>({ baixo: 0, topo: 0, cobre: false });
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
     const piso = pisoDoChromeIOS();
     const update = () => {
       const visivel = vv ? vv.height : window.innerHeight;
-      const medido = Math.max(0, Math.round(window.innerHeight - visivel));
-      setInset(Math.max(medido, piso));
+      const coberto = Math.max(0, Math.round(window.innerHeight - visivel));
+      const topo = coberto > 0 && vv ? Math.min(coberto, Math.max(0, Math.round(vv.offsetTop))) : 0;
+      const baixo = coberto > 0 ? coberto - topo : piso;
+      const cobre = coberto > 0 || piso > 0;
+      setRecuos((a) => (a.baixo === baixo && a.topo === topo && a.cobre === cobre ? a : { baixo, topo, cobre }));
     };
     update();
     // scroll também: no iOS a barra some/aparece durante a rolagem, e o
@@ -294,7 +312,7 @@ function useBottomChromeInset() {
       window.removeEventListener('orientationchange', update);
     };
   }, []);
-  return inset;
+  return recuos;
 }
 
 /**
@@ -919,7 +937,7 @@ function StoryViewer({
     <div
       className="fixed inset-0 z-[9995] flex flex-col bg-black"
       style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingTop: recuoSuperior(bottomInset),
         paddingBottom: recuoInferior(bottomInset),
       }}
       onTouchStart={handleTouchStart}
@@ -1392,7 +1410,7 @@ function StatsModal({
     <div
       className="fixed inset-0 z-[9996] flex items-end justify-center bg-black/70"
       style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingTop: recuoSuperior(bottomInset),
         paddingBottom: recuoInferior(bottomInset),
       }}
       onClick={onClose}
@@ -2373,7 +2391,7 @@ export default function Stories() {
           <div
             className="fixed inset-0 z-[9995] flex flex-col bg-black"
             style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingTop: recuoSuperior(bottomInset),
         paddingBottom: recuoInferior(bottomInset),
       }}
           >
@@ -2488,7 +2506,7 @@ export default function Stories() {
         <div
           className="fixed inset-0 z-[9997] flex flex-col bg-black/95"
           style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingTop: recuoSuperior(bottomInset),
         paddingBottom: recuoInferior(bottomInset),
       }}
         >
