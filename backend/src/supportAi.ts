@@ -123,15 +123,28 @@ export async function pedirAtendenteHumano(deps: Dependencias, userId: string): 
     temporizadores.delete(userId);
   }
   const agora = Date.now();
+  // Sem nada escrito nas últimas 24h a equipe chegaria sem saber o assunto
+  // (caso de 08/11/2026): a Lola já pede o motivo. A resposta do cliente vai
+  // para a equipe pelo aviso normal de conversa transferida.
+  const recentes = (await queryOne(
+    deps.db,
+    `SELECT COUNT(*) AS n FROM promoter_support_messages
+      WHERE promoter_user_id = ? AND sender_type = 'promoter' AND created_at > ?`,
+    [userId, new Date(agora - 24 * 3600_000).toISOString()]
+  )) as any;
+  const semContexto = Number(recentes?.n || 0) === 0;
   await run(
     deps.db,
     'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     [randomUUID(), userId, 'promoter', userId, 'Quero falar com um atendente.', new Date(agora).toISOString()]
   );
+  const retorno = semContexto
+    ? 'Certo! Já chamei alguém da equipe. Pra adiantar, me conta em poucas palavras o motivo (pagamento, comissão, conta, algum erro no app…) — assim a equipe já chega sabendo.'
+    : 'Certo! Já chamei alguém da equipe. Assim que possível respondemos por aqui mesmo.';
   await run(
     deps.db,
     'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    [randomUUID(), userId, 'admin', SENDER_ID_IA, 'Certo! Já chamei alguém da equipe. Assim que possível respondemos por aqui mesmo.', new Date(agora + 1).toISOString()]
+    [randomUUID(), userId, 'admin', SENDER_ID_IA, retorno, new Date(agora + 1).toISOString()]
   );
   await deps.persist();
   await transferirParaEquipe(deps, userId, 'o cliente pediu');

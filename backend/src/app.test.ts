@@ -2890,6 +2890,8 @@ describe('nosigilo backend', () => {
     // Pedido do cliente + retorno imediato do suporte; autor nunca vai para o cliente.
     expect(depois.body.messages.map((m: any) => m.senderType)).toEqual(['promoter', 'admin']);
     expect(depois.body.messages[1]).not.toHaveProperty('isAi');
+    // Sem nada escrito antes, o retorno já pede o motivo.
+    expect(depois.body.messages[1].message).toContain('motivo');
 
     // Pedir de novo não duplica.
     const repetido = await request(ctx.app).post('/api/promoter/support/human').set(auth(cliente.token)).expect(200);
