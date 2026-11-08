@@ -126,7 +126,7 @@ export default function RadioDaCasa({ compacto = false }: { compacto?: boolean }
           <Radio aria-hidden="true" className="h-4 w-4 text-fuchsia-300" /> Rádio
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" collisionPadding={12} aria-label="Rádio da Casa" className="z-[100] max-w-[calc(100vw-24px)]">
+      <PopoverContent align="end" collisionPadding={12} aria-label="Rádio da Casa" className="z-[9992] max-w-[calc(100vw-24px)]">
         <p className="text-xs font-semibold text-muted-foreground">Rádio da Casa{tocando && ' · Tocando agora'}</p>
         <div aria-live="polite" className="mt-1 break-words">
           <p className="font-semibold">{tocando?.titulo || 'Nenhuma faixa disponível no momento.'}</p>
