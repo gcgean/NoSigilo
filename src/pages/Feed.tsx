@@ -175,6 +175,21 @@ const PHOTO_REACTION_LONG_PRESS_MS = 400;
 // Acima de 90 MB o envio vai direto ao servidor (upload.nosigilo.net), porque
 // a Cloudflare recusa mais de 100 MB. O servidor aceita até 500 MB e compacta.
 const VIDEO_MAX_BYTES = 500 * 1024 * 1024;
+
+/**
+ * No Chrome do Android o arquivo escolhido na galeria (sobretudo do Google
+ * Fotos/nuvem) pode deixar de ser legível entre a escolha e o "Publicar": o
+ * envio morre como "Network Error" sem chegar ao servidor (relato de
+ * 07/11/2026). Copiar o vídeo para a memória na hora da escolha deixa o envio
+ * estável — e, se nem isso der, avisamos já na escolha.
+ * Só até 120 MB, para não estourar a memória do celular.
+ */
+const COPIAR_VIDEO_ATE = 120 * 1024 * 1024;
+async function fixarVideoNaMemoria(f: File): Promise<File> {
+  if (!f.type.startsWith('video/') || f.size > COPIAR_VIDEO_ATE) return f;
+  const dados = await f.arrayBuffer();
+  return new File([dados], f.name, { type: f.type, lastModified: f.lastModified });
+}
 const AVISO_VIDEO_GRANDE = 'O limite é 500 MB por vídeo. Dica: grave em 720p ou corte o vídeo em partes menores.';
 // Máximo de fotos/vídeos numa publicação (o servidor aceita até 10 mediaIds).
 const MAX_ANEXOS_POST = 10;
@@ -1306,13 +1321,29 @@ export default function Feed() {
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
-    const list = acceptedFiles.slice(0, vagas).map((f) => ({
-      id: `${f.name}-${f.size}-${f.lastModified}-${Math.random().toString(16).slice(2)}`,
-      file: f,
-      url: URL.createObjectURL(f),
-    }));
-    setAttachments((prev) => [...prev, ...list]);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    void (async () => {
+      const list: { id: string; file: File; url: string }[] = [];
+      for (const original of acceptedFiles.slice(0, vagas)) {
+        let f = original;
+        try {
+          f = await fixarVideoNaMemoria(original);
+        } catch {
+          toast({
+            title: 'Não conseguimos abrir esse vídeo',
+            description: 'Se ele está só na nuvem (Google Fotos), baixe para o celular e escolha de novo.',
+            variant: 'destructive',
+          });
+          continue;
+        }
+        list.push({
+          id: `${f.name}-${f.size}-${f.lastModified}-${Math.random().toString(16).slice(2)}`,
+          file: f,
+          url: URL.createObjectURL(f),
+        });
+      }
+      if (list.length) setAttachments((prev) => [...prev, ...list]);
+    })();
   };
 
   const removeAttachment = (idx: number) => {

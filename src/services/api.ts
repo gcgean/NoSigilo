@@ -449,6 +449,12 @@ export const profileService = {
       if (axios.isAxiosError(error) && !error.response && rotaDoEnvio.startsWith('https://upload.')) {
         throw new Error('Não conseguimos enviar esse vídeo grande agora. Tente um vídeo de até 90 MB (grave em 720p) ou tente de novo em alguns minutos.');
       }
+      // Sem resposta do servidor: a conexão caiu ou o celular não conseguiu ler o
+      // arquivo (comum com vídeo que está só na nuvem). "Network Error" cru não
+      // dizia nada à pessoa.
+      if (axios.isAxiosError(error) && !error.response && uploadFile.type.startsWith('video/')) {
+        throw new Error('O envio do vídeo falhou. Se ele está só na nuvem (Google Fotos/iCloud), baixe para o celular e escolha de novo; se não, tente outra vez.');
+      }
       throw error;
     }
   },
