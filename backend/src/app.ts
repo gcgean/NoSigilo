@@ -10241,12 +10241,29 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   }, async (req, res) => {
     const f = (req as any).file;
     if (!f) { res.status(400).json({ error: 'sem_arquivo' }); return; }
+    // Comprime para não ocupar o servidor: AAC mono 48 kbps em .m4a (toca em
+    // qualquer celular; ~1 MB a cada 3 min, contra até 6 MB do WAV disfarçado).
+    // Se o ffmpeg falhar, guarda o original.
+    let arquivo = { filename: String(f.filename), mimetype: String(f.mimetype), size: Number(f.size) };
+    const destino = path.join(path.dirname(f.path), `${path.parse(f.filename).name}-c.m4a`);
+    const comprimiu = await new Promise<boolean>((resolve) => {
+      const proc = spawn('nice', ['-n', '10', 'ffmpeg', '-y', '-i', f.path, '-vn', '-map_metadata', '-1', '-ac', '1', '-ar', '22050', '-c:a', 'aac', '-b:a', '48k', '-movflags', '+faststart', destino], { stdio: 'ignore' });
+      const t = setTimeout(() => { proc.kill('SIGKILL'); resolve(false); }, 90_000);
+      proc.on('error', () => { clearTimeout(t); resolve(false); });
+      proc.on('close', (code) => { clearTimeout(t); resolve(code === 0); });
+    });
+    if (comprimiu && existsSync(destino) && statSync(destino).size > 0) {
+      try { unlinkSync(f.path); } catch { /* fica o original também */ }
+      arquivo = { filename: path.basename(destino), mimetype: 'audio/mp4', size: statSync(destino).size };
+    } else if (existsSync(destino)) {
+      try { unlinkSync(destino); } catch { /* ok */ }
+    }
     const id = randomUUID();
     await run(db,
       'INSERT INTO media (id, user_id, filename, original_name, mime_type, size, is_private, is_main, source, phash, processando, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, NULL, 0, ?)',
-      [id, req.auth!.userId, f.filename, f.originalname || f.filename, f.mimetype, f.size, 'conto_audio', nowIso()]);
+      [id, req.auth!.userId, arquivo.filename, f.originalname || f.filename, arquivo.mimetype, arquivo.size, 'conto_audio', nowIso()]);
     await persist();
-    res.json({ id, url: `/uploads/${f.filename}` });
+    res.json({ id, url: `/uploads/${arquivo.filename}` });
   });
 
   // Depois de publicar: transcreve cada parte e roda a mesma moderação do texto.

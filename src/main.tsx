@@ -48,12 +48,53 @@ async function versaoNovaPronta() {
 const CONFERIR_A_CADA_MS = 3000;
 const DESISTIR_APOS_MS = 3 * 60_000;
 
+// Endereço do arquivo que falhou ("Failed to fetch dynamically imported module: https://…/assets/X.js").
+function arquivoQueFalhou(error: Error | null): string | null {
+  return String(error?.message || '').match(/https?:\/\/\S+?\.js/)?.[0] ?? null;
+}
+
+// Quantas vezes esta tela já chegou em 100% e recarregou sem resolver (no mesmo incidente).
+const RECARGAS_KEY = 'nosigilo_tela_atualizacao';
+function recargasFeitas(): number {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(RECARGAS_KEY) || 'null') as { n: number; at: number } | null;
+    return v && Date.now() - v.at < CHUNK_INCIDENT_WINDOW_MS * 2 ? v.n : 0;
+  } catch { return 0; }
+}
+function anotarRecarga(n: number) {
+  try { sessionStorage.setItem(RECARGAS_KEY, JSON.stringify({ n, at: Date.now() })); } catch { /* modo privado */ }
+}
+
+// Recarrega de um jeito que não reaproveita o "não encontrado" guardado:
+// 1ª vez, busca de novo da rede o arquivo que falhou (sobrescreve o 404 que o
+// celular guardou durante o deploy); 2ª vez, limpa o cache do app e o service
+// worker; depois disso, para e mostra o botão.
+async function recarregarSemCacheVelho(arquivo: string | null): Promise<boolean> {
+  const n = recargasFeitas();
+  if (n >= 3) return false;
+  anotarRecarga(n + 1);
+  try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* modo privado */ }
+  if (arquivo) { try { await fetch(arquivo, { cache: 'reload' }); } catch { /* segue */ } }
+  if (n >= 1) {
+    try {
+      const chaves = await caches.keys();
+      await Promise.all(chaves.map((k) => caches.delete(k)));
+      const regs = await navigator.serviceWorker?.getRegistrations?.();
+      await Promise.all((regs ?? []).map((r) => r.unregister()));
+    } catch { /* segue */ }
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set('_r', String(Date.now()));
+  window.location.replace(url.toString());
+  return true;
+}
+
 /**
  * "Estamos atualizando o NoSigilo": barra de progresso enquanto o deploy
  * termina e recarga sozinha quando a versão nova fica pronta. O botão só
  * aparece se passar de 3 minutos (algo além de um deploy normal).
  */
-function TelaDeAtualizacao() {
+function TelaDeAtualizacao({ arquivo = null }: { arquivo?: string | null }) {
   const [progresso, setProgresso] = React.useState(4);
   const [desistiu, setDesistiu] = React.useState(false);
 
@@ -69,8 +110,8 @@ function TelaDeAtualizacao() {
       if (parar) return;
       if (await versaoNovaPronta()) {
         setProgresso(100);
-        try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* modo privado */ }
-        window.setTimeout(() => window.location.reload(), 400);
+        // Já recarregou e continuou preso: em vez de ficar em 100% para sempre, mostra o botão.
+        if (!(await recarregarSemCacheVelho(arquivo))) setDesistiu(true);
         return;
       }
       if (Date.now() - inicio > DESISTIR_APOS_MS) { setDesistiu(true); return; }
@@ -105,8 +146,9 @@ function TelaDeAtualizacao() {
         <button
           type="button"
           onClick={() => {
-            try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* modo privado */ }
-            window.location.reload();
+            // Recomeça as tentativas (limpando o cache do app) a partir do toque.
+            anotarRecarga(1);
+            void recarregarSemCacheVelho(arquivo).then((ok) => { if (!ok) window.location.reload(); });
           }}
           style={{ background: '#e83e68', color: '#fff', border: 0, borderRadius: 12, padding: '12px 28px', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
         >
@@ -148,11 +190,11 @@ class ErrorBoundary extends React.Component<
     window.setTimeout(() => window.location.reload(), delay);
   }
   render() {
-    if (this.state.reloading) return <TelaDeAtualizacao />;
+    if (this.state.reloading) return <TelaDeAtualizacao arquivo={arquivoQueFalhou(this.state.error)} />;
     if (this.state.error) {
       // Falha de chunk que sobreviveu às tentativas: quase sempre é um deploy
       // ainda em andamento. Mostra algo acionável em vez do stack trace.
-      if (isChunkLoadError(this.state.error)) return <TelaDeAtualizacao />;
+      if (isChunkLoadError(this.state.error)) return <TelaDeAtualizacao arquivo={arquivoQueFalhou(this.state.error)} />;
       return (
         <div style={{ padding: 24, fontFamily: 'monospace', color: '#fff', background: '#1a1a1a', minHeight: '100vh' }}>
           <h2 style={{ color: '#f55', marginBottom: 16 }}>Erro ao carregar o app</h2>

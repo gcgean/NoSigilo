@@ -2882,7 +2882,7 @@ export default function Feed() {
                         {experience.description.trim().length > 0 && <span className="text-[11px] text-muted-foreground">⏱ {minutosDeLeitura(experience.description)} min de leitura</span>}
                         {(experience.audios?.length ?? 0) > 0 && (
                           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-brand-pink">
-                            🎧 {experience.audios!.length > 1 ? `${experience.audios!.length} áudios · ` : ''}{textoDuracao(experience.audios!.reduce((a, x) => a + x.duracaoSeg, 0))}
+                            🎧 {textoDuracao(experience.audios!.reduce((a, x) => a + x.duracaoSeg, 0))} de áudio
                           </span>
                         )}
                         {experience.emRevisao ? (
