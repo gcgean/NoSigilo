@@ -1,3 +1,4 @@
+import AvaliacaoDaCasa from '@/components/AvaliacaoDaCasa';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -57,7 +58,7 @@ type Info = {
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; legenda?: string };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; legenda?: string; opcoes?: string[] };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -345,6 +346,7 @@ export default function Casa() {
   // Comprar tokens sem sair da Casa (abre sozinho quando o saldo não dá).
   const [comprarAberto, setComprarAberto] = useState(false);
   const [feedbackAberto, setFeedbackAberto] = useState(false);
+  const [avaliando, setAvaliando] = useState(false);
   // Brincadeira que a pessoa dispensou: o cartão do topo some (ela pode votar na mensagem da Lola).
   const [jogosDispensados, setJogosDispensados] = useState<string[]>([]);
   // Card da brincadeira fica recolhido numa linha (abre ao tocar); quem é parte da vez já vê aberto.
@@ -439,11 +441,19 @@ export default function Casa() {
   }, [toast, carregar]);
 
   const reservar = useCallback(async (reservarLugar = true) => {
-    if (reservarLugar && typeof Notification !== 'undefined' && Notification.permission === 'default') void enablePushNotifications().catch(() => {});
+    // Com aviso no celular, 52% de quem reservou entrou em 07/11; sem, 26%. Pede na hora.
+    const pedindo = reservarLugar && typeof Notification !== 'undefined' && Notification.permission === 'default'
+      ? enablePushNotifications().catch(() => {}) : Promise.resolve();
     try {
       const { data } = await apiClient.post('/casa/reservar', { reservar: reservarLugar });
       setInfo((i) => i ? { ...i, reservado: !!data.reservado, reservas: Number(data.reservas || 0) } : i);
-      if (reservarLugar) toast({ title: '🎟️ Lugar reservado!', description: 'Quando A Casa abrir, a gente avisa no seu celular.' });
+      if (reservarLugar) {
+        await pedindo;
+        const comAviso = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+        toast(comAviso
+          ? { title: '🎟️ Lugar reservado!', description: 'Quando A Casa abrir, a gente avisa no seu celular.' }
+          : { title: '🎟️ Lugar reservado!', description: 'Vamos avisar por e-mail quando abrir. Para o aviso chegar no celular, ative as notificações do NoSigilo.' });
+      }
     } catch { toast({ title: 'Não foi possível reservar agora.', variant: 'destructive' }); }
   }, [toast]);
   useEffect(() => {
@@ -494,6 +504,12 @@ export default function Casa() {
     if (salaAtual) void apiClient.post(`/casa/${salaAtual}/sair`).catch(() => {});
     setEstado(null);
     void carregar();
+    // Quem nunca avaliou A Casa recebe a nota de 1 a 5 ao sair (no máximo 1x por noite).
+    if (!salaAtual) return;
+    let perguntouHoje = false;
+    try { perguntouHoje = localStorage.getItem('nosigilo:avaliacao-casa-perguntada') === new Date(Date.now() - 6 * 3600_000).toLocaleDateString('sv-SE'); } catch { /* sem armazenamento */ }
+    if (perguntouHoje) return;
+    apiClient.get('/casa/avaliacao').then((r) => { if (!r.data?.jaAvaliou) setAvaliando(true); }).catch(() => {});
   }, [salaAtual, carregar]);
 
   useEffect(() => {
@@ -683,7 +699,9 @@ export default function Casa() {
   // Sai da sala ao deixar a página.
   const salaRef = useRef<string | null>(null);
   salaRef.current = salaAtual;
-  useEffect(() => () => { if (salaRef.current) void apiClient.post(`/casa/${salaRef.current}/sair`).catch(() => {}); }, []);
+  // Sair da página (ver um perfil, abrir o chat) não tira da sala: o servidor
+  // mantém a pessoa até o ping expirar, e ela volta sem "chegar" de novo.
+  useEffect(() => () => { if (salaRef.current) void apiClient.post(`/casa/${salaRef.current}/sair`, { temporario: true }).catch(() => {}); }, []);
 
   // Rolagem estilo WhatsApp: só desce sozinho se a pessoa já está no fim.
   // @menções: quem está na sala (e meu nome aqui, que pode ser apelido).
@@ -710,6 +728,7 @@ export default function Casa() {
     setEscolhendoPulseira(true);
   }, [estado?.sala.id, estado?.eu.podeFalar, estado?.eu.pulseira, pulseiraDispensada]);
 
+  const [respondidas, setRespondidas] = useState<Set<string>>(() => new Set());
   const enviandoRapida = useRef(false);
   const enviar = async (direto?: string) => {
     const t = (direto ?? texto).trim();
@@ -1387,6 +1406,17 @@ export default function Casa() {
             {m.jogoId && estado.jogo?.id === m.jogoId && (
               <div className="-mx-3 mt-1">
                 <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} onCamera={() => abrirCamera(false)} />
+              </div>
+            )}
+            {/* Quebra-gelo (só quem chegou calado vê): tocar manda a resposta na sala. */}
+            {m.opcoes && m.opcoes.length > 0 && estado.eu.podeFalar && !respondidas.has(m.id) && (
+              <div className="mt-2 flex flex-col gap-1.5">
+                {m.opcoes.map((o) => (
+                  <button key={o} type="button" onClick={() => { setRespondidas((r) => new Set(r).add(m.id)); void enviar(o); }}
+                    className="rounded-xl bg-white/15 px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/25 active:scale-[0.98]">
+                    {o}
+                  </button>
+                ))}
               </div>
             )}
             <AcoesDaMsg m={m} />
@@ -2128,6 +2158,7 @@ export default function Casa() {
 
       {sala}
       <FeedbackDaCasa aberto={feedbackAberto} onFechar={() => setFeedbackAberto(false)} />
+      <AvaliacaoDaCasa aberto={avaliando} onFechar={() => setAvaliando(false)} />
 
       <Dialog open={recebidoAgora === 'convite'} onOpenChange={(v) => !v && void responderConvite(false)}>
         <DialogContent className="z-[9999] max-w-xs">

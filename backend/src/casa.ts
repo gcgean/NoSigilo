@@ -125,6 +125,8 @@ type SalaId = 'salao' | 'casais' | 'quarto' | 'cuckold' | 'glory';
 
 type Presente = {
   id: string;
+  /** Saiu da tela d'A Casa (abriu um perfil, o chat...): continua na sala até o ping expirar. */
+  foraDaTela?: boolean;
   /** Id que os outros veem. Igual ao id real, menos no Glory Hole (anônimo). */
   idPublico: string;
   nomeReal: string;
@@ -169,6 +171,8 @@ type Msg = {
   reacoes?: Record<string, string[]>;
   /** Anúncio de brincadeira da Lola: os botões de votar aparecem dentro da própria mensagem. */
   jogoId?: string;
+  /** Respostas prontas: tocar manda o texto na sala (quebra-gelo de quem chegou calado). */
+  opcoes?: string[];
 };
 
 // Reações da sala (as "safadas").
@@ -528,6 +532,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     espectadores: Map<string, number>; entradas: Map<string, Entrada>; mensagens: Msg[]; criadaEm: number;
     /** Esquentar: só liga quando TODOS de dentro topam; qualquer um esfria. */
     topamEsquentar: Set<string>; quente: boolean; quenteDesde: number; ultimaProvocacao: number; ultimaFala: number; usadas: Set<string>;
+    /** Quantas vezes a Lola já puxou o clima com a cabine ainda fria (no máximo 3). */
+    lembretesFrios: number;
     /** Tesão da cabine (0–100): sobe com as ações e libera a transa a partir de 40. */
     calor: number; liberouTransa: boolean; ultimaAcao: Map<string, number>;
     /** Quem saiu da Casa (fechou o app) e desde quando (só o 📴 no topo, sem aviso da Lola). */
@@ -632,6 +638,34 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const selo = nivel === 1 ? '🔥' : nivel === 2 ? '🔥🔥' : '🔥🔥🔥';
     msgCabine(c, { tipo: 'lola', texto: `${selo} ${escolha.t}` });
   };
+  // Cabine fria: entraram e ninguém apimentou (sugestão de usuário, 08/11/2026). Antes a
+  // Lola só falava depois que todos tocavam em "Liberar"; agora puxa o clima até 3 vezes,
+  // a cada 4 min: quebra o gelo se estão calados, provoca se estão conversando morno e,
+  // por fim, mostra o 🔥.
+  const QUEBRA_GELO_CABINE = [
+    '💋 Cabine quietinha… alguém começa: o que te fez topar vir pra cá? 😏',
+    '💋 Silêncio de vergonha? Vale começar pelo básico: o que vocês estão vestindo agora? 😈',
+  ];
+  const APIMENTA_CABINE = [
+    '🔥 Tá gostoso o papo, mas tá frio… contem uma fantasia que vocês ainda não tiveram coragem de realizar 😏',
+    '🔥 Pergunta da Lola: o que cada um faria primeiro se estivessem no mesmo quarto agora? 😈',
+    '🔥 Bora esquentar: cada um conta o que mais chamou atenção no outro 💋',
+  ];
+  const apimentarCabineFria = (c: Cabine, agora: number) => {
+    if (c.quente || c.membros.size < 2 || c.lembretesFrios >= 3) return;
+    if (agora - c.criadaEm < 2 * 60_000 || agora - c.ultimaProvocacao < 4 * 60_000) return;
+    // Alguém fora (📴): não fala sozinha para quem não está vendo.
+    if ([...c.membros.keys()].some((id) => c.ausentes.has(id))) return;
+    const calados = agora - c.ultimaFala > 60_000;
+    // Conversa rolando agora (última fala há menos de 20 s): não interrompe.
+    if (!calados && agora - c.ultimaFala < 20_000) return;
+    c.ultimaProvocacao = agora;
+    c.lembretesFrios += 1;
+    const texto = c.lembretesFrios >= 3
+      ? '😈 Quando quiserem apimentar de verdade, abram o 🔥 aqui embaixo: eu libero as brincadeiras e guio vocês. Só esquenta se todos toparem.'
+      : calados ? sortear(QUEBRA_GELO_CABINE) : sortear(APIMENTA_CABINE);
+    msgCabine(c, { tipo: 'lola', texto });
+  };
   // Quem entra depois ainda não topou: a cabine esfria até todos toparem de novo.
   const conferirQuente = (c: Cabine) => {
     const todos = c.membros.size >= 2 && [...c.membros.keys()].every((id) => c.topamEsquentar.has(id));
@@ -645,7 +679,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const c: Cabine = {
       id: randomUUID(), salaId: sala.id, membros: new Map([[a.id, membroDe(a)], [b.id, membroDe(b)]]), porta: new Set(), aberta: false,
       espectadores: new Map(), entradas: new Map(), mensagens: [], criadaEm: Date.now(),
-      topamEsquentar: new Set(), quente: false, quenteDesde: 0, ultimaProvocacao: 0, ultimaFala: Date.now(), usadas: new Set(),
+      topamEsquentar: new Set(), quente: false, quenteDesde: 0, ultimaProvocacao: 0, ultimaFala: Date.now(), usadas: new Set(), lembretesFrios: 0,
       calor: 0, liberouTransa: false, ultimaAcao: new Map(), ausentes: new Map(), nivelAnunciado: 0,
       vistoEm: new Map([[a.id, Date.now()], [b.id, Date.now()]]),
       fundadores: new Set([a.id, b.id]),
@@ -908,6 +942,21 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     return enviados;
   };
   const lola = (sala: Sala, texto: string) => publicarMsg(sala, { tipo: 'lola', texto });
+  // Falas espontâneas da Lola (anúncios, ranking, chamadas) têm teto por sala: em 07/11
+  // ela mandou 757 mensagens e o sistema 303 (30% do chat). Respostas a quem falou,
+  // jogos e moderação continuam com lola(); o que é só "animação" passa por aqui.
+  const LOLA_EXTRA_JANELA_MS = 15 * 60_000;
+  const LOLA_EXTRA_MAX = 4;
+  const lolaTemVez = (sala: Sala) => {
+    const agora = Date.now();
+    const recentes = sala.mensagens.filter((m) => agora - Date.parse(m.criadoEm) < LOLA_EXTRA_JANELA_MS);
+    const daLola = recentes.filter((m) => m.tipo === 'lola' || m.tipo === 'anfitriao').length;
+    if (daLola >= LOLA_EXTRA_MAX) return false;
+    // Duas falas seguidas de robô já é muito: espera alguém falar.
+    const ultimas = sala.mensagens.slice(-2);
+    return !(ultimas.length === 2 && ultimas.every((m) => m.tipo === 'lola' || m.tipo === 'anfitriao' || m.tipo === 'sistema'));
+  };
+  const lolaExtra = (sala: Sala, texto: string) => (lolaTemVez(sala) ? lola(sala, texto) : null);
 
   // ─── Moderação da Lola ─────────────────────────────────────────────────────
   // Conversa sexual explícita entre adultos é PERMITIDA. A Lola só age em:
@@ -1003,7 +1052,10 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   // Quarto Escuro está guardado até a Casa crescer. A Suruba só destrava com a Casa cheia
   // (suruba com três pessoas não engrena).
   const SALAS_EXTRAS: SalaId[] = ['glory'];
-  const SALAS_GUARDADAS: SalaId[] = ['quarto'];
+  // Sala dos Casais guardada desde 08/11/2026: em 07/11 entraram 42 casais e saíram só
+  // 18 mensagens de gente a noite toda (nenhuma mulher entrou). Com o público junto, o
+  // Salão e o Cuckold ficam mais cheios. Para reabrir, é só tirar 'casais' daqui.
+  const SALAS_GUARDADAS: SalaId[] = ['quarto', 'casais'];
   const guardada = (sala: Sala) => SALAS_GUARDADAS.includes(sala.id);
   const MINIMO_PARA_DESTRAVAR = 25;
   const minimoParaDestravar = () => (temaAtual?.id === 'suruba' ? 10 : MINIMO_PARA_DESTRAVAR);
@@ -1021,7 +1073,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       liberadas.add(chave);
       const s = salas.get(id)!;
       for (const outra of salas.values()) {
-        if (outra.presentes.size > 0) lola(outra, `🔓 O ${s.emoji} ${s.nome} ABRIU! A Casa encheu (${n} pessoas)… quem tem coragem entra primeiro 😈`);
+        if (outra.presentes.size > 0) lolaExtra(outra, `🔓 O ${s.emoji} ${s.nome} ABRIU! A Casa encheu (${n} pessoas)… quem tem coragem entra primeiro 😈`);
       }
     }
   };
@@ -1031,12 +1083,12 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     if (agora - ultimoEquilibrio < 20 * 60_000) return;
     const cuckold = salas.get('cuckold');
     const casais = salas.get('casais');
-    if (!cuckold || !casais) return;
+    if (!cuckold || !casais || guardada(casais)) return;
     const casaisNoCuckold = [...cuckold.presentes.values()].filter((p) => p.podeFalar && p.cat === 'casal').length;
     const naSalaDosCasais = [...casais.presentes.values()].filter((p) => p.podeFalar).length;
     if (casaisNoCuckold >= 2 && naSalaDosCasais < casaisNoCuckold) {
       ultimoEquilibrio = agora;
-      lola(cuckold, sortear(CHAMA_PRA_SALA_DOS_CASAIS));
+      lolaExtra(cuckold, sortear(CHAMA_PRA_SALA_DOS_CASAIS));
     }
   };
   const limiteDeHomens = (sala: Sala) => {
@@ -1255,6 +1307,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     if (agora - Math.max(0, ...fal.map((p) => p.ultimaMsg)) < 3 * 60_000) return;
     const ultima = sala.mensagens[sala.mensagens.length - 1];
     if (ultima && (ultima.tipo === 'lola' || ultima.tipo === 'anfitriao') && agora - Date.parse(ultima.criadoEm) < 90_000) return;
+    if (!lolaTemVez(sala)) return;
     ultimoAnfitriao.set(sala.id, agora);
     const alvo = sortear(fal);
     void (async () => {
@@ -1609,7 +1662,8 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       let mudou = false;
       for (const [id, p] of sala.presentes) {
         // O app parou de avisar: a saída de verdade foi no último aviso, não agora.
-        if (agora - p.ultimoPing > PING_EXPIRA_MS) { sala.presentes.delete(id); registrarEvento(sala.id, 'caiu', id, null, p.ultimoPing); mudou = true; }
+        // Quem só saiu da tela e não voltou conta como saída (não como queda de conexão).
+        if (agora - p.ultimoPing > PING_EXPIRA_MS) { sala.presentes.delete(id); registrarEvento(sala.id, p.foraDaTela ? 'saiu' : 'caiu', id, null, p.ultimoPing); mudou = true; }
       }
       for (const [id, t] of sala.espiando) {
         if (agora - t > PING_EXPIRA_MS) { sala.espiando.delete(id); mudou = true; }
@@ -1660,6 +1714,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         else await iniciarJogo(sala);
       }
       if (!sala.jogo) provocarQuieto(sala, agora);
+      if (noite) quebrarGeloDeQuemChegou(sala, agora, noite.chave);
       if (noite && !sala.jogo) { await apresentarPar(sala, agora, noite.chave); puxarConversa(sala, agora); }
       if (noite) await atenderOisSemResposta(sala, agora);
     }
@@ -1738,6 +1793,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       conferirAusentes(c, agora);
       if (!cabines.has(c.id)) continue;
       if (c.quente && agora - c.ultimaProvocacao > 3 * 60_000 && agora - c.ultimaFala > 45_000) provocar(c, Math.random() < 0.3);
+      else apimentarCabineFria(c, agora);
       let mudou = false;
       for (const [id, t] of c.espectadores) if (agora - t > PING_EXPIRA_MS) { c.espectadores.delete(id); mudou = true; }
       for (const [id, e] of c.entradas) {
@@ -1822,8 +1878,9 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   };
 
   // Mulheres: convite 2h antes de abrir e bônus para quem é verificada, nas noites normais.
-  // Só com system_settings.casa_mulheres_ativo = '1' (fica desligado até o dono aprovar).
-  const mulheresAtivo = async () => String(((await db.queryOne("SELECT value FROM system_settings WHERE key = 'casa_mulheres_ativo' LIMIT 1", [])) as any)?.value ?? '') === '1';
+  // Ligado desde 08/11/2026 (aprovado pelo dono: em 07/11 só 11 de 252 eram mulheres).
+  // Para desligar sem deploy: system_settings.casa_mulheres_ativo = '0'.
+  const mulheresAtivo = async () => String(((await db.queryOne("SELECT value FROM system_settings WHERE key = 'casa_mulheres_ativo' LIMIT 1", [])) as any)?.value ?? '') !== '0';
   const convidarMulheres = async () => {
     const n = noiteDoHorario(new Date(Date.now() + 2 * 3600_000));
     if (!n || noiteDoHorario() || !deps.recadoDaLola || !(await mulheresAtivo())) return 0;
@@ -1842,7 +1899,17 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     let enviados = 0;
     for (const p of pessoas) {
       const id = String(p.id);
-      if (categoria(p.gender) !== 'mulher' || naoQuerem.has(id)) continue;
+      const casalDeMulheres = String(p.gender || '').trim().toLowerCase() === 'casal (ela/ela)';
+      if ((categoria(p.gender) !== 'mulher' && !casalDeMulheres) || naoQuerem.has(id)) continue;
+      if (casalDeMulheres) {
+        const okCasal = await deps.recadoDaLola(id, {
+          texto: `Hoje tem A Casa das ${HORA_DE_ABRIR[n.tema]}h até ${HORA_DE_FECHAR[n.tema]}h 💋 Casal de mulheres é o mais desejado da noite, e aqui quem escolhe são vocês: só entra na cabine quem vocês aceitarem, e dá para bloquear quem incomodar. Vem:`,
+          titulo: '💋 Hoje tem A Casa', descricao: `Das ${HORA_DE_ABRIR[n.tema]}h até ${HORA_DE_FECHAR[n.tema]}h. Quem escolhe são vocês.`, url: '/casa',
+        }).catch(() => false);
+        if (okCasal) enviados += 1;
+        await new Promise((res) => setTimeout(res, 60));
+        continue;
+      }
       const verificada = Number(p.is_verified || 0) === 1;
       const ok = await deps.recadoDaLola(id, {
         texto: `Hoje tem A Casa das ${HORA_DE_ABRIR[n.tema]}h até ${HORA_DE_FECHAR[n.tema]}h 💋 Aqui quem escolhe é você: só entra na sua cabine quem você aceitar, e dá para bloquear quem incomodar. ${verificada ? `Com seu perfil verificado, você ganha +${TOKENS_MULHER_NOITE} tokens ao entrar.` : `Verifique seu perfil e ganhe +${TOKENS_MULHER_NOITE} tokens ao entrar.`} Vem:`,
@@ -2140,6 +2207,16 @@ Sala: ${salaId}`).catch(() => {});
     });
   });
 
+  // Leve, para o app inteiro: A Casa está aberta e eu reservei? (em 07/11, 52 pessoas que
+  // reservaram abriram o app durante a noite e não entraram: o app mostra um chamado.)
+  app.get('/api/casa/minha-reserva', deps.requireAuth, async (req, res) => {
+    const userId = userDe(req);
+    const noite = await noiteAtual();
+    if (!noite || noite.teste) { res.json({ aberta: false, reservado: false, pessoas: 0 }); return; }
+    const reservado = !!(await db.queryOne('SELECT 1 AS x FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, noite.chave]));
+    res.json({ aberta: true, reservado, noite: noite.chave, pessoas: naCasaAgora(), naCasa: estaEmAlgumLugarDaCasa(userId) });
+  });
+
   app.get('/api/casa', deps.requireAuth, async (req, res) => {
     const userId = userDe(req);
     const noite = await noitePara(userId);
@@ -2251,7 +2328,7 @@ Sala: ${salaId}`).catch(() => {});
     const perfil = await carregarPerfil(userId);
     if (!perfil) { res.status(404).json({ error: 'not_found' }); return; }
     if (guardada(sala) && !perfil.admin) {
-      res.status(404).json({ error: 'guardada', message: 'Essa sala está fechada por enquanto. Que tal o Quarto Cuckold ou a Sala dos Casais? 😈' });
+      res.status(404).json({ error: 'guardada', message: 'Essa sala está fechada por enquanto. Que tal o Salão Principal ou o Quarto Cuckold? 😈' });
       return;
     }
     if (trancada(sala, noite) && !perfil.admin && !sala.presentes.has(userId)) {
@@ -2321,6 +2398,7 @@ Sala: ${salaId}`).catch(() => {});
       pulseira: null, olhares: new Map(), entrouEm: Date.now(),
     };
     p.ultimoPing = Date.now();
+    p.foraDaTela = false;
     sala.presentes.set(userId, p);
     if (!jaEstava) {
       if ((falantes(sala).length === 1 || sala.mensagens.length === 0) && Date.now() - (ultimaSaudacao.get(sala.id) ?? 0) > 30 * 60_000) {
@@ -2367,7 +2445,7 @@ Sala: ${salaId}`).catch(() => {});
     const userId = userDe(req);
     if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
     const p = sala.presentes.get(userId);
-    if (p) p.ultimoPing = Date.now();
+    if (p) { p.ultimoPing = Date.now(); p.foraDaTela = false; }
     else if (sala.espiando.has(userId)) sala.espiando.set(userId, Date.now());
     else { res.json({ dentro: false }); return; }
     res.json({ dentro: true });
@@ -2377,6 +2455,15 @@ Sala: ${salaId}`).catch(() => {});
     const sala = salaDe(req);
     const userId = userDe(req);
     if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
+    // Sair da tela (ver um perfil, abrir o chat) não tira da sala: 804 de 1.303 saídas
+    // de 07/11 voltaram em menos de 1 min, e a pessoa sumia e "chegava" de novo para
+    // os outros. Ela fica até o ping expirar; se voltar antes, nada muda.
+    if ((req.body as any)?.temporario) {
+      const p = sala.presentes.get(userId);
+      if (p) p.foraDaTela = true;
+      res.json({ ok: true });
+      return;
+    }
     sala.espiando.delete(userId);
     if (sala.presentes.delete(userId)) { registrarEvento(sala.id, 'saiu', userId); avisarPresentes(sala); }
     res.json({ ok: true });
@@ -2460,6 +2547,7 @@ Sala: ${salaId}`).catch(() => {});
     }
     p.ultimaMidia = Date.now();
     p.ultimoPing = Date.now();
+    p.foraDaTela = false;
     const j = sala.jogo;
     // "Para todos verem": fica aberta na sala (quem assina vê quantas vezes quiser).
     // Desafios, duelos, relâmpago e revelação continuam de visualização única.
@@ -2548,6 +2636,39 @@ Sala: ${salaId}`).catch(() => {});
 
   // ─── Admin: tudo o que aconteceu na Casa, noite por noite ─────────────────
   // Quanto tempo as pessoas ficam, noite a noite (só existe a partir de quando a saída é registrada).
+  // ─── Avaliação d'A Casa (nota 1 a 5 + sugestão), pedida ao sair a quem nunca avaliou ───
+  app.get('/api/casa/avaliacao', deps.requireAuth, async (req, res) => {
+    const ja = await db.queryOne('SELECT 1 AS x FROM casa_avaliacoes WHERE user_id = ? LIMIT 1', [userDe(req)]);
+    res.json({ jaAvaliou: !!ja });
+  });
+  app.post('/api/casa/avaliacao', deps.requireAuth, async (req, res) => {
+    const userId = userDe(req);
+    const nota = Number((req.body as any)?.nota);
+    const sugestao = String((req.body as any)?.sugestao ?? '').trim().slice(0, 1000) || null;
+    if (!Number.isInteger(nota) || nota < 1 || nota > 5) { res.status(400).json({ error: 'nota_invalida' }); return; }
+    if (await db.queryOne('SELECT 1 AS x FROM casa_avaliacoes WHERE user_id = ? LIMIT 1', [userId])) { res.json({ ok: true, jaAvaliou: true }); return; }
+    const noite = (await noiteAtual())?.chave ?? chaveDaNoite ?? null;
+    await db.run('INSERT INTO casa_avaliacoes (id, user_id, noite, nota, sugestao, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [randomUUID(), userId, noite, nota, sugestao, new Date().toISOString()]);
+    await db.persist();
+    res.json({ ok: true });
+  });
+  app.get('/api/casa/admin/avaliacoes', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const resumo = (await db.queryOne('SELECT COUNT(*) AS total, AVG(nota) AS media FROM casa_avaliacoes', [])) as any;
+    const porNota = (await db.queryAll('SELECT nota, COUNT(*) AS c FROM casa_avaliacoes GROUP BY nota', [])) as any[];
+    const ultimas = (await db.queryAll(
+      `SELECT a.nota, a.sugestao, a.noite, a.created_at, u.name, u.gender FROM casa_avaliacoes a
+         LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 100`, [],
+    )) as any[];
+    res.json({
+      total: Number(resumo?.total || 0),
+      media: resumo?.media != null ? Math.round(Number(resumo.media) * 10) / 10 : null,
+      porNota: Object.fromEntries([1, 2, 3, 4, 5].map((n) => [n, Number(porNota.find((r) => Number(r.nota) === n)?.c || 0)])),
+      ultimas: ultimas.map((r) => ({ nota: Number(r.nota), sugestao: r.sugestao ? String(r.sugestao) : null, noite: r.noite ? String(r.noite) : null, em: String(r.created_at), nome: r.name ? String(r.name) : 'Conta apagada', genero: r.gender ? String(r.gender) : null })),
+    });
+  });
+
   app.get('/api/casa/admin/permanencia', deps.requireAuth, async (req, res) => {
     if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
     const noites = (await db.queryAll(
@@ -2665,6 +2786,7 @@ Sala: ${salaId}`).catch(() => {});
     if (Date.now() - p.ultimaMsg < 1200) { res.status(429).json({ error: 'devagar' }); return; }
     p.ultimaMsg = Date.now();
     p.ultimoPing = Date.now();
+    p.foraDaTela = false;
     const barrada = await bloqueioRapido(p.id, p.nome, texto, sala.nome);
     if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
     const respondida = sala.mensagens.find((m) => m.id === String((req.body as any)?.respostaA || ''));
@@ -2782,7 +2904,7 @@ Sala: ${salaId}`).catch(() => {});
         const pb = sala.presentes.get(j.bId);
         if (pa && pb && !(await bloqueados(pa.id, pb.id))) {
           criarCabine(sala, pa, pb);
-          lola(sala, `🚪🔥 ${j.aNome} e ${j.bNome} foram pra cabine! Comportem-se… ou não 😈`);
+          lolaExtra(sala, `🚪🔥 ${j.aNome} e ${j.bNome} foram pra cabine! Comportem-se… ou não 😈`);
         }
         await encerrarJogo(sala, 'fim');
       } else {
@@ -3266,6 +3388,40 @@ Sala: ${salaId}`).catch(() => {});
   const ultimaProvocacao = new Map<string, number>();
   const comentadas = new Set<string>();
   const rankingsAnunciados = new Set<string>();
+  // Quebra-gelo de quem chegou calado: em 07/11, 96 de 252 entraram e não falaram nada
+  // (46 casais). Depois de 2 min sem falar, a Lola chama a pessoa pelo nome, só para
+  // ela, com 3 respostas prontas: tocar manda o texto na sala. Uma vez por noite.
+  const quebraGeloEnviado = new Set<string>();
+  const QUEBRA_GELO: Record<Categoria, { pergunta: string; opcoes: string[] }> = {
+    casal: {
+      pergunta: '{nome}, chegaram quietinhos 😏 Que tal se apresentar pra sala? Toquem numa resposta e eu mando por vocês:',
+      opcoes: ['Oi, gente! Somos casal e viemos conhecer a Casa 😈', 'Procurando outro casal pra conversar 💑', 'Hoje a gente veio mais pra olhar… por enquanto 😏'],
+    },
+    mulher: {
+      pergunta: '{nome}, chegou quietinha 😏 Quer que eu te apresente? Toca numa resposta e ela vai pra sala:',
+      opcoes: ['Oi, gente! Cheguei 💋', 'Quero conhecer casais hoje 😈', 'Só olhando por enquanto… me convençam 😏'],
+    },
+    homem: {
+      pergunta: '{nome}, chegou calado 😏 Quem se apresenta é chamado pra cabine. Toca numa resposta e ela vai pra sala:',
+      opcoes: ['Boa noite, pessoal! 🍸', 'Algum casal a fim de conversar? 😏', 'Primeira vez aqui, quem me apresenta a Casa? 😈'],
+    },
+    outros: {
+      pergunta: '{nome}, chegou quietinho(a) 😏 Toca numa resposta e eu mando pra sala:',
+      opcoes: ['Oi, gente! Cheguei 💋', 'Quem quer conversar? 😈', 'Primeira vez aqui 😏'],
+    },
+  };
+  const quebrarGeloDeQuemChegou = (sala: Sala, agora: number, chaveNoite: string) => {
+    if (sala.anonima) return;
+    for (const p of sala.presentes.values()) {
+      if (!p.podeFalar || p.ultimaMsg > 0 || p.ultimaMidia > 0 || p.foraDaTela || agora - p.entrouEm < 2 * 60_000) continue;
+      const chave = `${chaveNoite}:${p.id}`;
+      if (quebraGeloEnviado.has(chave)) continue;
+      quebraGeloEnviado.add(chave);
+      const q = QUEBRA_GELO[p.cat] ?? QUEBRA_GELO.outros;
+      const msg: Msg = { id: randomUUID(), tipo: 'lola', texto: q.pergunta.replace('{nome}', p.nome), opcoes: q.opcoes, criadoEm: new Date().toISOString() };
+      emitirPara(p.id, 'casa.mensagem', { sala: sala.id, msg });
+    }
+  };
   const provocarQuieto = (sala: Sala, agora: number) => {
     if (sala.anonima || falantes(sala).length < 2) return;
     // Chamada solta é o último recurso: apresentar duas pessoas funciona melhor.
@@ -3307,7 +3463,7 @@ Sala: ${salaId}`).catch(() => {});
     if (casal) linhas.push(`💑 Casal mais desejado: ${casal.nome} (${casal.n} reações) 🔥`);
     if (maisQuente) linhas.push(`💬 Mensagem mais quente: ${maisQuente.nome} — "${maisQuente.texto}" (${maisQuente.n} reações)`);
     linhas.push('Reajam com 🔥😈💦 no que mexer com vocês: daqui a 30 min tem mais 😏');
-    for (const sl of salas.values()) if (!sl.anonima && falantes(sl).length >= 2) lola(sl, linhas.join('\n'));
+    for (const sl of salas.values()) if (!sl.anonima && falantes(sl).length >= 2) lolaExtra(sl, linhas.join('\n'));
   };
 
   // ─── Rádio da Casa: todo mundo ouve a mesma faixa no mesmo ponto ─────────
@@ -3692,7 +3848,7 @@ Sala: ${salaId}`).catch(() => {});
     }
     if (!sala || !de || !eu || (await bloqueados(c.de, userId))) { res.status(409).json({ error: 'indisponivel', message: 'A pessoa saiu da sala.' }); return; }
     const cab = criarCabine(sala, de, eu);
-    lola(sala, `🚪 ${de.nome} e ${eu.nome} foram pra cabine 🔥`);
+    lolaExtra(sala, `🚪 ${de.nome} e ${eu.nome} foram pra cabine 🔥`);
     res.json({ ok: true, cabineId: cab.id, com: de.nome });
   });
 

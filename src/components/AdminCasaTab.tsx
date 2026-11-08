@@ -10,6 +10,7 @@ import TemasDaCasa from '@/components/TemasDaCasa';
 import HistoricoDaCasa from '@/components/HistoricoDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
 import NegocioDaCasa from '@/components/NegocioDaCasa';
+import AvaliacoesDaCasa from '@/components/AvaliacoesDaCasa';
 import PermanenciaDaCasa from '@/components/PermanenciaDaCasa';
 
 /** Admin › A Casa: tudo da boate virtual num lugar só (ao vivo, reservas, moderação, rádio, histórico). */
@@ -121,6 +122,7 @@ export default function AdminCasaTab() {
 
       <NegocioDaCasa />
       <PermanenciaDaCasa />
+      <AvaliacoesDaCasa />
 
       {vivo?.aberta && (
         <>

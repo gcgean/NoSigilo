@@ -618,7 +618,7 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   casa_entrada: { points: 5, dailyCap: 1 },
   // Promoção: casal que entra na Casa antes da meia-noite (NOITES_CASAL_CEDO em casa.ts).
   casa_casal_cedo: { points: 20, dailyCap: 1 },
-  // Mulher verificada que entra na noite (só com system_settings.casa_mulheres_ativo = '1').
+  // Mulher verificada que entra na noite (desliga com system_settings.casa_mulheres_ativo = '0').
   casa_mulher_noite: { points: 30, dailyCap: 1 },
   casa_quiz: { points: 3, dailyCap: 5 },
   casa_desafio: { points: 5, dailyCap: 10 },
@@ -3962,6 +3962,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await apagar('DELETE FROM casa_mensagens WHERE autor_id = ? OR destino_id = ?', [userId, userId]);
     await apagar('DELETE FROM casa_pontos WHERE user_id = ?', u);
     await apagar('DELETE FROM casa_reservas WHERE user_id = ?', u);
+    await apagar('DELETE FROM casa_avaliacoes WHERE user_id = ?', u);
     await apagar('DELETE FROM casa_eventos WHERE user_id = ? OR outro_id = ?', [userId, userId]);
 
     // Perfil: tudo que descreve a pessoa. Gênero fica (sem ele o resto do sistema

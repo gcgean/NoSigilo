@@ -42,6 +42,7 @@ import { ToastAction } from '@/components/ui/toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
 import PhotoGateOverlay from '@/components/PhotoGateOverlay';
+import ChamadaDaReserva from '@/components/ChamadaDaReserva';
 import ScreenGuard from '@/components/ScreenGuard';
 import RadarNightPrompt from '@/components/RadarNightPrompt';
 import NotaDoApp from '@/components/NotaDoApp';
@@ -1429,6 +1430,7 @@ export default function Layout() {
               <Outlet />
             </Suspense>
             <PhotoGateOverlay pathname={location.pathname} />
+            <ChamadaDaReserva casaAberta={casaAberta} pathname={location.pathname} />
             {/* Admin fica de fora: precisa de print e DevTools para corrigir contas. */}
             {!user?.isAdmin && <ScreenGuard />}
             <RadarNightPrompt />

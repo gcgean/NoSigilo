@@ -4047,6 +4047,59 @@ describe('nosigilo backend', () => {
     expect(r).toEqual({ pessoas: 4, medianaMin: 10, ate2Min: 1, de2a10Min: 1, de10a30Min: 1, mais30Min: 1, voltaram: 1 });
   });
 
+  it('A Casa: sair da tela não tira da sala; avaliação 1x por pessoa; minha reserva', async () => {
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const terca = new Date();
+    do terca.setUTCDate(terca.getUTCDate() + 1); while ([5, 6, 0].includes(terca.getUTCDay()));
+    terca.setUTCHours(18, 0, 0, 0);
+    vi.useFakeTimers({ toFake: ['Date'], now: terca });
+    try {
+      const nova = async (nome: string, gender: string) => {
+        const u = await registerInvitedUser(ctx, sponsorToken, { name: nome, email: `${nome.toLowerCase().replace(/\s+/g, '-')}@example.com`, password: 'senha123', gender });
+        await grantPremium(ctx, String(u.user.id));
+        return u;
+      };
+      const admin = await nova('Admin Avalia Casa', 'Mulher');
+      await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(admin.user.id)]);
+      const casal = await nova('Casal Avalia Casa', 'Casal (Ele/Ela)');
+      await ctx.db.persist();
+      await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 60 }).expect(200);
+
+      // Reservou e a Casa abriu: o app inteiro sabe (para o chamado "seu lugar está guardado").
+      await request(ctx.app).post('/api/casa/reservar').set(auth(casal.token)).send({ reservar: true }).expect(200);
+      const reserva = (await request(ctx.app).get('/api/casa/minha-reserva').set(auth(casal.token)).expect(200)).body;
+      expect(reserva).toMatchObject({ aberta: true, reservado: true, naCasa: false });
+
+      // Sair da tela (ver um perfil) não tira da sala nem registra saída; sair de verdade tira.
+      await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200);
+      await request(ctx.app).post('/api/casa/salao/sair').set(auth(casal.token)).send({ temporario: true }).expect(200);
+      expect((await request(ctx.app).get('/api/casa/minha-reserva').set(auth(casal.token)).expect(200)).body.naCasa).toBe(true);
+      const saidas = async () => ((await queryAll(ctx.db, "SELECT id FROM casa_eventos WHERE user_id = ? AND tipo = 'saiu'", [String(casal.user.id)])) as any[]).length;
+      expect(await saidas()).toBe(0);
+      await request(ctx.app).post('/api/casa/salao/sair').set(auth(casal.token)).expect(200);
+      expect((await request(ctx.app).get('/api/casa/minha-reserva').set(auth(casal.token)).expect(200)).body.naCasa).toBe(false);
+      await vi.waitFor(async () => expect(await saidas()).toBe(1));
+
+      // Avaliação: nota de 1 a 5, uma vez só por pessoa; o admin vê a média e a sugestão.
+      expect((await request(ctx.app).get('/api/casa/avaliacao').set(auth(casal.token)).expect(200)).body.jaAvaliou).toBe(false);
+      await request(ctx.app).post('/api/casa/avaliacao').set(auth(casal.token)).send({ nota: 7 }).expect(400);
+      await request(ctx.app).post('/api/casa/avaliacao').set(auth(casal.token)).send({ nota: 4, sugestao: 'Mais brincadeiras na cabine' }).expect(200);
+      await request(ctx.app).post('/api/casa/avaliacao').set(auth(casal.token)).send({ nota: 1 }).expect(200);
+      expect((await request(ctx.app).get('/api/casa/avaliacao').set(auth(casal.token)).expect(200)).body.jaAvaliou).toBe(true);
+      await request(ctx.app).get('/api/casa/admin/avaliacoes').set(auth(casal.token)).expect(403);
+      const painel = (await request(ctx.app).get('/api/casa/admin/avaliacoes').set(auth(admin.token)).expect(200)).body;
+      expect(painel.total).toBe(1);
+      expect(painel.media).toBe(4);
+      expect(painel.ultimas[0]).toMatchObject({ nota: 4, sugestao: 'Mais brincadeiras na cabine', nome: 'Casal Avalia Casa' });
+
+      await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 0 }).expect(200);
+      await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(admin.user.id)]);
+    } finally {
+      vi.useRealTimers();
+      for (const t of ['casa_mensagens', 'casa_eventos', 'casa_pontos', 'casa_reservas']) await run(ctx.db, `DELETE FROM ${t} WHERE noite LIKE ?`, [`%${terca.toISOString().slice(0, 10)}`]);
+    }
+  });
+
   it('A Casa registra a saída da sala e a permanência só o admin vê', async () => {
     const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
     const terca = new Date();
@@ -4067,19 +4120,21 @@ describe('nosigilo backend', () => {
       const bonus = async () => ((await queryAll(ctx.db, "SELECT id FROM token_transactions WHERE user_id = ? AND action_type = 'casa_mulher_noite'", [String(verificada.user.id)])) as any[]).length;
 
       await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 60 }).expect(200);
-      // Bônus desligado: entra e não ganha.
+      // Bônus desligado pelo admin ('0'): entra e não ganha. Sem configuração, vale ligado.
+      await run(ctx.db, "INSERT INTO system_settings (key, value, updated_at) VALUES ('casa_mulheres_ativo', '0', ?)", [new Date().toISOString()]);
+      await ctx.db.persist();
       await request(ctx.app).post('/api/casa/salao/entrar').set(auth(verificada.token)).expect(200);
       await new Promise((r) => setTimeout(r, 50));
       expect(await bonus()).toBe(0);
       // Trocar de sala e sair ficam registrados.
-      await request(ctx.app).post('/api/casa/casais/entrar').set(auth(verificada.token)).expect(200);
-      await request(ctx.app).post('/api/casa/casais/sair').set(auth(verificada.token)).expect(200);
+      await request(ctx.app).post('/api/casa/cuckold/entrar').set(auth(verificada.token)).expect(200);
+      await request(ctx.app).post('/api/casa/cuckold/sair').set(auth(verificada.token)).expect(200);
       await new Promise((r) => setTimeout(r, 50));
       const tipos = ((await queryAll(ctx.db, "SELECT tipo FROM casa_eventos WHERE user_id = ? ORDER BY created_at", [String(verificada.user.id)])) as any[]).map((e) => e.tipo);
       expect(tipos).toEqual(expect.arrayContaining(['entrou', 'trocou', 'saiu']));
 
-      // Bônus ligado: verificada ganha uma vez por noite.
-      await run(ctx.db, "INSERT INTO system_settings (key, value, updated_at) VALUES ('casa_mulheres_ativo', '1', ?)", [new Date().toISOString()]);
+      // Bônus ligado (sem a configuração): verificada ganha uma vez por noite.
+      await run(ctx.db, "DELETE FROM system_settings WHERE key = 'casa_mulheres_ativo'");
       await ctx.db.persist();
       await request(ctx.app).post('/api/casa/salao/entrar').set(auth(verificada.token)).expect(200);
       await vi.waitFor(async () => expect(await bonus()).toBe(1));
@@ -4490,7 +4545,10 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 60 }).expect(200);
     const info = (await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body;
     expect(info.aberta).toBe(true);
+    // Quem abriu é admin: vê também as salas guardadas (Quarto Escuro e Sala dos Casais).
     expect(info.salas.map((s: any) => s.id)).toEqual(['salao', 'casais', 'quarto', 'cuckold', 'glory']);
+    const doPublico = (await request(ctx.app).get('/api/casa').set(auth(homens[0].token)).expect(200)).body;
+    expect(doPublico.salas.map((s: any) => s.id)).toEqual(['salao', 'cuckold', 'glory']);
     expect(info.salas[0]).toMatchObject({ pessoas: [], cabines: [] });
 
     const entrouCasal = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
@@ -4502,7 +4560,8 @@ describe('nosigilo backend', () => {
     const doSalao = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
     expect(doSalao.mensagens.some((m: any) => m.tipo === 'sistema' && /Homem Casa [01]/.test(m.texto))).toBe(false);
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[2].token)).expect(409);
-    await request(ctx.app).post('/api/casa/casais/entrar').set(auth(homens[2].token)).expect(403);
+    // Sala dos Casais guardada: quem não é admin nem entra.
+    await request(ctx.app).post('/api/casa/casais/entrar').set(auth(homens[2].token)).expect(404);
     // No Cuckold o solteiro entra sem fila; de lá, o casal chama ele para o Salão e ele passa na frente.
     await request(ctx.app).post('/api/casa/cuckold/entrar').set(auth(homens[2].token)).expect(200);
     await request(ctx.app).post('/api/casa/cuckold/entrar').set(auth(casal.token)).expect(200);
