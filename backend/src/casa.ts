@@ -158,7 +158,7 @@ type Msg = {
   tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao' | 'anfitriao' | 'promotor';
   /** Efeito animado que toca na tela de quem está na sala/cabine (drink, brinde, ação da cabine). */
   efeito?: string;
-  autor?: { id: string; nome: string; avatar: string | null; cat: Categoria };
+  autor?: { id: string; nome: string; avatar: string | null; cat: Categoria; cidade?: string | null };
   texto: string;
   criadoEm: string;
   /** Foto ou vídeo de visualização única: o link só sai pelo /ver, uma vez por pessoa. */
@@ -1357,7 +1357,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   };
   // Dupla que combina: um procura o tipo do outro (fica natural o que eles conversam).
   const combina = (a: Promotor, b: Promotor) => a.procura.includes(b.genero) || b.procura.includes(a.genero);
-  const autorPromotor = (p: Promotor) => ({ id: `promotor:${p.id}`, nome: p.nome, avatar: p.avatar, cat: p.cat });
+  const autorPromotor = (p: Promotor) => ({ id: `promotor:${p.id}`, nome: p.nome, avatar: p.avatar, cat: p.cat, cidade: p.cidade });
   // Falas prontas (quando a IA falha): provocação safada entre os dois, no nível da sala.
   const FALAS_PRONTAS_PROMOTOR: Record<'quente' | 'muito_quente', string[]> = {
     quente: [
@@ -1382,13 +1382,14 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     ],
   };
   const falaPronta = (sala: Sala) => sortear(FALAS_PRONTAS_PROMOTOR[sala.nivel === 'muito_quente' ? 'muito_quente' : 'quente']);
-  // O nome do outro sai exatamente como no perfil e, no começo da fala, separado por
-  // vírgula ("soumorenagata a gente…" parecia erro de digitação).
+  // O nome do outro sai exatamente como no perfil, como @menção (igual entre as pessoas
+  // da sala) e, no começo da fala, separado por vírgula ("@soumorenagata, a gente…").
   const ajustarNomeNaFala = (texto: string, nome: string) => {
     const esc = nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     let t = texto.replace(new RegExp(esc, 'gi'), nome);
     if (t.startsWith(nome) && !/^[,!?.:]/.test(t.slice(nome.length))) t = `${nome},${t.slice(nome.length)}`;
-    return t.replace(new RegExp(`^${esc},\\s*`), `${nome}, `);
+    t = t.replace(new RegExp(`^${esc},\\s*`), `${nome}, `);
+    return t.replace(new RegExp(`(^|[^@\\w])(${esc})(?![\\w])`, 'g'), '$1@$2');
   };
   const falaDoPromotor = async (sala: Sala, quem: Promotor, outro: Promotor, d: Dupla): Promise<string> => {
     if (!deps.deepseekKey) return falaPronta(sala);
@@ -1432,8 +1433,9 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       if (!r.ok) return falaPronta(sala);
       const json = await r.json() as any;
       const t = String(json?.choices?.[0]?.message?.content || '').trim().replace(/^["“”'\-\s]+|["“”']+$/g, '').replace(new RegExp(`^${quem.nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*`, 'i'), '').trim();
-      if (t.length < 4 || t.length > 200 || /https?:\/\/|www\.|@|\d{6,}/i.test(t)) return falaPronta(sala);
-      return ajustarNomeNaFala(t, outro.nome);
+      // E-mail ou link é barrado; o "@" de marcação a IA pode usar (o ajuste abaixo recoloca certinho).
+      if (t.length < 4 || t.length > 200 || /https?:\/\/|www\.|\S@\S|\.(com|net|br)\b|\d{6,}/i.test(t)) return falaPronta(sala);
+      return ajustarNomeNaFala(t.replace(/@/g, ''), outro.nome);
     } catch {
       return falaPronta(sala);
     } finally {

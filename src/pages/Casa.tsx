@@ -58,7 +58,7 @@ type Info = {
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao' | 'promotor'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; legenda?: string; opcoes?: string[] };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao' | 'promotor'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria; cidade?: string | null }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; legenda?: string; opcoes?: string[] };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -710,6 +710,8 @@ export default function Casa() {
   // @menções: quem está na sala (e meu nome aqui, que pode ser apelido).
   const meuNomeNaSala = estado?.presentes.find((x) => x.id === estado.eu.idPublico)?.nome;
   const nomesNaSala = (estado?.presentes ?? []).map((x) => x.nome);
+  // Promotores não ficam na lista de presentes: os nomes deles vêm das falas, para o @ destacar.
+  const nomesDosPromotores = [...new Set((estado?.mensagens ?? []).filter((x) => x.autor?.id.startsWith('promotor:')).map((x) => x.autor!.nome))];
   const rolagem = useRolagemDoChat({ chave: estado?.sala.id ?? null, mensagens: estado?.mensagens, meuId: estado?.eu.idPublico ?? user?.id ?? '', meuNome: meuNomeNaSala });
   // A faixa "Respondendo" ocupa espaço embaixo: quem está no fim continua vendo a última.
   useEffect(() => { if (respondendo && rolagem.noFim) rolagem.irParaFim(); }, [respondendo]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1135,9 +1137,9 @@ export default function Casa() {
   // Reações safadas + responder, embaixo de cada mensagem.
   const meuId = estado?.eu.idPublico ?? user?.id ?? '';
   // "· Casal · Fortaleza": a cidade só vem de quem é do mesmo estado e ainda está na sala.
-  const detalheDoAutor = (autor?: { id: string; cat: Categoria }) => {
+  const detalheDoAutor = (autor?: { id: string; cat: Categoria; cidade?: string | null }) => {
     if (!autor) return '';
-    const cidade = estado?.presentes.find((x) => x.id === autor.id)?.cidade;
+    const cidade = estado?.presentes.find((x) => x.id === autor.id)?.cidade ?? autor.cidade;
     return `· ${ROTULO_CAT[autor.cat]}${cidade ? ` · ${cidade}` : ''}`;
   };
   const AcoesDaMsg = ({ m }: { m: Msg }) => {
@@ -1351,7 +1353,7 @@ export default function Casa() {
           <div key={m.id} className="flex items-start gap-2">
             {m.autor && <button type="button" onClick={() => abrirAutor(m.autor)} aria-label={`Abrir ${m.autor.nome}`}><Avatar p={m.autor} tamanho="h-7 w-7" comStory={comStoryNovo.has(m.autor.id)} /></button>}
             <div className="min-w-0">
-              <button type="button" onClick={() => abrirAutor(m.autor)} className="block text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} {m.autor?.id.startsWith('promotor:') ? <span className="opacity-70" title="Promotor da Casa">🎤</span> : <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span>}</button>
+              <button type="button" onClick={() => abrirAutor(m.autor)} className="block text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span>{m.autor?.id.startsWith('promotor:') && <span className="ml-1 opacity-70" title="Promotor da Casa">🎤</span>}</button>
               {(() => {
                 const minha = m.autor?.id === (estado.eu.idPublico ?? user?.id);
                 const vista = estado.midiasVistas.includes(m.id);
@@ -1402,14 +1404,14 @@ export default function Casa() {
             {m.autor && <Avatar p={m.autor} tamanho="h-7 w-7" />}
             <div className="min-w-0 max-w-[85%] rounded-2xl rounded-tl-sm bg-white/10 px-3 py-1.5">
               <p className="text-[11px] font-semibold text-white/80">
-                {m.autor?.nome}{' '}
+                {m.autor?.nome} <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span>{' '}
                 {/* Selo discreto: só o 🎤; tocar explica quem é. */}
                 <button type="button" title="Promotor da Casa: anima a pista e conversa só com outros promotores" aria-label="Promotor da Casa"
                   onClick={() => toast({ title: '🎤 Promotor da Casa', description: 'Anima a pista e conversa só com outros promotores.' })}
                   className="align-middle text-[11px] opacity-70 hover:opacity-100">🎤</button>
               </p>
               {m.resposta && <Citacao nome={m.resposta.nome} trecho={m.resposta.trecho} onIr={() => irParaCitada(m.resposta!.id)} className="border-amber-300/50 bg-black/20 text-white/70" />}
-              <p className="whitespace-pre-line break-words text-sm leading-snug">{m.texto}</p>
+              <p className="whitespace-pre-line break-words text-sm leading-snug"><TextoComMencoes texto={m.texto} nomes={[...nomesNaSala, ...nomesDosPromotores]} meuNome={meuNomeNaSala} /></p>
             </div>
           </div>
         ) : m.tipo === 'anfitriao' ? (
