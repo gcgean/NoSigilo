@@ -43,6 +43,7 @@ import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
 import PhotoGateOverlay from '@/components/PhotoGateOverlay';
 import ChamadaDaReserva from '@/components/ChamadaDaReserva';
+import { AvaliacaoAoSairDaCasa } from '@/components/AvaliacaoDaCasa';
 import ScreenGuard from '@/components/ScreenGuard';
 import RadarNightPrompt from '@/components/RadarNightPrompt';
 import NotaDoApp from '@/components/NotaDoApp';
@@ -1431,6 +1432,7 @@ export default function Layout() {
             </Suspense>
             <PhotoGateOverlay pathname={location.pathname} />
             <ChamadaDaReserva casaAberta={casaAberta} pathname={location.pathname} />
+            <AvaliacaoAoSairDaCasa pathname={location.pathname} />
             {/* Admin fica de fora: precisa de print e DevTools para corrigir contas. */}
             {!user?.isAdmin && <ScreenGuard />}
             <RadarNightPrompt />

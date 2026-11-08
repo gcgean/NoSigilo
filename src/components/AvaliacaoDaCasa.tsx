@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import apiClient from '@/utils/apiClient';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -69,4 +69,27 @@ export default function AvaliacaoDaCasa({ aberto, onFechar }: { aberto: boolean;
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * Fica no Layout: quem esteve numa sala d'A Casa e foi para outra página do
+ * NoSigilo recebe a avaliação lá, se nunca avaliou (no máximo 1x por noite).
+ */
+export function AvaliacaoAoSairDaCasa({ pathname }: { pathname: string }) {
+  const [aberto, setAberto] = useState(false);
+  useEffect(() => {
+    if (pathname.startsWith('/casa')) return;
+    let pendente = false;
+    let perguntouHoje = false;
+    try {
+      pendente = sessionStorage.getItem('nosigilo:avaliar-casa-pendente') === '1';
+      if (pendente) sessionStorage.removeItem('nosigilo:avaliar-casa-pendente');
+      perguntouHoje = localStorage.getItem('nosigilo:avaliacao-casa-perguntada') === new Date(Date.now() - 6 * 3600_000).toLocaleDateString('sv-SE');
+    } catch { /* sem armazenamento */ }
+    if (!pendente || perguntouHoje) return;
+    let vivo = true;
+    apiClient.get('/casa/avaliacao').then((r) => { if (vivo && !r.data?.jaAvaliou) setAberto(true); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [pathname]);
+  return <AvaliacaoDaCasa aberto={aberto} onFechar={() => setAberto(false)} />;
 }

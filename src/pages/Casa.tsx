@@ -1,4 +1,3 @@
-import AvaliacaoDaCasa from '@/components/AvaliacaoDaCasa';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -346,7 +345,6 @@ export default function Casa() {
   // Comprar tokens sem sair da Casa (abre sozinho quando o saldo não dá).
   const [comprarAberto, setComprarAberto] = useState(false);
   const [feedbackAberto, setFeedbackAberto] = useState(false);
-  const [avaliando, setAvaliando] = useState(false);
   // Brincadeira que a pessoa dispensou: o cartão do topo some (ela pode votar na mensagem da Lola).
   const [jogosDispensados, setJogosDispensados] = useState<string[]>([]);
   // Card da brincadeira fica recolhido numa linha (abre ao tocar); quem é parte da vez já vê aberto.
@@ -504,12 +502,6 @@ export default function Casa() {
     if (salaAtual) void apiClient.post(`/casa/${salaAtual}/sair`).catch(() => {});
     setEstado(null);
     void carregar();
-    // Quem nunca avaliou A Casa recebe a nota de 1 a 5 ao sair (no máximo 1x por noite).
-    if (!salaAtual) return;
-    let perguntouHoje = false;
-    try { perguntouHoje = localStorage.getItem('nosigilo:avaliacao-casa-perguntada') === new Date(Date.now() - 6 * 3600_000).toLocaleDateString('sv-SE'); } catch { /* sem armazenamento */ }
-    if (perguntouHoje) return;
-    apiClient.get('/casa/avaliacao').then((r) => { if (!r.data?.jaAvaliou) setAvaliando(true); }).catch(() => {});
   }, [salaAtual, carregar]);
 
   useEffect(() => {
@@ -699,6 +691,12 @@ export default function Casa() {
   // Sai da sala ao deixar a página.
   const salaRef = useRef<string | null>(null);
   salaRef.current = salaAtual;
+  // Esteve numa sala nesta visita: ao ir para outra página do NoSigilo, quem nunca
+  // avaliou A Casa recebe a nota de 1 a 5 lá (ver AvaliacaoAoSairDaCasa no Layout).
+  useEffect(() => {
+    if (!salaAtual) return;
+    try { sessionStorage.setItem('nosigilo:avaliar-casa-pendente', '1'); } catch { /* sem armazenamento */ }
+  }, [salaAtual]);
   // Sair da página (ver um perfil, abrir o chat) não tira da sala: o servidor
   // mantém a pessoa até o ping expirar, e ela volta sem "chegar" de novo.
   useEffect(() => () => { if (salaRef.current) void apiClient.post(`/casa/${salaRef.current}/sair`, { temporario: true }).catch(() => {}); }, []);
@@ -2170,7 +2168,6 @@ export default function Casa() {
 
       {sala}
       <FeedbackDaCasa aberto={feedbackAberto} onFechar={() => setFeedbackAberto(false)} />
-      <AvaliacaoDaCasa aberto={avaliando} onFechar={() => setAvaliando(false)} />
 
       <Dialog open={recebidoAgora === 'convite'} onOpenChange={(v) => !v && void responderConvite(false)}>
         <DialogContent className="z-[9999] max-w-xs">

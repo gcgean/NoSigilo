@@ -1437,8 +1437,12 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     publicarMsg(sala, { tipo: 'anfitriao', autor: ANFITRIOES, texto, ...(resposta ? { resposta } : {}) });
   // Puxam conversa quando a sala está quieta (3 min sem gente falando), no máximo 1 vez a cada 7 min.
   const ultimoAnfitriao = new Map<string, number>();
+  // Léo & Bia desligados desde 08/11/2026 (o dono achou que atrapalhavam mais que
+  // ajudavam; quem anima agora são a Lola e os Promotores da Casa). O código fica para
+  // religar: é só trocar para true.
+  const ANFITRIOES_LIGADOS = false;
   const puxarConversa = (sala: Sala, agora: number) => {
-    if (sala.anonima || sala.jogo) return;
+    if (!ANFITRIOES_LIGADOS || sala.anonima || sala.jogo) return;
     const fal = falantes(sala);
     if (fal.length === 0) return;
     if (agora - (ultimoAnfitriao.get(sala.id) ?? 0) < 7 * 60_000) return;
@@ -1456,6 +1460,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   };
   const ultimaRespostaAnfitrioes = new Map<string, number>();
   const responderComoAnfitrioes = async (sala: Sala, p: Presente, texto: string, msgId: string) => {
+    if (!ANFITRIOES_LIGADOS) return;
     const agora = Date.now();
     if (agora - (ultimaRespostaAnfitrioes.get(sala.id) ?? 0) < 8_000 || agora - (ultimaRespostaAnfitrioes.get(p.id) ?? 0) < 40_000) return;
     ultimaRespostaAnfitrioes.set(sala.id, agora);
@@ -1513,7 +1518,11 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       const ordem = ordenarParaResponder(autor, falantes(sala), procuraAceita, agora, (id) => chamadoParaResponder.get(id) ?? 0);
       let parceiro: Presente | null = null;
       for (const c of ordem) if (!(await bloqueados(autor.id, c.id))) { parceiro = c; break; }
-      if (!parceiro) { void responderComoAnfitrioes(sala, autor, oi.texto, oi.msgId); return; }
+      if (!parceiro) {
+        if (ANFITRIOES_LIGADOS) void responderComoAnfitrioes(sala, autor, oi.texto, oi.msgId);
+        else lolaExtra(sala, `@${autor.nome}, oi! 😏 A pista tá esquentando, fica por aqui que já já chega gente pra conversar com você 🔥`);
+        return;
+      }
       chamadoParaResponder.set(parceiro.id, agora);
       const deOnde = autor.cidade && autor.cidade === parceiro.cidade ? ` também é de ${autor.cidade} e`
         : autor.uf && autor.uf === parceiro.uf ? ` também é de ${autor.uf} e` : '';
