@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { feedService, usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService, matchService, subscriptionsService } from '@/services/api';
+import { adminService, feedService, usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService, matchService, subscriptionsService } from '@/services/api';
 import ReportDialog from '@/components/ReportDialog';
 import GiftTokensModal from '@/components/GiftTokensModal';
 import { INTENTION_OPTIONS } from '@/pages/Search';
@@ -559,6 +559,10 @@ export default function UserProfile() {
   const [blockStatus, setBlockStatus] = useState<{ blocked: boolean; blockedByMe: boolean; blockedByThem: boolean } | null>(null);
   const [isBlockLoading, setIsBlockLoading] = useState(false);
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  // Admin: banir direto do perfil (sem ir ao painel).
+  const [confirmarBan, setConfirmarBan] = useState(false);
+  const [banindo, setBanindo] = useState(false);
+  const [banidoAqui, setBanidoAqui] = useState(false);
   const lastRegisteredVisitRef = useRef<string | null>(null);
 
   // Profile like
@@ -1593,6 +1597,37 @@ export default function UserProfile() {
                     </Button>
                   )}
                 </>
+              )}
+              {moderando && profile?.id && (
+                banidoAqui ? (
+                  <Button variant="outline" size="sm" className="gap-1" disabled={banindo}
+                    onClick={async () => {
+                      setBanindo(true);
+                      try { await adminService.unbanUser(String(profile.id)); setBanidoAqui(false); toast({ title: `${profile.name} foi desbanido(a)` }); }
+                      catch { toast({ title: 'Não foi possível desbanir', variant: 'destructive' }); }
+                      finally { setBanindo(false); }
+                    }}>
+                    <ShieldOff className="w-3.5 h-3.5" /> {banindo ? '...' : 'Desbanir'}
+                  </Button>
+                ) : confirmarBan ? (
+                  <div className="flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs">
+                    <span className="font-medium text-destructive">Banir {profile.name}? A conta perde o acesso.</span>
+                    <Button size="sm" variant="destructive" className="h-6 px-2 text-xs" disabled={banindo}
+                      onClick={async () => {
+                        setBanindo(true);
+                        try { await adminService.banUser(String(profile.id)); setBanidoAqui(true); setConfirmarBan(false); toast({ title: `${profile.name} foi banido(a)` }); }
+                        catch { toast({ title: 'Não foi possível banir', variant: 'destructive' }); }
+                        finally { setBanindo(false); }
+                      }}>
+                      {banindo ? '...' : 'Banir'}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setConfirmarBan(false)}>Não</Button>
+                  </div>
+                ) : (
+                  <Button variant="destructive" size="sm" className="gap-1" onClick={() => setConfirmarBan(true)} title="Só admin vê">
+                    <Ban className="w-3.5 h-3.5" /> Banir (admin)
+                  </Button>
+                )
               )}
             </div>
           </div>

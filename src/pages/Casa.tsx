@@ -58,7 +58,7 @@ type Info = {
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; legenda?: string; opcoes?: string[] };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao' | 'promotor'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; legenda?: string; opcoes?: string[] };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -1384,6 +1384,18 @@ export default function Casa() {
                   </>
                 );
               })()}
+            </div>
+          </div>
+        ) : m.tipo === 'promotor' ? (
+          // Promotores da Casa: conversam só entre eles (sem responder, reagir ou abrir menu).
+          <div key={m.id} className="flex items-start gap-2">
+            {m.autor && <Avatar p={m.autor} tamanho="h-7 w-7" />}
+            <div className="min-w-0 max-w-[85%] rounded-2xl rounded-tl-sm border border-amber-400/30 bg-amber-500/10 px-3 py-1.5">
+              <p className="text-[11px] font-semibold text-white/80">
+                {m.autor?.nome} <span className="ml-1 rounded-full bg-amber-500/25 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-200">🎤 Promotor da Casa</span>
+              </p>
+              {m.resposta && <Citacao nome={m.resposta.nome} trecho={m.resposta.trecho} onIr={() => irParaCitada(m.resposta!.id)} className="border-amber-300/50 bg-black/20 text-white/70" />}
+              <p className="whitespace-pre-line break-words text-sm leading-snug">{m.texto}</p>
             </div>
           </div>
         ) : m.tipo === 'anfitriao' ? (

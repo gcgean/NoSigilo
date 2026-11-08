@@ -155,7 +155,7 @@ type Presente = {
 
 type Msg = {
   id: string;
-  tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao' | 'anfitriao';
+  tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao' | 'anfitriao' | 'promotor';
   /** Efeito animado que toca na tela de quem está na sala/cabine (drink, brinde, ação da cabine). */
   efeito?: string;
   autor?: { id: string; nome: string; avatar: string | null; cat: Categoria };
@@ -1295,6 +1295,130 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       clearTimeout(timer);
     }
   };
+  // ─── Promotores da Casa ─────────────────────────────────────────────────────
+  // Perfis de vitrine que entram nas salas frias com o selo "Promotor da Casa" e
+  // conversam SÓ ENTRE ELES (a IA escreve), trocam drinks e vão pra cabine entre
+  // eles, para a pista não parecer vazia e os casais se soltarem. Ninguém de fora
+  // interage: não ficam na lista de presentes, não recebem drink, convite, @ nem
+  // entram em brincadeira. Calam quando o público real engrena.
+  type Promotor = { id: string; nome: string; avatar: string | null; cat: Categoria };
+  let elenco: Promotor[] = [];
+  let elencoCarregadoEm = 0;
+  const carregarElenco = async () => {
+    if (elenco.length && Date.now() - elencoCarregadoEm < 30 * 60_000) return elenco;
+    const rows = (await db.queryAll(
+      `SELECT id, name, avatar, gender FROM users
+        WHERE COALESCE(is_showcase,0) = 1 AND COALESCE(is_banned,0) = 0 AND deleted_at IS NULL
+          AND avatar IS NOT NULL AND TRIM(avatar) <> ''`, [],
+    )) as any[];
+    elenco = rows.map((r) => ({ id: String(r.id), nome: String(r.name), avatar: r.avatar ? String(r.avatar) : null, cat: categoria(r.gender) }));
+    elencoCarregadoEm = Date.now();
+    return elenco;
+  };
+  type Dupla = { a: Promotor; b: Promotor; falas: number; proximaEm: number };
+  const duplaNaSala = new Map<SalaId, Dupla>();
+  const ocupadosAte = new Map<string, number>(); // promotor -> até quando está em uso (sala ou cabine)
+  const PROMOTOR_INTERVALO_MS = [70_000, 130_000] as const;
+  const FALAS_ATE_A_CABINE = 10;
+  const SALAS_DOS_PROMOTORES: SalaId[] = ['salao', 'cuckold', 'glory'];
+  const autorPromotor = (p: Promotor) => ({ id: `promotor:${p.id}`, nome: p.nome, avatar: p.avatar, cat: p.cat });
+  const FALAS_PRONTAS_PROMOTOR = [
+    'Essa música tá pedindo pra gente dançar mais perto 😏',
+    'Confessa: você reparou em mim quando eu entrei 🔥',
+    'A noite tá só começando e eu já tô ficando com calor 😈',
+    'Se eu te chamar pra cabine agora, você vem ou vai fazer charme? 💋',
+    'Adoro quando a sala vai esquentando assim, devagarzinho 😏',
+    'Fala a verdade, qual foi a coisa mais ousada que você já fez numa noite dessas? 🔥',
+    'Hoje eu vim sem vergonha nenhuma, só pra avisar 😈',
+    'Me paga mais um drink que eu te conto um segredo 🍸',
+  ];
+  const falaDoPromotor = async (sala: Sala, quem: Promotor, outro: Promotor): Promise<string> => {
+    if (!deps.deepseekKey) return sortear(FALAS_PRONTAS_PROMOTOR);
+    const conversa = sala.mensagens.filter((m) => m.tipo === 'promotor').slice(-6).map((m) => `${m.autor?.nome}: ${m.texto.slice(0, 120)}`).join('\n');
+    const controle = new AbortController();
+    const timer = setTimeout(() => controle.abort(), 10_000);
+    try {
+      const r = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          temperature: 1,
+          max_tokens: 90,
+          messages: [
+            {
+              role: 'system',
+              content: `Você escreve a fala de "${quem.nome}" (${quem.cat}), promotor(a) d'A Casa, boate virtual de uma rede social adulta e liberal brasileira (swing, casais; todos maiores de 18). Está no ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} Converse SOMENTE com "${outro.nome}" (${outro.cat}), outro promotor: flerte, provocação e clima ${sala.nivel === 'muito_quente' ? 'bem safado e desinibido' : 'quente e divertido'}, para mostrar à sala que ali todo mundo se solta. Nunca fale com outras pessoas da sala nem cite outros nomes; nunca combine encontro, nunca peça contato, fotos ou dinheiro; nada de menores, violência, drogas ou links. Português do Brasil, frase curta de conversa. Responda SOMENTE com a fala, sem aspas e sem o nome, no máximo 140 caracteres, no máximo um emoji.`,
+            },
+            { role: 'user', content: `Conversa até agora:\n${conversa || '(vocês acabaram de chegar)'}\n\nAgora fala ${quem.nome}, respondendo ${outro.nome}.` },
+          ],
+        }),
+        signal: controle.signal,
+      });
+      if (!r.ok) return sortear(FALAS_PRONTAS_PROMOTOR);
+      const json = await r.json() as any;
+      const t = String(json?.choices?.[0]?.message?.content || '').trim().replace(/^["“”'\-\s]+|["“”']+$/g, '').trim();
+      if (t.length < 4 || t.length > 200 || /https?:\/\/|www\.|@|\d{6,}/i.test(t)) return sortear(FALAS_PRONTAS_PROMOTOR);
+      return t;
+    } catch {
+      return sortear(FALAS_PRONTAS_PROMOTOR);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const animarComPromotores = async (sala: Sala, agora: number, chaveNoite: string) => {
+    if (sala.anonima || guardada(sala) || sala.jogo || !SALAS_DOS_PROMOTORES.includes(sala.id)) return;
+    if (SALAS_EXTRAS.includes(sala.id) && !liberadas.has(`${chaveNoite}:${sala.id}`)) return;
+    // Só anima quando tem gente vendo e a conversa de verdade está fraca.
+    const reais = new Set(sala.mensagens
+      .filter((m) => (m.tipo === 'pessoa' || m.tipo === 'midia') && agora - Date.parse(m.criadoEm) < 5 * 60_000)
+      .map((m) => m.autor?.id));
+    let dupla = duplaNaSala.get(sala.id);
+    if (sala.presentes.size === 0 || reais.size >= 4) {
+      if (dupla) { duplaNaSala.delete(sala.id); ocupadosAte.set(dupla.a.id, agora); ocupadosAte.set(dupla.b.id, agora); }
+      return;
+    }
+    if (!dupla) {
+      const livres = (await carregarElenco()).filter((p) => (ocupadosAte.get(p.id) ?? 0) <= agora);
+      if (livres.length < 2) return;
+      const a = sortear(livres);
+      const b = sortear(livres.filter((x) => x.id !== a.id));
+      dupla = { a, b, falas: 0, proximaEm: agora };
+      duplaNaSala.set(sala.id, dupla);
+      ocupadosAte.set(a.id, agora + 60 * 60_000);
+      ocupadosAte.set(b.id, agora + 60 * 60_000);
+    }
+    if (agora < dupla.proximaEm) return;
+    dupla.proximaEm = agora + PROMOTOR_INTERVALO_MS[0] + Math.random() * (PROMOTOR_INTERVALO_MS[1] - PROMOTOR_INTERVALO_MS[0]);
+    const d = dupla;
+    // Depois de uma boa conversa, vão pra cabine (somem por 20 min; outra dupla pode vir).
+    if (d.falas >= FALAS_ATE_A_CABINE) {
+      duplaNaSala.delete(sala.id);
+      ocupadosAte.set(d.a.id, agora + 20 * 60_000);
+      ocupadosAte.set(d.b.id, agora + 20 * 60_000);
+      publicarMsg(sala, { tipo: 'sistema', texto: `🚪 ${d.a.nome} e ${d.b.nome} (promotores da Casa) foram pra cabine 🔥` });
+      return;
+    }
+    // De vez em quando, um drink entre eles (sem tokens: não é dinheiro de ninguém).
+    if (d.falas === 4 || d.falas === 8) {
+      const [de, para] = d.falas === 4 ? [d.a, d.b] : [d.b, d.a];
+      const drinkId = sortear(Object.keys(DRINKS));
+      publicarMsg(sala, { tipo: 'sistema', texto: `${DRINKS[drinkId].emoji} ${de.nome} pagou ${DRINKS[drinkId].nome} pra ${para.nome} 😏`, efeito: drinkId });
+      d.falas += 1;
+      return;
+    }
+    const [quem, outro] = d.falas % 2 === 0 ? [d.a, d.b] : [d.b, d.a];
+    d.falas += 1;
+    const texto = await falaDoPromotor(sala, quem, outro);
+    if (duplaNaSala.get(sala.id) !== d) return; // a sala engrenou enquanto a IA pensava
+    const ultima = sala.mensagens.filter((m) => m.tipo === 'promotor').slice(-1)[0];
+    const respondendo = ultima && ultima.autor?.id === `promotor:${outro.id}` && Math.random() < 0.5;
+    publicarMsg(sala, {
+      tipo: 'promotor', autor: autorPromotor(quem), texto,
+      ...(respondendo ? { resposta: { id: ultima.id, nome: outro.nome, trecho: ultima.texto.slice(0, 80) } } : {}),
+    });
+  };
+
   const anfitrioes = (sala: Sala, texto: string, resposta?: Msg['resposta']) =>
     publicarMsg(sala, { tipo: 'anfitriao', autor: ANFITRIOES, texto, ...(resposta ? { resposta } : {}) });
   // Puxam conversa quando a sala está quieta (3 min sem gente falando), no máximo 1 vez a cada 7 min.
@@ -1715,6 +1839,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       }
       if (!sala.jogo) provocarQuieto(sala, agora);
       if (noite) quebrarGeloDeQuemChegou(sala, agora, noite.chave);
+      if (noite) void animarComPromotores(sala, agora, noite.chave).catch((e) => console.error('[casa] promotores', e));
       if (noite && !sala.jogo) { await apresentarPar(sala, agora, noite.chave); puxarConversa(sala, agora); }
       if (noite) await atenderOisSemResposta(sala, agora);
     }
@@ -2790,7 +2915,8 @@ Sala: ${salaId}`).catch(() => {});
     const barrada = await bloqueioRapido(p.id, p.nome, texto, sala.nome);
     if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
     const respondida = sala.mensagens.find((m) => m.id === String((req.body as any)?.respostaA || ''));
-    const resposta = respondida && respondida.tipo !== 'sistema'
+    // Promotores da Casa conversam só entre eles: não dá para responder a eles.
+    const resposta = respondida && respondida.tipo !== 'sistema' && respondida.tipo !== 'promotor'
       ? { id: respondida.id, nome: respondida.autor?.nome ?? 'Lola', trecho: respondida.tipo === 'midia' ? (respondida.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondida.texto.slice(0, 80) }
       : undefined;
     const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
@@ -2822,7 +2948,7 @@ Sala: ${salaId}`).catch(() => {});
     if (!sala || !p) { res.status(404).json({ error: 'fora_da_sala' }); return; }
     const emoji = String((req.body as any)?.emoji || '');
     const msg = sala.mensagens.find((m) => m.id === String((req.body as any)?.mensagemId || ''));
-    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema') { res.status(400).json({ error: 'reacao' }); return; }
+    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema' || msg.tipo === 'promotor') { res.status(400).json({ error: 'reacao' }); return; }
     msg.reacoes ??= {};
     const lista = msg.reacoes[emoji] ?? [];
     msg.reacoes[emoji] = lista.includes(p.idPublico) ? lista.filter((x) => x !== p.idPublico) : [...lista, p.idPublico];
@@ -3914,7 +4040,8 @@ Sala: ${salaId}`).catch(() => {});
     if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
     // Responder/comentar uma mensagem ou mídia da cabine (como no WhatsApp).
     const respondida = c.mensagens.find((x) => x.id === String((req.body as any)?.respostaA || ''));
-    const resposta = respondida && respondida.tipo !== 'sistema'
+    // Promotores da Casa conversam só entre eles: não dá para responder a eles.
+    const resposta = respondida && respondida.tipo !== 'sistema' && respondida.tipo !== 'promotor'
       ? { id: respondida.id, nome: respondida.autor?.nome ?? 'Lola', trecho: respondida.tipo === 'midia' ? (respondida.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondida.texto.slice(0, 80) }
       : undefined;
     const publicada = msgCabine(c, { tipo: 'pessoa', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat }, texto, ...(resposta ? { resposta } : {}) });
@@ -3977,7 +4104,7 @@ Sala: ${salaId}`).catch(() => {});
     if (!c || !m) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
     const emoji = String((req.body as any)?.emoji || '');
     const msg = c.mensagens.find((x) => x.id === String((req.body as any)?.mensagemId || ''));
-    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema') { res.status(400).json({ error: 'reacao' }); return; }
+    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema' || msg.tipo === 'promotor') { res.status(400).json({ error: 'reacao' }); return; }
     msg.reacoes ??= {};
     const lista = msg.reacoes[emoji] ?? [];
     msg.reacoes[emoji] = lista.includes(m.idPublico) ? lista.filter((x) => x !== m.idPublico) : [...lista, m.idPublico];
