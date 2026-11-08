@@ -97,15 +97,20 @@ const LANDING_PROFILE_TYPES = [
 ] as const;
 
 const PERFIS_DO_TOPO = [
-  { evento: 'inicio_casal', perfil: 'Casal (Ele/Ela)', rotulo: 'Somos um casal', emoji: '👫' },
-  { evento: 'inicio_mulher', perfil: 'Mulher', rotulo: 'Sou mulher', emoji: '👩' },
-  { evento: 'inicio_homem', perfil: 'Homem', rotulo: 'Sou homem', emoji: '👨' },
+  { evento: 'inicio_casal', perfil: 'Casal (Ele/Ela)', rotulo: 'Casal (ele/ela)', emoji: '👫' },
+  { evento: 'inicio_mulher', perfil: 'Mulher', rotulo: 'Mulher', emoji: '👩' },
+  { evento: 'inicio_homem', perfil: 'Homem', rotulo: 'Homem', emoji: '👨' },
+  { evento: 'inicio_casal_ele_ele', perfil: 'Casal (Ele/Ele)', rotulo: 'Casal (ele/ele)', emoji: '👬' },
+  { evento: 'inicio_casal_ela_ela', perfil: 'Casal (Ela/Ela)', rotulo: 'Casal (ela/ela)', emoji: '👭' },
+  { evento: 'inicio_trans', perfil: 'Transexual', rotulo: 'Pessoa trans', emoji: '🏳️‍⚧️' },
+  { evento: 'inicio_crossdresser', perfil: 'Crossdresser (CD)', rotulo: 'Crossdresser', emoji: '✨' },
+  { evento: 'inicio_travesti', perfil: 'Travesti', rotulo: 'Travesti', emoji: '🌈' },
 ];
 
 function EntrarNaComunidade({ secao }: { secao: string }) {
   return (
     <Link className="landing-community-cta" to="/register" onClick={() => marcarPassoCadastro(`inicio_cadastro_${secao}`)}>
-      <span>Entrar na comunidade<small>Criar meu cadastro grátis</small></span> <ArrowRight aria-hidden="true" />
+      <span>Entrar na comunidade</span> <ArrowRight aria-hidden="true" />
     </Link>
   );
 }
@@ -125,6 +130,21 @@ export default function Landing() {
   // O header vira sólido só depois de passar o hero — em cima da foto ele
   // continua transparente, como sempre foi.
   const [headerSolid, setHeaderSolid] = useState(false);
+  const [cadastroVisivel, setCadastroVisivel] = useState(true);
+  // A barra fixa complementa os botões do topo e do fechamento, sem duplicá-los.
+  useEffect(() => {
+    if (isAuthenticated) return;
+    const visiveis = new Set<Element>();
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) visiveis.add(entry.target);
+        else visiveis.delete(entry.target);
+      }
+      setCadastroVisivel(visiveis.size > 0);
+    }, { rootMargin: '-100px 0px -90px 0px', threshold: 0 });
+    document.querySelectorAll('.landing-community-cta').forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [isAuthenticated]);
   const [selectedProfile, setSelectedProfile] = useState('');
   const headerRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -272,10 +292,10 @@ export default function Landing() {
 
           <div className="landing-nav-actions">
             <Button type="button" variant="ghost" className="landing-login" onClick={handleEnter}>
-              Já tenho conta
+              LOGIN
             </Button>
             <Button asChild className="landing-primary-button landing-header-cta">
-              <Link to="/register">Cadastrar</Link>
+              <Link to="/register">CADASTRE-SE</Link>
             </Button>
             <button
               ref={menuButtonRef}
@@ -334,14 +354,13 @@ export default function Landing() {
                   topo só tinha o link "Conheça a experiência". */}
               <EntrarNaComunidade secao="principal" />
               <p className="landing-perfis-titulo">Quem vai entrar?</p>
-              <div className="landing-perfis">
+              <div className="landing-perfis" aria-label="Escolha seu tipo de perfil">
                 {PERFIS_DO_TOPO.map((p) => (
                   <Link key={p.perfil} className="landing-cta-pulso" to={`/register?profile=${encodeURIComponent(p.perfil)}`} onClick={() => marcarPassoCadastro(p.evento)}>
                     <span aria-hidden="true">{p.emoji}</span> {p.rotulo}
                   </Link>
                 ))}
               </div>
-              <Link className="landing-perfis-outros" to="/register" onClick={() => marcarPassoCadastro('inicio_outro')}>Outros perfis</Link>
               <p className="landing-cta-micro">Conta gratuita · Perfil fora do Google · Só para maiores de 18</p>
               <a className="landing-hero-discover" href="#experiencia">
                 Conheça a experiência
@@ -430,7 +449,6 @@ export default function Landing() {
               <span aria-hidden="true" />
               <p className="landing-desire-statement">Máscaras escondem rostos. A química revela intenções.</p>
               <p className="landing-desire-support">Casais e singles. Swing, ménage e exibicionismo no seu tempo.</p>
-              <EntrarNaComunidade secao="desejo" />
             </div>
 
             <figure className="landing-desire-image landing-desire-portrait">
@@ -504,7 +522,6 @@ export default function Landing() {
                 ))}
               </div>
 
-              <EntrarNaComunidade secao="experiencia" />
             </div>
           </div>
         </section>
@@ -512,7 +529,6 @@ export default function Landing() {
         <section className="landing-faixa">
           <blockquote>Toda fantasia começa com uma conversa.</blockquote>
           <p>Casais, mulheres e homens solteiros dizem logo o que procuram. Sem rodeio, sem julgamento, sem ninguém de fora ficar sabendo.</p>
-          <EntrarNaComunidade secao="fantasia" />
         </section>
 
         <section id="privacidade" className="landing-privacy landing-section">
@@ -535,7 +551,6 @@ export default function Landing() {
                 ))}
               </div>
 
-              <EntrarNaComunidade secao="privacidade" />
               <Button asChild variant="link" className="landing-text-link">
                 <Link to="/privacy">
                   Ver como protegemos você
@@ -564,7 +579,6 @@ export default function Landing() {
                 </figure>
               ))}
             </div>
-            <EntrarNaComunidade secao="relatos" />
           </div>
         </section>
 
@@ -618,7 +632,6 @@ export default function Landing() {
             <p className="landing-cidades-todas">
               Não tem casa de swing perto? <a href="/swing/casa-de-swing-online/">Conheça A Casa, a casa de swing online</a>
             </p>
-            <EntrarNaComunidade secao="cidades" />
           </div>
         </section>
 
@@ -650,16 +663,15 @@ export default function Landing() {
                 </p>
               </div>
             </div>
-            <EntrarNaComunidade secao="sobre" />
           </div>
         </section>
       </main>
 
       {/* Barra fixa no celular: o cadastro sempre a um toque. Só depois do topo,
           onde os botões de perfil já estão e ela cobriria o último. */}
-      {headerSolid && !menuOpen && (
+      {headerSolid && !menuOpen && !cadastroVisivel && (
         <div className="landing-fixo">
-          <Link to="/register" onClick={() => marcarPassoCadastro('inicio_cadastro_fixo')}>Entrar na comunidade <small>Criar meu cadastro grátis</small></Link>
+          <Link to="/register" onClick={() => marcarPassoCadastro('inicio_cadastro_fixo')}>Entrar na comunidade</Link>
         </div>
       )}
 

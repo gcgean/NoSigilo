@@ -1795,3 +1795,51 @@
   .landing-nav .landing-login { white-space: normal; max-width: 78px; line-height: 1.2; }
   .landing-editorial { padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px)); }
 }
+/* Acesso explícito e fotografia abaixo do cabeçalho no celular. */
+.landing-hero-image { background-position: center top; }
+@media (max-width: 760px) {
+  .landing-header { margin-bottom: 0; background: var(--landing-bg); }
+  .landing-nav { gap: 8px; }
+  .landing-nav-actions { gap: 4px; flex-shrink: 0; }
+  .landing-nav .landing-login { display: inline-flex; white-space: nowrap; max-width: none; min-width: 44px; padding-inline: 6px !important; font-size: 12px; }
+  .landing-nav .landing-header-cta { display: inline-flex !important; min-width: 0; min-height: 44px; height: 44px; padding-inline: 12px !important; font-size: 12px; }
+  .landing-hero-image { background-position: center top; }
+}
+@media (max-width: 520px) {
+  .landing-nav .landing-brand-text { display: none; }
+  .landing-nav > a { flex-shrink: 0; }
+  .landing-nav-actions { margin-left: auto; }
+}
+/* Todos os tipos de perfil, sem uma etapa escondida em "Outros". */
+.landing-perfis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 620px;
+}
+.landing-perfis .landing-cta-pulso {
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 64px;
+  margin: 0;
+  padding: 9px 6px;
+  gap: 5px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  font-weight: 650;
+  animation: none;
+  box-shadow: none;
+}
+.landing-perfis .landing-cta-pulso span { font-size: 21px; line-height: 1.1; }
+.landing-perfis .landing-cta-pulso:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+@media (max-width: 520px) {
+  .landing-perfis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 360px) {
+  .landing-perfis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .landing-perfis .landing-cta-pulso { flex-direction: row; min-height: 52px; font-size: 11px; }
+  .landing-perfis .landing-cta-pulso span { font-size: 18px; }
+}
