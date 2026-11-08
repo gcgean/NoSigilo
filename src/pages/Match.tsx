@@ -1,3 +1,4 @@
+import { FundoDoTipo } from '@/components/AvatarDoTipo';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { textoDistancia } from '@/utils/distancia';
 import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, MessageCircle, Bell, BellOff, CheckCircle2, ChevronRight, Zap } from 'lucide-react';
@@ -660,11 +661,7 @@ export default function Match() {
           >
             {/* Fundo sempre presente (nunca preto): gradiente + inicial do nome.
                 Some enquanto a foto carrega e no caso de perfil sem foto. */}
-            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/25 via-secondary to-background">
-              <span className="select-none text-7xl font-bold text-white/25">
-                {(currentProfile.name?.[0] || '?').toUpperCase()}
-              </span>
-            </div>
+            <FundoDoTipo name={currentProfile.name} gender={currentProfile.gender} className="absolute inset-0" />
             {coverUrl && !imgError && (
               <button
                 type="button"

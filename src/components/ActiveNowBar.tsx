@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { radarService, type ActiveNowProfile } from '@/services/api';
 import { resolveServerUrl, urlMiniatura } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
+import { FotoAusente } from '@/components/AvatarDoTipo';
 
 const REASON_LABEL: Record<ActiveNowProfile['reason'], string> = {
   posted: 'postou',
@@ -68,8 +69,8 @@ export default function ActiveNowBar({ maxDistanceKm, cityOnly }: { maxDistanceK
                   {p.avatar ? (
                     <img src={urlMiniatura(resolveServerUrl(p.avatar), 120)} alt={p.name} loading="lazy" decoding="async" className="h-full w-full rounded-full object-cover" />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center rounded-full bg-secondary text-sm font-bold">
-                      {p.name[0]}
+                    <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-secondary text-sm font-bold">
+                      <FotoAusente name={p.name} gender={p.gender} />
                     </div>
                   )}
                 </div>

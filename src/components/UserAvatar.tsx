@@ -1,3 +1,4 @@
+import { FotoAusente } from "@/components/AvatarDoTipo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { resolveServerUrl, urlMiniatura } from "@/utils/serverUrl";
@@ -6,6 +7,8 @@ interface UserAvatarProps {
   user?: {
     name?: string;
     avatar?: string | null;
+    /** Tipo de perfil: sem foto, mostra o avatar do tipo (👫, 👩, 👨...). */
+    gender?: string | null;
     isOnline?: boolean;
   };
   className?: string;
@@ -22,7 +25,7 @@ export function UserAvatar({ user, className, indicatorClassName, largura = 240 
     <div className="relative inline-block">
       <Avatar className={className}>
         <AvatarImage src={user?.avatar ? urlMiniatura(resolveServerUrl(user.avatar), largura) : undefined} />
-        <AvatarFallback>{user?.name?.[0] || 'U'}</AvatarFallback>
+        <AvatarFallback><FotoAusente name={user?.name} gender={user?.gender} /></AvatarFallback>
       </Avatar>
       {user?.isOnline && (
         <span 

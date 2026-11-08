@@ -1,3 +1,4 @@
+import { FundoDoTipo } from '@/components/AvatarDoTipo';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GenteNaRegiao } from '@/components/GenteNaRegiao';
 import AvisoLocalizacao from '@/components/AvisoLocalizacao';
@@ -549,11 +550,7 @@ export default function SearchPage() {
               indicatorClassName="hidden"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/25 via-background to-rose-500/15">
-              <span className="text-5xl font-bold text-primary/50">
-                {profile.name?.[0]?.toUpperCase() || 'U'}
-              </span>
-            </div>
+            <FundoDoTipo name={profile.name} gender={profile.gender} />
           )}
         </div>
 
@@ -934,7 +931,7 @@ export default function SearchPage() {
                   onClick={() => { setShowSuggestions(false); navigate(getUserProfileHref(s.id, undefined, '/search')); }}
                   className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted"
                 >
-                  <UserAvatar user={{ name: s.name, avatar: s.avatar }} className="h-9 w-9 shrink-0" />
+                  <UserAvatar user={{ name: s.name, avatar: s.avatar, gender: s.gender }} className="h-9 w-9 shrink-0" />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{s.name}</p>
                     <p className="truncate text-xs text-muted-foreground">

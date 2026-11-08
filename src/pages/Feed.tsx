@@ -1,3 +1,4 @@
+import { FotoAusente } from '@/components/AvatarDoTipo';
 import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
 import { GenteNaRegiao } from '@/components/GenteNaRegiao';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -2332,7 +2333,7 @@ export default function Feed() {
           <div className="relative shrink-0">
             <Avatar className="h-10 w-10">
               <AvatarImage src={user?.avatar ? resolveServerUrl(user.avatar) : undefined} />
-              <AvatarFallback>{String(user?.name || 'U')[0]}</AvatarFallback>
+              <AvatarFallback><FotoAusente name={user?.name} gender={user?.gender} /></AvatarFallback>
             </Avatar>
             {/* Streak badge overlaid on avatar */}
             {streakState.streak >= 2 && (
@@ -2805,7 +2806,7 @@ export default function Feed() {
                       >
                         <Avatar className="h-11 w-11 sm:h-10 sm:w-10">
                           <AvatarImage src={experience.author.avatar ? resolveServerUrl(experience.author.avatar) : undefined} />
-                          <AvatarFallback>{String(experience.author.name || 'U')[0]}</AvatarFallback>
+                          <AvatarFallback><FotoAusente name={experience.author.name} gender={experience.author.gender} /></AvatarFallback>
                         </Avatar>
                         <div className="min-w-0">
                           <span className="truncate text-[0.98rem] font-semibold hover:underline sm:text-base">{experience.author.name}</span>
@@ -3190,7 +3191,7 @@ export default function Feed() {
                       >
                   <Avatar className="h-11 w-11 sm:h-10 sm:w-10">
                     <AvatarImage src={item.post.author.avatar ? resolveServerUrl(item.post.author.avatar) : undefined} />
-                    <AvatarFallback>{String(item.post.author.name || 'U')[0]}</AvatarFallback>
+                    <AvatarFallback><FotoAusente name={item.post.author.name} gender={item.post.author.gender} /></AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">

@@ -1,5 +1,5 @@
 import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState } from 'react';
 import { Camera, ImagePlus, Eye, Heart, Zap, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { profileService, feedService } from '@/services/api';
@@ -17,26 +17,24 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
   const [uploadProgress, setUploadProgress] = useState<'idle' | 'uploading' | 'done'>('idle');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [skipped, setSkipped] = useState(() => {
-    try { return localStorage.getItem(PHOTO_SKIP_KEY) === (user?.id ?? ''); } catch { return false; }
-  });
+  // "Continuar sem foto" vale só pelo dia: o aviso volta uma vez por dia ao
+  // entrar no app e, à parte, uma vez por dia ao abrir a Busca ou o Match
+  // (é quando a pessoa procura os outros e precisa ser vista também).
+  const contexto = /^\/(search|match)/.test(pathname) ? 'busca' : 'acesso';
+  const [, setVersao] = useState(0);
+  const hoje = new Date().toLocaleDateString('sv-SE');
+  const chave = `${PHOTO_SKIP_KEY}:${contexto}`;
+  let skipped = false;
+  try { skipped = !!user?.id && localStorage.getItem(chave) === `${user.id}:${hoje}`; } catch { skipped = false; }
 
-  // Re-check when user id resolves (async auth restore)
-  useEffect(() => {
-    if (!user?.id) return;
-    try {
-      if (localStorage.getItem(PHOTO_SKIP_KEY) === user.id) setSkipped(true);
-    } catch {}
-  }, [user?.id]);
-
-  // Don't show overlay on exempt routes, if user already has a photo, admin, or skipped
+  // Don't show overlay on exempt routes, if user already has a photo, admin, or skipped today
   const isExempt = EXEMPT_PATHS.some((p) => pathname.startsWith(p));
   if (!user || user.avatar || user.isAdmin || isExempt || skipped) return null;
   if (outrasJanelasEsperam(user.id)) return null;
 
   const handleSkip = () => {
-    try { localStorage.setItem(PHOTO_SKIP_KEY, user.id); } catch {}
-    setSkipped(true);
+    try { localStorage.setItem(chave, `${user.id}:${hoje}`); } catch { /* sem armazenamento: só não lembra */ }
+    setVersao((v) => v + 1);
   };
 
   const handleFile = async (file: File) => {
