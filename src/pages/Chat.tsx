@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { ToastAction } from '@/components/ui/toast';
-import { authService, chatService, groupsService, profileService, matchService, storiesService, usersService, usosTokensService, type GroupSummary } from '@/services/api';
+import { authService, chatService, groupsService, regiaoService, profileService, matchService, storiesService, usersService, usosTokensService, type GroupSummary } from '@/services/api';
 import SemTokensDialog from '@/components/SemTokensDialog';
 import { useSocket } from '@/contexts/SocketContext';
 import { useToast } from '@/hooks/use-toast';
@@ -41,6 +41,7 @@ import MobileState from '@/components/MobileState';
 import NovosNaRegiao from '@/components/NovosNaRegiao';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
+import { cartaoContatosLiberadoHoje, contarNovosNaRegiao, marcarRegiaoVista, registrarCartaoContatosHoje } from '@/utils/avisosDoChat';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
@@ -266,6 +267,24 @@ export default function Chat() {
     return () => { vivo = false; };
   }, [caixa]);
   const gruposComNovas = (grupos ?? []).filter((g) => (g.unreadCount ?? 0) > 0 && !g.silenciado).length;
+  // "Na região": bolinha com os perfis novos que a pessoa ainda não viu na aba.
+  const [idsRegiao, setIdsRegiao] = useState<string[]>([]);
+  const [novosRegiao, setNovosRegiao] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    regiaoService.novos()
+      .then((r) => { if (vivo) setIdsRegiao((r.perfis ?? []).map((p) => String(p.id))); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  useEffect(() => {
+    if (!user?.id) return;
+    if (caixa === 'regiao') { marcarRegiaoVista(String(user.id), idsRegiao); setNovosRegiao(0); return; }
+    setNovosRegiao(contarNovosNaRegiao(String(user.id), idsRegiao));
+  }, [caixa, idsRegiao, user?.id]);
+  // Cartão "Novos contatos": uma vez por dia. Decide ao abrir a tela e não some
+  // no meio da visita; a aba Pedidos continua com o número.
+  const [cartaoContatosHoje] = useState(() => (user?.id ? cartaoContatosLiberadoHoje(String(user.id)) : true));
   const [acaoPedido, setAcaoPedido] = useState(false);
   const [messageSearch, setMessageSearch] = useState('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -730,6 +749,10 @@ export default function Chat() {
       : lista;
   }, [search, conversations, showOnlyHighlighted, conversationTab, isConversationNew, caixa]);
   const pedidosCount = useMemo(() => conversations.filter((c) => c.pedido).length, [conversations]);
+  const cartaoContatosVisivel = caixa === 'conversas' && pedidosCount > 0 && cartaoContatosHoje;
+  useEffect(() => {
+    if (cartaoContatosVisivel && user?.id) registrarCartaoContatosHoje(String(user.id));
+  }, [cartaoContatosVisivel, user?.id]);
   // Abriu um pedido pelo push/link: mostra a aba de pedidos, onde ele está.
   useEffect(() => {
     if (activeConversation?.pedido) setCaixa('pedidos');
@@ -1419,12 +1442,15 @@ export default function Chat() {
                 {k === 'grupos' && gruposComNovas > 0 && (
                   <span className={cn('rounded-full px-1.5 text-[11px] leading-5', caixa === k ? 'bg-white text-primary' : 'bg-primary text-white')}>{gruposComNovas}</span>
                 )}
+                {k === 'regiao' && caixa !== k && novosRegiao > 0 && (
+                  <span aria-label={`${novosRegiao} novos na região`} className="rounded-full bg-primary px-1.5 text-[11px] leading-5 text-white">{novosRegiao > 99 ? '99+' : novosRegiao}</span>
+                )}
               </button>
             ))}
           </div>
           {/* Cartão "novos contatos" no topo das Conversas: antes os pedidos só
               apareciam na aba "Pedidos", que muita gente nem abria. */}
-          {caixa === 'conversas' && pedidosCount > 0 && (() => {
+          {caixa === 'conversas' && pedidosCount > 0 && cartaoContatosHoje && (() => {
             const primeiros = conversations
               .filter((c) => c.pedido)
               .sort((a, b) => Number(!!b.pedidoDestaque) - Number(!!a.pedidoDestaque))
