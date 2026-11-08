@@ -20,6 +20,8 @@ import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { LinkExterno } from '@/components/TextoComLinks';
+import { dominioDoLink, primeiroLink } from '@/utils/linksNoTexto';
 import { useNavigate } from 'react-router-dom';
 import { PHOTO_REACTIONS, REACTION_EMOJI } from '@/lib/reactions';
 import { STORY_BACKGROUNDS, backgroundCss } from '@/lib/storyBackgrounds';
@@ -1148,6 +1150,29 @@ function StoryViewer({
           onClick={() => { if (heldRef.current) { heldRef.current = false; return; } go(1); }}
           aria-label="Próximo"
         />
+
+        {/* Link no texto do story: vira um botão por cima das zonas de toque
+            (como o adesivo de link do Instagram). Link de fora passa pelo aviso
+            de saída, e o story fica pausado enquanto o aviso está aberto. */}
+        {(() => {
+          const link = story.text ? primeiroLink(story.text) : null;
+          if (!link?.href) return null;
+          const classe = 'absolute bottom-28 left-1/2 z-20 flex max-w-[80%] -translate-x-1/2 items-center gap-1.5 rounded-full bg-white/95 px-4 py-2 text-sm font-semibold text-neutral-900 no-underline shadow-lg';
+          if (link.interno) {
+            const destino = new URL(link.href);
+            return (
+              <button type="button" className={classe} onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); navigate(`${destino.pathname}${destino.search}${destino.hash}`); }}>
+                🔗 <span className="truncate">{dominioDoLink(link.href)}{destino.pathname !== '/' ? destino.pathname : ''}</span>
+              </button>
+            );
+          }
+          return (
+            <LinkExterno href={link.href} className={classe} onAvisoAberto={setPaused}>
+              🔗 <span className="truncate">{dominioDoLink(link.href)}</span>
+            </LinkExterno>
+          );
+        })()}
 
         {/* Coração grande do toque duplo */}
         {coracaoGrande && (

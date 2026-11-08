@@ -259,7 +259,7 @@ export default function ProfilePostCard({
         </div>
       ) : texto.trim() ? (
         <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6">
-          <PostContent content={texto} />
+          <PostContent content={texto} links />
         </p>
       ) : null}
 

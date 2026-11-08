@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
+import TextoComLinks from '@/components/TextoComLinks';
 
 /**
  * Renderiza o texto de uma publicação transformando @menções em links.
@@ -15,9 +16,11 @@ const MENTION_RE = /(?<![\p{L}\p{N}._-])@([\p{L}\p{N}._-]{2,30})/gu;
 type PostContentProps = {
   content: string;
   className?: string;
+  /** Endereços viram link (texto da publicação). Comentários ficam sem: é onde mais vem spam. */
+  links?: boolean;
 };
 
-export default function PostContent({ content, className }: PostContentProps) {
+export default function PostContent({ content, className, links = false }: PostContentProps) {
   const texto = String(content ?? '');
   if (!texto) return null;
 
@@ -40,7 +43,7 @@ export default function PostContent({ content, className }: PostContentProps) {
     <span className={className}>
       {pedacos.map((p, i) =>
         typeof p === 'string' ? (
-          <Fragment key={i}>{p}</Fragment>
+          <Fragment key={i}>{links ? <TextoComLinks texto={p} /> : p}</Fragment>
         ) : (
           <Link
             key={i}

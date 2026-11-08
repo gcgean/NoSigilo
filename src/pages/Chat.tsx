@@ -2316,7 +2316,8 @@ export default function Chat() {
                                 isMutualMatchMessage && 'text-sm font-semibold leading-5 text-brand-pink md:text-sm',
                               )}
                             >
-                              {textoComAtalhos(msg.content, navigate)}
+                              {/* Link de outro site só clica em conversa aceita: pedido de desconhecido é onde vem spam. */}
+                              {textoComAtalhos(msg.content, navigate, { externos: !activeConversation?.pedido })}
                             </p>
                           )}
                         </div>

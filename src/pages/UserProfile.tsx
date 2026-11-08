@@ -50,6 +50,7 @@ import {
 } from '@/components/comments/commentStyles';
 import SeloVerificado from '@/components/SeloVerificado';
 import BandeiraPortugal from '@/components/BandeiraPortugal';
+import TextoComLinks from '@/components/TextoComLinks';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; media?: Array<{ id: string; url: string; mimeType: string }>; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
@@ -1445,7 +1446,7 @@ export default function UserProfile() {
                 <p className="mb-1 text-[12px] font-bold uppercase tracking-[0.06em] text-brand-pink">
                   {isSelf ? 'Sua descrição do perfil' : 'Leia nossa descrição antes de chamar no chat'}
                 </p>
-                <p className="text-[15px] leading-relaxed text-brand-pink [overflow-wrap:anywhere]">{profile.bio}</p>
+                <p className="text-[15px] leading-relaxed text-brand-pink [overflow-wrap:anywhere]"><TextoComLinks texto={profile.bio} /></p>
               </div>
             ) : null}
 
