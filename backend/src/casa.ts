@@ -1366,6 +1366,14 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     ],
   };
   const falaPronta = (sala: Sala) => sortear(FALAS_PRONTAS_PROMOTOR[sala.nivel === 'muito_quente' ? 'muito_quente' : 'quente']);
+  // O nome do outro sai exatamente como no perfil e, no começo da fala, separado por
+  // vírgula ("soumorenagata a gente…" parecia erro de digitação).
+  const ajustarNomeNaFala = (texto: string, nome: string) => {
+    const esc = nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let t = texto.replace(new RegExp(esc, 'gi'), nome);
+    if (t.startsWith(nome) && !/^[,!?.:]/.test(t.slice(nome.length))) t = `${nome},${t.slice(nome.length)}`;
+    return t.replace(new RegExp(`^${esc},\\s*`), `${nome}, `);
+  };
   const falaDoPromotor = async (sala: Sala, quem: Promotor, outro: Promotor, d: Dupla): Promise<string> => {
     if (!deps.deepseekKey) return falaPronta(sala);
     const ids = new Set([`promotor:${quem.id}`, `promotor:${outro.id}`]);
@@ -1391,6 +1399,7 @@ Com quem fala: "${outro.nome}", ${vozDe(outro)}.
 Cena da conversa: ${d.cena}.
 Regras do diálogo:
 - É uma conversa SÓ entre os dois, na frente da sala, para os casais que assistem se soltarem. Não fale com mais ninguém, não comente quem entrou ou saiu, não cite outros nomes.
+- Escreva o nome do outro EXATAMENTE assim: "${outro.nome}", seguido de vírgula quando chamar por ele.
 - ${primeira ? `É a primeira fala: comece chamando "${outro.nome}" pelo nome e abra a cena com uma provocação clara (sem pressupor nada que não foi dito).` : `Responda DIRETAMENTE à última fala de "${outro.nome}", retomando o que foi dito, e leve a cena um passo adiante.`}
 - Tom: conversa BEM safada${sala.nivel === 'muito_quente' ? ' e explícita (tesão, o que vão fazer na cabine, chupar, sentar, meter, gozar, de quatro), com exibicionismo e cuckold quando combinar' : ', cheia de tesão e putaria leve (o que fariam um com o outro, onde iam pegar, como iam provocar)'}. Suba o tom a cada fala, sem repetir frases.
 - Jeito de falar: brasileiro de verdade conversando no chat de um app de swing, NÃO texto escrito. Mensagem curta (1 frase, às vezes 2), informal, com abreviações e gírias do dia a dia: vc, tá, tô, pra, né, mó, tipo, aí, kkkk, nossa, eita, delícia, gostosa, safado(a), tesão, putaria. Pode começar com letra minúscula e sem pontuação certinha. Nada de frase de efeito, nada de "Desafio aceito!", nada de palavras rebuscadas.
@@ -1407,7 +1416,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       const json = await r.json() as any;
       const t = String(json?.choices?.[0]?.message?.content || '').trim().replace(/^["“”'\-\s]+|["“”']+$/g, '').replace(new RegExp(`^${quem.nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*`, 'i'), '').trim();
       if (t.length < 4 || t.length > 200 || /https?:\/\/|www\.|@|\d{6,}/i.test(t)) return falaPronta(sala);
-      return t;
+      return ajustarNomeNaFala(t, outro.nome);
     } catch {
       return falaPronta(sala);
     } finally {
