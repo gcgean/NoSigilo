@@ -12,7 +12,7 @@ const chip = (ativo: boolean) =>
     ativo ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
   );
 
-/** Barra de filtros dos contos: tema (com contador e busca dentro dele), ordem e lidos. */
+/** Filtros dos contos: abas (recentes, mais curtidos, não lidos), temas e busca. */
 export default function FiltrosContos({
   categorias,
   total,
@@ -50,46 +50,42 @@ export default function FiltrosContos({
   // Temas com conto primeiro; os vazios continuam visíveis, só apagados.
   const ordenadas = [...categorias].sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome));
   const nomeAtual = categorias.find((c) => c.slug === categoria)?.nome;
+  // Três abas no topo, como num app de leitura: ordem e "não lidos" viram uma escolha só.
+  const abaAtual: 'recentes' | 'votados' | 'nao_lidos' = leitura === 'nao_lidos' ? 'nao_lidos' : ordem;
+  const escolherAba = (aba: 'recentes' | 'votados' | 'nao_lidos') => {
+    if (aba === 'nao_lidos') { onLeitura('nao_lidos'); onOrdem('recentes'); return; }
+    onLeitura('todos');
+    onOrdem(aba);
+  };
+  const abas = [
+    { id: 'recentes' as const, rotulo: '🕒 Recentes' },
+    { id: 'votados' as const, rotulo: '🔥 Mais curtidos' },
+    { id: 'nao_lidos' as const, rotulo: `🆕 Não lidos${naoLidos > 0 ? ` (${naoLidos})` : ''}` },
+  ];
 
   return (
-    <div className="space-y-2 rounded-xl border border-border/60 bg-background/60 p-3">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            placeholder={nomeAtual ? `Buscar em ${nomeAtual}...` : 'Buscar nos contos...'}
-            className="h-9 w-full rounded-full border border-input bg-background pl-8 pr-8 text-sm"
-            aria-label="Buscar contos"
-          />
-          {texto && (
-            <button
-              type="button"
-              onClick={() => { setTexto(''); onBusca(''); }}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Limpar busca"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-        <select
-          value={categoria}
-          onChange={(e) => onCategoria(e.target.value)}
-          className="h-9 shrink-0 rounded-full border border-input bg-background px-2 text-xs"
-          aria-label="Escolher tema"
-        >
-          <option value="">Todos os temas ({total})</option>
-          {ordenadas.map((c) => (
-            <option key={c.slug} value={c.slug}>{c.nome} ({c.total})</option>
-          ))}
-        </select>
+    <div className="space-y-2.5">
+      <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1" role="tablist" aria-label="Ordem dos contos">
+        {abas.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            role="tab"
+            aria-selected={abaAtual === a.id}
+            onClick={() => escolherAba(a.id)}
+            className={cn(
+              'min-h-[40px] truncate rounded-lg px-1 text-[13px] font-bold transition-colors',
+              abaAtual === a.id ? 'bg-primary text-primary-foreground shadow-md' : 'text-foreground/70 hover:bg-background/60 hover:text-foreground'
+            )}
+          >
+            {a.rotulo}
+          </button>
+        ))}
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none" aria-label="Temas">
         <button type="button" className={chip(categoria === '')} onClick={() => onCategoria('')}>
-          Todos <span className="opacity-70">({total})</span>
+          Todos os temas <span className="opacity-70">({total})</span>
         </button>
         {ordenadas.map((c) => (
           <button
@@ -103,15 +99,25 @@ export default function FiltrosContos({
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={chip(ordem === 'recentes')} onClick={() => onOrdem('recentes')}>🕒 Recentes</button>
-        <button type="button" className={chip(ordem === 'votados')} onClick={() => onOrdem('votados')}>🔥 Mais votados</button>
-        <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-        <button type="button" className={chip(leitura === 'todos')} onClick={() => onLeitura('todos')}>Todos</button>
-        <button type="button" className={chip(leitura === 'nao_lidos')} onClick={() => onLeitura('nao_lidos')}>
-          Não lidos {naoLidos > 0 && <span className="opacity-70">({naoLidos})</span>}
-        </button>
-        <button type="button" className={chip(leitura === 'lidos')} onClick={() => onLeitura('lidos')}>✓ Já lidos</button>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder={nomeAtual ? `Buscar em ${nomeAtual}...` : 'Buscar nos contos...'}
+          className="h-10 w-full rounded-full border border-input bg-background pl-8 pr-8 text-base sm:h-9 sm:text-sm"
+          aria-label="Buscar contos"
+        />
+        {texto && (
+          <button
+            type="button"
+            onClick={() => { setTexto(''); onBusca(''); }}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label="Limpar busca"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );

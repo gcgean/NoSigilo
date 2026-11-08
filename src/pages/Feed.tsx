@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { authService, experienceService, adminContosService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
 import StoriesBar from '@/components/StoriesBar';
 import FeedGreeting from '@/components/FeedGreeting';
+import { minutosDeLeitura } from '@/utils/tempoDeLeitura';
 import TopDayBar from '@/components/TopDayBar';
 import NearbyActivityStrip from '@/components/NearbyActivityStrip';
 import { useToast } from '@/hooks/use-toast';
@@ -338,6 +339,10 @@ export default function Feed() {
   const [postContent, setPostContent] = useState('');
   const [experienceTitle, setExperienceTitle] = useState('');
   const [experienceDescription, setExperienceDescription] = useState('');
+  // Contos: o formulário começa fechado (um botão em destaque), para a tela
+  // mostrar primeiro os contos publicados. Abre ao tocar no botão ou vindo do
+  // convite "conte como foi".
+  const [escrevendoConto, setEscrevendoConto] = useState(false);
   const [expTemplatesOpen, setExpTemplatesOpen] = useState(false);
   const [reelsOnly, setReelsOnly] = useState(false);
   // Tema do vídeo anexado (obrigatório quando há vídeo) e o post cujo tema o dono está trocando.
@@ -957,6 +962,7 @@ export default function Feed() {
     const vindoDoPush = new URLSearchParams(location.search).get('contar') === 'sabado';
     if ((location.state as any)?.openExperienceForm || vindoDoPush) {
       setFeedFilter('experiences');
+      setEscrevendoConto(true);
       if ((location.state as any)?.modelo === 'rolou-ontem' || vindoDoPush) {
         const modelo = EXP_TEMPLATES.find((t) => t.title === 'Rolou ontem!');
         if (modelo) {
@@ -1520,6 +1526,7 @@ export default function Feed() {
       setExperienceDescription('');
       setExpAttachments([]);
       setExpCategoria('');
+      setEscrevendoConto(false);
       await reloadExperiences();
       if (criado?.status === 'em_revisao') {
         toast({
@@ -2131,19 +2138,47 @@ export default function Feed() {
       {feedFilter !== 'experiences' ? <NearbyActivityStrip /> : null}
 
       {/* Composer */}
-      {feedFilter === 'experiences' ? (
+      {feedFilter === 'experiences' && !escrevendoConto ? (
+        // Fechado: um botão em destaque, com o tema da semana, e a tela fica para ler.
+        <Card ref={expFormRef} className="mb-4 overflow-hidden border-primary/30 bg-gradient-to-r from-primary/15 via-fuchsia-500/10 to-transparent p-3 glass sm:mb-6 sm:p-4">
+          <p className="text-xs text-muted-foreground">
+            <span className="font-semibold text-brand-pink">{WEEKLY_THEME.emoji} Tema da semana:</span> {WEEKLY_THEME.theme}. Os 3 contos mais curtidos ganham destaque.
+          </p>
+          <Button
+            type="button"
+            className="mt-2.5 h-12 w-full gap-2 text-base font-bold shadow-[0_0_18px_rgba(236,72,153,0.25)]"
+            onClick={() => {
+              setEscrevendoConto(true);
+              window.setTimeout(() => expFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+            }}
+          >
+            ✍️ Publicar meu conto ou experiência
+          </Button>
+        </Card>
+      ) : feedFilter === 'experiences' ? (
         <Card ref={expFormRef} className="mb-4 glass p-3 sm:mb-6 sm:p-4">
           <div className="space-y-3">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-semibold text-foreground">Compartilhe sua história 😈</p>
-              <button
-                type="button"
-                onClick={() => setExpTemplatesOpen((v) => !v)}
-                className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-brand-pink hover:bg-primary/10 transition-colors"
-              >
-                ✍️ {expTemplatesOpen ? 'Fechar modelos' : 'Usar modelo'}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setExpTemplatesOpen((v) => !v)}
+                  className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-brand-pink hover:bg-primary/10 transition-colors"
+                >
+                  ✍️ {expTemplatesOpen ? 'Fechar modelos' : 'Usar modelo'}
+                </button>
+                {/* Fechar guarda o rascunho: o texto continua aí ao abrir de novo. */}
+                <button
+                  type="button"
+                  onClick={() => { setEscrevendoConto(false); setExpTemplatesOpen(false); }}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label="Fechar e voltar a ler os contos"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             {/* Writing templates */}
@@ -2726,25 +2761,6 @@ export default function Feed() {
           {/* Radares ativos no celular: já aparecem no topo ("Perto de você"); o card repetido no meio do feed saiu. */}
           {feedFilter === 'experiences' ? (
             <>
-              {/* Weekly theme challenge card */}
-              <Card className="overflow-hidden border-primary/20 bg-gradient-to-r from-primary/8 via-background to-pink-500/6 p-4 glass">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-lg leading-none">{WEEKLY_THEME.emoji}</span>
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-brand-pink/70">Tema da semana</span>
-                    </div>
-                    <p className="text-sm font-bold text-foreground">{WEEKLY_THEME.theme}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{WEEKLY_THEME.description}</p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <Badge variant="outline" className="border-primary/25 bg-primary/5 text-brand-pink text-[11px]">
-                      {WEEKLY_THEME.deadline}
-                    </Badge>
-                  </div>
-                </div>
-              </Card>
-
               <FiltrosContos
                 categorias={contagemContos.categorias}
                 total={contagemContos.total}
@@ -2835,6 +2851,7 @@ export default function Feed() {
                             {experience.categoriaNome}
                           </button>
                         )}
+                        <span className="text-[11px] text-muted-foreground">⏱ {minutosDeLeitura(experience.description)} min de leitura</span>
                         {experience.emRevisao ? (
                           <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600">Em revisão — só você vê</span>
                         ) : experience.lido ? (
