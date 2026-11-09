@@ -3262,6 +3262,22 @@ describe('nosigilo backend', () => {
     expect(conversa.mensagens.map((m: any) => [m.de, m.texto])).toEqual([['denunciado', 'mensagem ofensiva de teste'], ['denunciante', 'para com isso']]);
     const registro = (await queryAll(ctx.db, 'SELECT admin_id, report_id FROM admin_leituras_conversa WHERE report_id = ?', [daD1.id])) as any[];
     expect(registro).toEqual([expect.objectContaining({ admin_id: String(admin.user.id) })]);
+
+    // Quem denunciou nunca falou com o denunciado (denúncia da d2): o admin vê com
+    // quem o denunciado conversou e abre qualquer uma dessas conversas.
+    expect(daD2.conversasDoDenunciado).toBe(1);
+    const conversasDoAlvo = (await request(ctx.app).get(`/api/admin/reports/${daD2.id}/conversas`).set({ Authorization: `Bearer ${admin.token}` }).expect(200)).body.conversas;
+    expect(conversasDoAlvo).toEqual([expect.objectContaining({ id: 'conv-denuncia', mensagens: 2, doDenunciado: 1, ehQuemDenunciou: false })]);
+    const deTerceiro = (await request(ctx.app).get(`/api/admin/reports/${daD2.id}/conversa`).query({ conversa: 'conv-denuncia' }).set({ Authorization: `Bearer ${admin.token}` }).expect(200)).body;
+    expect(deTerceiro.denunciante.nome).toBe('Denunciante Um');
+    expect(deTerceiro.ehQuemDenunciou).toBe(false);
+    expect(deTerceiro.mensagens).toHaveLength(2);
+    // Conversa que não é do denunciado não abre.
+    const par2 = [d1Id, String(d2.user.id)].sort((a, b) => a.localeCompare(b));
+    await run(ctx.db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', ['conv-alheia', par2[0], par2[1], agora]);
+    await ctx.db.persist();
+    await request(ctx.app).get(`/api/admin/reports/${daD2.id}/conversa`).query({ conversa: 'conv-alheia' }).set({ Authorization: `Bearer ${admin.token}` }).expect(404);
+    await request(ctx.app).get(`/api/admin/reports/${daD2.id}/conversas`).set({ Authorization: `Bearer ${d1.token}` }).expect(403);
   });
 
   it('contos em áudio: sobe o áudio, conto só em áudio fica em revisão até o admin ouvir', async () => {

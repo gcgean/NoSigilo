@@ -165,6 +165,8 @@ type AdminReport = {
   historico?: { total: number; pessoas: number; pendentes: number } | null;
   // Há conversa no chat entre quem denunciou e o denunciado.
   temConversa?: boolean;
+  // Quantas conversas o denunciado tem no chat (com qualquer pessoa).
+  conversasDoDenunciado?: number;
   reason: string;
   details: string | null;
   status: string;
@@ -675,6 +677,7 @@ export default function Admin() {
                   perfilId: item.perfilId ? String(item.perfilId) : null,
                   historico: (item as any).historico ?? null,
                   temConversa: !!(item as any).temConversa,
+                  conversasDoDenunciado: Number((item as any).conversasDoDenunciado || 0),
                   reason: String(item.reason || ''),
                   details: item.details ? String(item.details) : null,
                   status: String(item.status || 'pending'),
@@ -1206,6 +1209,7 @@ export default function Admin() {
           perfilId: item.perfilId ? String(item.perfilId) : null,
           historico: item.historico ?? null,
           temConversa: !!item.temConversa,
+          conversasDoDenunciado: Number(item.conversasDoDenunciado || 0),
           reason: String(item.reason || ''),
           details: item.details ? String(item.details) : null,
           status: String(item.status || 'pending'),
@@ -2201,10 +2205,10 @@ export default function Admin() {
                           Por: {report.reporterName}
                           {report.reporterEmail ? ` (${report.reporterEmail})` : ''}
                         </p>
-                        {report.temConversa && (
+                        {(report.conversasDoDenunciado ?? 0) > 0 && (
                           <button type="button" onClick={() => setConversaDaDenuncia(report.id)}
                             className="inline-flex items-center gap-1 rounded-full border border-primary/30 px-3 py-1 text-xs font-semibold text-brand-pink hover:bg-primary/5">
-                            💬 Ver conversa entre os dois
+                            💬 Conversas do denunciado ({report.conversasDoDenunciado}){report.temConversa ? ' · inclui a de quem denunciou' : ''}
                           </button>
                         )}
                         {report.details && (

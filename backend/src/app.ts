@@ -22926,6 +22926,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             GROUP BY alvo`, perfis)) as any[];
         for (const l of linhas) historico.set(String(l.alvo), { total: Number(l.total || 0), pessoas: Number(l.pessoas || 0), pendentes: Number(l.pendentes || 0) });
       }
+      // Quantas conversas o denunciado tem no chat (botão "Conversas do denunciado").
+      const conversasDoAlvo = new Map<string, number>();
+      for (const alvo of perfis) {
+        const c = (await queryOne(db, 'SELECT COUNT(*) AS c FROM conversations WHERE user_a_id = ? OR user_b_id = ?', [alvo, alvo])) as any;
+        conversasDoAlvo.set(alvo, Number(c?.c || 0));
+      }
       // Existe conversa entre quem denunciou e o denunciado? (para o botão "Ver conversa")
       const comConversa = new Set<string>();
       for (const r of rows as any[]) {
@@ -22938,6 +22944,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         rows.map((r: any) => ({
           historico: (() => { const a = perfilDe(r); return a ? historico.get(a) ?? null : null; })(),
           temConversa: comConversa.has(String(r.id)),
+          conversasDoDenunciado: (() => { const a = perfilDe(r); return a ? conversasDoAlvo.get(a) ?? 0 : 0; })(),
           id: String(r.id),
           reporterName: r.reporter_name ? String(r.reporter_name) : 'Usuário',
           reporterEmail: r.reporter_email ? String(r.reporter_email) : null,
@@ -22973,6 +22980,50 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Moderação: a conversa entre quem denunciou e o denunciado, para entender o que
   // houve. Só a partir de uma denúncia, só as duas pessoas dela, e cada leitura fica
   // registrada (admin_leituras_conversa).
+  // Com quem o denunciado conversou (para checar perfil falso/golpe, quando quem
+  // denunciou nunca falou com ele). Só metadados: abrir uma conversa é outra rota,
+  // que fica registrada.
+  const alvoDaDenuncia = async (reportId: string) => {
+    const r = (await queryOne(db,
+      `SELECT r.id, r.reporter_user_id, r.target_type, r.target_id, p.user_id AS post_author_id, st.user_id AS story_author_id
+         FROM reports r
+         LEFT JOIN posts p ON r.target_type = 'post' AND p.id = r.target_id
+         LEFT JOIN stories st ON r.target_type = 'story' AND st.id = r.target_id
+        WHERE r.id = ? LIMIT 1`, [reportId])) as any;
+    if (!r) return null;
+    const alvo = r.target_type === 'user' ? String(r.target_id) : r.post_author_id ? String(r.post_author_id) : r.story_author_id ? String(r.story_author_id) : null;
+    return alvo ? { r, alvo } : null;
+  };
+  app.get('/api/admin/reports/:id/conversas', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const achado = await alvoDaDenuncia(String(req.params.id));
+    if (!achado) { res.status(404).json({ error: 'not_found' }); return; }
+    const { r, alvo } = achado;
+    const linhas = (await queryAll(db,
+      `SELECT c.id, CASE WHEN c.user_a_id = ? THEN c.user_b_id ELSE c.user_a_id END AS outro,
+              (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS total,
+              (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.sender_id = ?) AS dele,
+              (SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id = c.id) AS ultima
+         FROM conversations c
+        WHERE c.user_a_id = ? OR c.user_b_id = ?`, [alvo, alvo, alvo, alvo])) as any[];
+    const ids = [...new Set(linhas.map((l) => String(l.outro)))];
+    const nomes = ids.length ? (await queryAll(db, `SELECT id, name, gender FROM users WHERE id IN (${ids.map(() => '?').join(', ')})`, ids)) as any[] : [];
+    const quem = new Map(nomes.map((n) => [String(n.id), n]));
+    res.json({
+      denunciado: { id: alvo },
+      conversas: linhas
+        .filter((l) => Number(l.total || 0) > 0)
+        .map((l) => ({
+          id: String(l.id),
+          com: { id: String(l.outro), nome: String(quem.get(String(l.outro))?.name || 'Conta apagada'), genero: quem.get(String(l.outro))?.gender ? String(quem.get(String(l.outro)).gender) : null },
+          mensagens: Number(l.total || 0),
+          doDenunciado: Number(l.dele || 0),
+          ultima: l.ultima ? String(l.ultima) : null,
+          ehQuemDenunciou: String(l.outro) === String(r.reporter_user_id),
+        }))
+        .sort((a, b) => Number(b.ehQuemDenunciou) - Number(a.ehQuemDenunciou) || String(b.ultima || '').localeCompare(String(a.ultima || ''))),
+    });
+  });
+
   app.get('/api/admin/reports/:id/conversa', requireAuth(env, db), requireAdmin(), async (req, res) => {
     const r = (await queryOne(db,
       `SELECT r.id, r.reporter_user_id, r.target_type, r.target_id, p.user_id AS post_author_id, st.user_id AS story_author_id
@@ -22983,15 +23034,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (!r) { res.status(404).json({ error: 'not_found' }); return; }
     const alvo = r.target_type === 'user' ? String(r.target_id) : r.post_author_id ? String(r.post_author_id) : r.story_author_id ? String(r.story_author_id) : null;
     if (!alvo || !r.reporter_user_id) { res.status(404).json({ error: 'sem_conversa' }); return; }
-    const par = [String(r.reporter_user_id), alvo].sort((a, b) => a.localeCompare(b));
-    const conv = (await queryOne(db, 'SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ? LIMIT 1', [par[0], par[1]])) as any;
+    // ?conversa=<id>: qualquer conversa DO DENUNCIADO (com outra pessoa); sem ela, a
+    // conversa com quem denunciou.
+    const pedida = String(req.query.conversa || '');
+    let conv: any;
+    let outroId = String(r.reporter_user_id);
+    if (pedida) {
+      conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id FROM conversations WHERE id = ? AND (user_a_id = ? OR user_b_id = ?) LIMIT 1', [pedida, alvo, alvo])) as any;
+      if (!conv) { res.status(404).json({ error: 'conversa_nao_e_do_denunciado' }); return; }
+      outroId = String(conv.user_a_id) === alvo ? String(conv.user_b_id) : String(conv.user_a_id);
+    } else {
+      const par = [String(r.reporter_user_id), alvo].sort((a, b) => a.localeCompare(b));
+      conv = (await queryOne(db, 'SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ? LIMIT 1', [par[0], par[1]])) as any;
+    }
     await run(db, 'INSERT INTO admin_leituras_conversa (id, admin_id, report_id, conversation_id, created_at) VALUES (?, ?, ?, ?, ?)',
       [randomUUID(), req.auth!.userId, String(r.id), conv?.id ? String(conv.id) : null, nowIso()]);
     await persist();
-    const pessoas = (await queryAll(db, 'SELECT id, name FROM users WHERE id IN (?, ?)', [String(r.reporter_user_id), alvo])) as any[];
+    const pessoas = (await queryAll(db, 'SELECT id, name FROM users WHERE id IN (?, ?)', [outroId, alvo])) as any[];
     const nomeDe = (id: string) => String(pessoas.find((x) => String(x.id) === id)?.name || 'Conta apagada');
     if (!conv?.id) {
-      res.json({ conversa: null, denunciante: { id: String(r.reporter_user_id), nome: nomeDe(String(r.reporter_user_id)) }, denunciado: { id: alvo, nome: nomeDe(alvo) }, mensagens: [] });
+      res.json({ conversa: null, denunciante: { id: outroId, nome: nomeDe(outroId) }, denunciado: { id: alvo, nome: nomeDe(alvo) }, ehQuemDenunciou: !pedida, mensagens: [] });
       return;
     }
     const msgs = (await queryAll(db,
@@ -23000,7 +23062,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         WHERE m.conversation_id = ? ORDER BY m.created_at DESC LIMIT 300`, [String(conv.id)])) as any[];
     res.json({
       conversa: String(conv.id),
-      denunciante: { id: String(r.reporter_user_id), nome: nomeDe(String(r.reporter_user_id)) },
+      ehQuemDenunciou: outroId === String(r.reporter_user_id),
+      denunciante: { id: outroId, nome: nomeDe(outroId) },
       denunciado: { id: alvo, nome: nomeDe(alvo) },
       mensagens: msgs.reverse().map((m) => ({
         id: String(m.id),
