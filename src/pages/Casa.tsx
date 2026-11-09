@@ -769,7 +769,7 @@ export default function Casa() {
   // Tocar no nome ou na foto de quem escreveu abre o mesmo menu da lista de presentes.
   const abrirAutor = (autor: Msg['autor']) => {
     // Promotor da Casa: só conversa com outros promotores (sem menu de ações).
-    if (autor?.id.startsWith('promotor:')) { toast({ title: 'Promotor da Casa', description: 'Anima a pista e conversa só com outros promotores.' }); return; }
+    if (autor?.id.startsWith('promotor:')) { toast({ title: 'Não disponível para esse perfil.' }); return; }
     if (!autor || !estado) return;
     const pessoa = estado.presentes.find((x) => x.id === autor.id);
     if (pessoa) setPessoaAberta(pessoa);
@@ -1191,7 +1191,7 @@ export default function Casa() {
       <div className={cn('pointer-events-none absolute -left-20 top-0 h-80 w-80 rounded-full blur-3xl', temaDaSala(estado.sala.id).foco1)} style={{ animation: 'nsFoco1 14s ease-in-out infinite' }} />
       <div className={cn('pointer-events-none absolute -right-20 top-1/3 h-80 w-80 rounded-full blur-3xl', temaDaSala(estado.sala.id).foco2)} style={{ animation: 'nsFoco2 18s ease-in-out infinite' }} />
 
-      <div className="relative flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-white/10 px-3 py-2">
+      <div className="relative flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-white/10 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
         <button type="button" onClick={() => void sair()} className="rounded-full p-2 hover:bg-white/10" aria-label="Sair da sala">
           <ArrowLeft className="h-5 w-5" />
         </button>
@@ -1201,8 +1201,9 @@ export default function Casa() {
             {estado.presentes.length} na sala{estado.espiando > 0 ? ` · ${estado.espiando} espiando 👀` : ''}
           </p>
         </div>
+        <RadioDaCasa compacto />
         {/* Ícones: no celular descem para uma 2ª linha, para o nome da sala não sumir. */}
-        <div className="order-last flex w-full items-center justify-end gap-1.5 sm:order-none sm:w-auto">
+        <div className="order-last flex w-full min-w-0 flex-wrap items-center justify-end gap-1.5 sm:order-none sm:w-auto">
         {estado.sala_anonima && estado.eu.podeFalar && !estado.eu.revelado && (
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
@@ -1217,7 +1218,6 @@ export default function Casa() {
             if (!(error instanceof DOMException && error.name === 'AbortError')) toast({ title: 'Não foi possível compartilhar o convite', variant: 'destructive' });
           }
         }}>Convide alguém para entrar com você</button>
-        <RadioDaCasa compacto />
         {minhasCabines.length > 0 && (
           <button type="button" onClick={() => setListaDeCabines(true)} className="relative rounded-full border border-rose-400/60 bg-rose-600/30 px-2 py-1.5 text-xs" aria-label="Minhas cabines" title="Minhas cabines">
             🚪

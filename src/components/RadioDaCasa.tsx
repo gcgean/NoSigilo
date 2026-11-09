@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Music2, Volume1, Volume2, VolumeX } from 'lucide-react';
+import { Music2, Radio, Volume1, Volume2, VolumeX } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import BotaoSomDaCasa from '@/components/BotaoSomDaCasa';
 import apiClient from '@/utils/apiClient';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -34,7 +35,7 @@ function audioDaCasa() {
   return audioUnico;
 }
 
-/** compacto: só um ícone no topo da sala (toque liga/desliga), sem a faixa da música. */
+/** No cabeçalho, a rádio abre os detalhes da faixa e o controle de som. */
 export default function RadioDaCasa({ compacto = false }: { compacto?: boolean } = {}) {
   const audio = useRef<HTMLAudioElement>(audioDaCasa());
   const [tocando, setTocando] = useState<Tocando | null>(null);
@@ -118,16 +119,24 @@ export default function RadioDaCasa({ compacto = false }: { compacto?: boolean }
   const somAtivo = ligado && !bloqueado;
   const IconeVolume = !somAtivo || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
   if (compacto) return (
-    <>
-      {tocando && (
-        <button type="button" onClick={alternar}
-          title={somAtivo ? `Tocando: ${tocando.titulo}${tocando.artista ? ` · ${tocando.artista}` : ''} (toque para silenciar)` : 'Ligar a música'}
-          aria-label={somAtivo ? 'Silenciar a música' : 'Ligar a música'}
-          className={cn('rounded-full border px-2 py-1.5 text-xs', somAtivo ? 'border-white/20' : 'animate-pulse border-fuchsia-400 bg-fuchsia-600/30')}>
-          {somAtivo ? <Music2 className="h-3.5 w-3.5 text-fuchsia-300" /> : <VolumeX className="h-3.5 w-3.5" />}
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label="Rádio da Casa: ver música atual"
+          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-fuchsia-300/40 bg-black/35 px-3 text-xs font-semibold text-white">
+          <Radio aria-hidden="true" className="h-4 w-4 text-fuchsia-300" /> Rádio
         </button>
-      )}
-    </>
+      </PopoverTrigger>
+      <PopoverContent align="end" collisionPadding={12} aria-label="Rádio da Casa" className="z-[9992] max-w-[calc(100vw-24px)]">
+        <p className="text-xs font-semibold text-muted-foreground">Rádio da Casa{tocando && ' · Tocando agora'}</p>
+        <div aria-live="polite" className="mt-1 break-words">
+          <p className="font-semibold">{tocando?.titulo || 'Nenhuma faixa disponível no momento.'}</p>
+          {tocando?.artista && <p className="text-sm text-muted-foreground">{tocando.artista}</p>}
+        </div>
+        {tocando && <button type="button" onClick={alternar} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm">
+          <IconeVolume aria-hidden="true" className="h-4 w-4" />{somAtivo ? 'Silenciar música' : 'Ligar o som'}
+        </button>}
+      </PopoverContent>
+    </Popover>
   );
   return (
     <div className={cn('flex items-center gap-2 border-b border-white/10 bg-black/40 px-3 py-1.5', !tocando && 'hidden')}>
