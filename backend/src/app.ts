@@ -28,7 +28,7 @@ import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { registrarCasa } from './casa.js';
 import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.js';
 import { estatisticasDosVideos, gostoDoLeitor, ordenarParaLeitor, postsComVideo, tipoDePerfil, type CandidatoVideo } from './videosParaVoce.js';
-import { DIAS_NA_ABA, MAX_AVISOS_POR_SEMANA, bloqueiosEntre, boasVindasRestantesHoje, leitorDaLinha, motivoSemBoasVindas, novosParaLeitor, perfisNovosDesde, registrarBoasVindas, textoDoAviso } from './novosNaRegiao.js';
+import { DIAS_NA_ABA, MAX_AVISOS_POR_SEMANA, bloqueiosEntre, combinaComOQueProcura, lerLookingFor, leitorDaLinha, motivoSemBoasVindas, novosParaLeitor, perfisNovosDesde, registrarBoasVindas, textoDoAviso } from './novosNaRegiao.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail, sendCasaAbriuEmail } from './email.js';
 import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, sendFimDoTesteEmail, montarLembreteRenovacao, montarVoltaRenovacao, montarFimDoTeste } from './emailRenovacao.js';
 import {
@@ -2430,6 +2430,16 @@ async function deveVirarPedido(db: DbHandle, fromUserId: string, toUserId: strin
     [fromUserId, toUserId, toUserId, fromUserId]
   );
   return !amigo;
+}
+
+// Boas-vindas da aba "Na região" para quem não procura o tipo de quem manda.
+async function boasVindasViraPedido(db: DbHandle, fromUserId: string, toUserId: string): Promise<boolean> {
+  const destino = (await queryOne(db, 'SELECT looking_for_json FROM users WHERE id = ? LIMIT 1', [toUserId])) as any;
+  const remetente = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [fromUserId])) as any;
+  if (!destino || combinaComOQueProcura(lerLookingFor(destino.looking_for_json), remetente?.gender ?? null)) return false;
+  if (await conversaLiberadaEntre(db, fromUserId, toUserId)) return false;
+  const curtiu = await queryOne(db, "SELECT 1 AS x FROM likes WHERE user_id = ? AND target_type = 'user' AND target_id = ? LIMIT 1", [toUserId, fromUserId]);
+  return !curtiu;
 }
 
 function extensionForMime(mime: string, originalName: string) {
@@ -14639,7 +14649,6 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     res.json({
       cidade: eu.city ?? null,
-      boasVindasRestantesHoje: await boasVindasRestantesHoje(db, userId),
       perfis: lista.map((p) => {
         const temGps = leitor.lat != null && leitor.lon != null && p.lat != null && p.lon != null;
         return {
@@ -15798,7 +15807,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
 
-    const schema = z.object({ userId: z.string().min(1) });
+    // boasVindas: veio do "Boas-vindas" da aba "Na região" (ver abaixo).
+    const schema = z.object({ userId: z.string().min(1), boasVindas: z.boolean().optional() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -15831,6 +15841,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Conversa nova com quem não conhece e não é de um tipo liberado: vira pedido.
     let pedido = false;
     if (criada?.id && (await deveVirarPedido(db, req.auth!.userId, parsed.data.userId))) {
+      await run(db, 'UPDATE conversations SET pedido_para = ? WHERE id = ? AND pedido_para IS NULL', [parsed.data.userId, String(criada.id)]);
+      await persist();
+      pedido = true;
+    }
+    // Boas-vindas respeita o que o perfil novo procura: se o tipo de quem manda
+    // não está entre os que ele procura (e ele ainda não curtiu quem manda),
+    // vai como pedido de mensagem mesmo se o tipo for de entrada direta.
+    if (criada?.id && !pedido && parsed.data.boasVindas && (await boasVindasViraPedido(db, req.auth!.userId, parsed.data.userId))) {
       await run(db, 'UPDATE conversations SET pedido_para = ? WHERE id = ? AND pedido_para IS NULL', [parsed.data.userId, String(criada.id)]);
       await persist();
       pedido = true;

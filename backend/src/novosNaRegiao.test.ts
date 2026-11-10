@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { initDb, queryOne, run } from './db.js';
 import { createApp } from './app.js';
 import type { DbHandle } from './db.js';
-import { MAX_BOAS_VINDAS_POR_DIA, combinaComOQueProcura, novosParaLeitor, textoDoAviso, type Leitor, type PerfilNovo } from './novosNaRegiao.js';
+import { combinaComOQueProcura, novosParaLeitor, textoDoAviso, type Leitor, type PerfilNovo } from './novosNaRegiao.js';
 
 const FORTALEZA = { lat: -3.7319, lon: -38.5267 };
 const CAUCAIA = { lat: -3.7361, lon: -38.6531 }; // ~14 km
@@ -87,13 +87,13 @@ describe('novosNaRegiao — rotas', () => {
   }
 
   async function boasVindas(de: { token: string }, para: { id: string }) {
-    const conv = await request(app).post('/api/conversations').set('Authorization', `Bearer ${de.token}`).send({ userId: para.id });
+    const conv = await request(app).post('/api/conversations').set('Authorization', `Bearer ${de.token}`).send({ userId: para.id, boasVindas: true });
     if (conv.status !== 200) return conv;
     return request(app).post(`/api/conversations/${conv.body.id}/messages`).set('Authorization', `Bearer ${de.token}`)
       .send({ content: 'Seja bem-vinda!', boasVindas: true });
   }
 
-  it('lista só perfil novo, com foto e que combina; boas-vindas uma vez e no máximo 5 por dia', async () => {
+  it('lista só perfil novo, com foto e que combina; boas-vindas uma vez por perfil e sem limite diário', async () => {
     const eu = await criar('Leitor', { gender: 'Homem', criadoHaDias: 60, lookingFor: ['Mulher'] });
     const nova = await criar('Nova', { gender: 'Mulher' });
     await criar('SemFoto', { gender: 'Mulher', foto: false });
@@ -103,7 +103,6 @@ describe('novosNaRegiao — rotas', () => {
     const r = await request(app).get('/api/regiao/novos').set('Authorization', `Bearer ${eu.token}`).expect(200);
     expect(r.body.perfis.map((p: any) => p.name)).toEqual(['Nova']);
     expect(r.body.perfis[0]).toMatchObject({ distanceKm: 0, boasVindasEnviada: false, curtido: false });
-    expect(r.body.boasVindasRestantesHoje).toBe(MAX_BOAS_VINDAS_POR_DIA);
 
     await boasVindas(eu, nova).then((x) => expect(x.status).toBe(200));
     const segunda = await boasVindas(eu, nova);
@@ -112,35 +111,46 @@ describe('novosNaRegiao — rotas', () => {
 
     const depois = await request(app).get('/api/regiao/novos').set('Authorization', `Bearer ${eu.token}`).expect(200);
     expect(depois.body.perfis[0].boasVindasEnviada).toBe(true);
-    expect(depois.body.boasVindasRestantesHoje).toBe(MAX_BOAS_VINDAS_POR_DIA - 1);
 
-    for (let i = 0; i < MAX_BOAS_VINDAS_POR_DIA - 1; i++) {
+    // Sem limite diário (antes eram 5): a 8ª do dia também passa.
+    for (let i = 0; i < 7; i++) {
       const outra = await criar(`Outra${i}`, { gender: 'Mulher' });
       await boasVindas(eu, outra).then((x) => expect(x.status).toBe(200));
     }
-    const sexta = await boasVindas(eu, await criar('Sexta', { gender: 'Mulher' }));
-    expect(sexta.status).toBe(429);
-    expect(sexta.body.message).toMatch(/Amanhã libera mais/);
     // Mensagem normal (sem a marca) continua funcionando.
     const conv = await queryOne(db, 'SELECT id FROM conversations WHERE user_a_id = ? OR user_b_id = ? LIMIT 1', [eu.id, eu.id]);
     await request(app).post(`/api/conversations/${conv.id}/messages`).set('Authorization', `Bearer ${eu.token}`).send({ content: 'oi de novo' }).expect(200);
   });
 
-  it('boas-vindas de quem não é do tipo liberado pelo perfil vira pedido de mensagem', async () => {
+  it('boas-vindas respeita o perfil novo: pedido para quem não é procurado, recusa para tipo bloqueado', async () => {
     const homem = await criar('HomemBV', { gender: 'Homem', criadoHaDias: 60, lookingFor: ['Casal (Ele/Ela)'] });
-    const casal = await criar('CasalBV', { gender: 'Casal (Ele/Ela)' });
-    const mulher = await criar('MulherBV', { gender: 'Mulher', criadoHaDias: 60, lookingFor: ['Casal (Ele/Ela)'] });
-    const casal2 = await criar('CasalBV2', { gender: 'Casal (Ele/Ela)' });
+    const casal = await criar('CasalBV', { gender: 'Casal (Ele/Ela)', lookingFor: ['Mulher'] });
 
-    const c1 = await request(app).post('/api/conversations').set('Authorization', `Bearer ${homem.token}`).send({ userId: casal.id }).expect(200);
+    // Desconhecido: vai como pedido de mensagem.
+    const c1 = await request(app).post('/api/conversations').set('Authorization', `Bearer ${homem.token}`).send({ userId: casal.id, boasVindas: true }).expect(200);
     expect(c1.body.pedido).toBe(true);
     await request(app).post(`/api/conversations/${c1.body.id}/messages`).set('Authorization', `Bearer ${homem.token}`)
       .send({ content: 'Sejam bem-vindos!', boasVindas: true }).expect(200);
     expect(await queryOne(db, 'SELECT pedido_para FROM conversations WHERE id = ?', [c1.body.id])).toMatchObject({ pedido_para: casal.id });
 
-    // Mulher é tipo liberado por padrão para casais: vai direto.
-    const c2 = await request(app).post('/api/conversations').set('Authorization', `Bearer ${mulher.token}`).send({ userId: casal2.id }).expect(200);
-    expect(c2.body.pedido).toBe(false);
+    // Homem é tipo de entrada direta, mas o casal procura só Mulher: boas-vindas vira pedido.
+    const casal2 = await criar('CasalBV2', { gender: 'Casal (Ele/Ela)', lookingFor: ['Mulher'] });
+    await run(db, 'UPDATE users SET pedidos_direto_json = ? WHERE id = ?', [JSON.stringify(['homem']), casal2.id]);
+    const c2 = await request(app).post('/api/conversations').set('Authorization', `Bearer ${homem.token}`).send({ userId: casal2.id, boasVindas: true }).expect(200);
+    expect(c2.body.pedido).toBe(true);
+
+    // Procura Homem e liberou entrada direta: vai direto.
+    const casal3 = await criar('CasalBV3', { gender: 'Casal (Ele/Ela)', lookingFor: ['Homem'] });
+    await run(db, 'UPDATE users SET pedidos_direto_json = ? WHERE id = ?', [JSON.stringify(['homem']), casal3.id]);
+    const c3 = await request(app).post('/api/conversations').set('Authorization', `Bearer ${homem.token}`).send({ userId: casal3.id, boasVindas: true }).expect(200);
+    expect(c3.body.pedido).toBe(false);
+
+    // Bloqueou mensagens de quem não é do tipo escolhido: recusa com o motivo.
+    const casal4 = await criar('CasalBV4', { gender: 'Casal (Ele/Ela)', lookingFor: ['Mulher'] });
+    await run(db, 'UPDATE users SET block_outside_prefs = 1, contact_profile_types_json = ? WHERE id = ?', [JSON.stringify(['Mulher']), casal4.id]);
+    const c4 = await request(app).post('/api/conversations').set('Authorization', `Bearer ${homem.token}`).send({ userId: casal4.id, boasVindas: true });
+    expect(c4.status).toBe(403);
+    expect(c4.body.error).toBe('message_not_allowed');
   });
 
   it('perfil que não é mais novo recusa boas-vindas; preferência de aviso pode ser desligada', async () => {

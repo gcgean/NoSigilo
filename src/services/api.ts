@@ -529,7 +529,7 @@ export type PerfilNovoNaRegiao = {
 };
 
 export const regiaoService = {
-  novos: async (): Promise<{ cidade: string | null; boasVindasRestantesHoje: number; perfis: PerfilNovoNaRegiao[] }> => {
+  novos: async (): Promise<{ cidade: string | null; perfis: PerfilNovoNaRegiao[] }> => {
     const response = await apiClient.get('/regiao/novos');
     return response.data;
   },
@@ -673,8 +673,8 @@ export const chatService = {
     return response.data;
   },
 
-  createConversation: async (userId: string) => {
-    const response = await apiClient.post('/conversations', { userId });
+  createConversation: async (userId: string, opcoes?: { boasVindas?: boolean }) => {
+    const response = await apiClient.post('/conversations', { userId, ...(opcoes?.boasVindas ? { boasVindas: true } : {}) });
     return response.data;
   },
 

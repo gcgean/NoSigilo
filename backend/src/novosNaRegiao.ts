@@ -9,14 +9,15 @@ import type { DbHandle } from './db.js';
 //     nos últimos 30 dias, e dá para desligar em Configurações › Notificações;
 //   • só entram perfis com foto, ativos, que combinam com o que a pessoa
 //     procura e sem bloqueio entre os dois;
-//   • boas-vindas: 1 por perfil, 5 por dia para quem manda, e o perfil novo sai
-//     da aba de todo mundo depois de receber 10 — senão uma mulher ou um casal
-//     que acabou de entrar recebia dezenas de "oi" no primeiro dia.
+//   • boas-vindas: 1 por perfil e o perfil novo sai da aba de todo mundo depois
+//     de receber 10 — senão uma mulher ou um casal que acabou de entrar recebia
+//     dezenas de "oi" no primeiro dia. Sem limite diário para quem manda
+//     (pedido do dono, 10/11/2026); quem recebe continua protegido pelas
+//     próprias regras (pedidos de mensagem e tipos de perfil aceitos).
 
 export const DIAS_NA_ABA = 7;
 export const RAIO_KM = 50;
 export const MAX_BOAS_VINDAS_RECEBIDAS = 10;
-export const MAX_BOAS_VINDAS_POR_DIA = 5;
 export const MAX_AVISOS_POR_SEMANA = 4;
 
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -190,13 +191,6 @@ export async function motivoSemBoasVindas(db: DbHandle, deId: string, paraId: st
   if (Number(recebidas?.c || 0) >= MAX_BOAS_VINDAS_RECEBIDAS) {
     return 'Esse perfil já recebeu muitas boas-vindas. Que tal outro da lista?';
   }
-  const hoje = (await db.queryOne('SELECT COUNT(*) AS c FROM boas_vindas WHERE from_user_id = ? AND created_at >= ?', [
-    deId,
-    new Date(agora - DIA_MS).toISOString(),
-  ])) as any;
-  if (Number(hoje?.c || 0) >= MAX_BOAS_VINDAS_POR_DIA) {
-    return `Você já deu ${MAX_BOAS_VINDAS_POR_DIA} boas-vindas hoje. Amanhã libera mais.`;
-  }
   return null;
 }
 
@@ -208,14 +202,6 @@ export async function registrarBoasVindas(db: DbHandle, deId: string, paraId: st
     [deId, paraId, new Date().toISOString()]
   );
   await db.persist();
-}
-
-export async function boasVindasRestantesHoje(db: DbHandle, deId: string, agora = Date.now()) {
-  const r = (await db.queryOne('SELECT COUNT(*) AS c FROM boas_vindas WHERE from_user_id = ? AND created_at >= ?', [
-    deId,
-    new Date(agora - DIA_MS).toISOString(),
-  ])) as any;
-  return Math.max(0, MAX_BOAS_VINDAS_POR_DIA - Number(r?.c || 0));
 }
 
 /** Texto do aviso: discreto na tela bloqueada (sem nome nem foto). */

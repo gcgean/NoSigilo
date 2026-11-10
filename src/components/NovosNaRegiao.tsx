@@ -4,9 +4,9 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { chatService, matchService, regiaoService, type PerfilNovoNaRegiao } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { textoDistancia } from '@/utils/distancia';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
@@ -16,17 +16,22 @@ import { cn } from '@/lib/utils';
  * Aba "Na região" do Chat: perfis que entraram nos últimos 7 dias na cidade
  * de quem olha (ou até 50 km). O aviso diário das 19h30 abre aqui.
  *
- * "Dar boas-vindas" abre um texto pronto e editável e manda pelo caminho
- * normal de mensagem (vale plano, pedidos de contato e privacidade de quem
- * recebe), marcado como boas-vindas para o servidor aplicar os limites:
- * 1 por perfil, 5 por dia, e o perfil novo sai da lista depois de 10.
+ * "Boas-vindas" manda um texto pronto com um toque, sem abrir o chat e sem
+ * aviso na tela (pedido do dono, 10/11/2026): o botão vira "Enviado ✓". Vai
+ * pelo caminho normal de mensagem (plano, pedidos de contato e privacidade de
+ * quem recebe), marcado como boas-vindas para o servidor aplicar as regras:
+ * 1 por perfil, sem limite diário, e o perfil novo sai da lista depois de 10.
+ * Se o perfil não procura o tipo de quem manda, vai como pedido de mensagem;
+ * se ele não aceita esse tipo, o motivo aparece no próprio cartão.
  */
 type Props = {
   viewerId?: string;
   premiumAccess: boolean;
-  /** Abre a conversa recém-criada (o Chat recarrega a lista antes). */
-  onAbrirConversa: (conversationId: string) => void;
+  /** Boas-vindas enviada: o Chat recarrega a lista de conversas em silêncio. */
+  onEnviada?: () => void;
 };
+
+type Situacao = { tipo: 'enviado'; pedido: boolean } | { tipo: 'recusado'; motivo: string };
 
 function textoPronto(p: PerfilNovoNaRegiao, cidade: string | null) {
   const g = String(p.gender || '');
@@ -47,16 +52,15 @@ function textoPronto(p: PerfilNovoNaRegiao, cidade: string | null) {
   return `${saudacao} ao NoSigilo! ${ponte}`;
 }
 
-export default function NovosNaRegiao({ viewerId, premiumAccess, onAbrirConversa }: Props) {
+export default function NovosNaRegiao({ viewerId, premiumAccess, onEnviada }: Props) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [perfis, setPerfis] = useState<PerfilNovoNaRegiao[] | null>(null);
   const [cidade, setCidade] = useState<string | null>(null);
-  const [restantes, setRestantes] = useState(5);
   const [erro, setErro] = useState(false);
-  const [escrevendoPara, setEscrevendoPara] = useState<PerfilNovoNaRegiao | null>(null);
-  const [texto, setTexto] = useState('');
-  const [enviando, setEnviando] = useState(false);
+  const [enviandoPara, setEnviandoPara] = useState<string | null>(null);
+  const [situacao, setSituacao] = useState<Record<string, Situacao>>({});
   const [curtindo, setCurtindo] = useState<string | null>(null);
 
   const carregar = () => {
@@ -66,7 +70,6 @@ export default function NovosNaRegiao({ viewerId, premiumAccess, onAbrirConversa
       .then((r) => {
         setPerfis(r.perfis);
         setCidade(r.cidade);
-        setRestantes(r.boasVindasRestantesHoje);
       })
       .catch(() => {
         setErro(true);
@@ -77,41 +80,45 @@ export default function NovosNaRegiao({ viewerId, premiumAccess, onAbrirConversa
 
   const marcar = (id: string, campos: Partial<PerfilNovoNaRegiao>) =>
     setPerfis((prev) => (prev ?? []).map((p) => (p.id === id ? { ...p, ...campos } : p)));
+  const definirSituacao = (id: string, s: Situacao) => setSituacao((prev) => ({ ...prev, [id]: s }));
 
-  const abrirBoasVindas = (p: PerfilNovoNaRegiao) => {
-    if (!premiumAccess) { navigate('/subscriptions'); return; }
-    setTexto(textoPronto(p, cidade));
-    setEscrevendoPara(p);
+  const motivoRecusa = (mensagem: string | undefined) => {
+    // "recebe novos contatos apenas dos tipos de perfil selecionados" = o perfil
+    // fechou a porta para o tipo de quem manda.
+    if (!mensagem || /tipos de perfil/i.test(mensagem)) {
+      const meuTipo = String(user?.gender || '').trim();
+      return `Esse perfil não aceita mensagens de ${meuTipo || 'seu tipo de perfil'} por não ser o que procura.`;
+    }
+    return mensagem;
   };
 
-  const enviar = async () => {
-    const p = escrevendoPara;
-    const conteudo = texto.trim();
-    if (!p || !conteudo || enviando) return;
-    setEnviando(true);
+  const darBoasVindas = async (p: PerfilNovoNaRegiao) => {
+    if (!premiumAccess) { navigate('/subscriptions'); return; }
+    if (enviandoPara || p.boasVindasEnviada || situacao[p.id]) return;
+    setEnviandoPara(p.id);
     try {
-      const conv = await chatService.createConversation(p.id);
+      const conv = await chatService.createConversation(p.id, { boasVindas: true });
       if (!conv?.id) throw new Error('sem conversa');
-      await chatService.sendMessage(conv.id, { content: conteudo, boasVindas: true });
+      await chatService.sendMessage(conv.id, { content: textoPronto(p, cidade), boasVindas: true });
       marcar(p.id, { boasVindasEnviada: true });
-      setRestantes((n) => Math.max(0, n - 1));
-      setEscrevendoPara(null);
-      // Mesma regra de qualquer conversa nova: se o perfil só recebe direto de
-      // certos tipos (Configurações › pedidos de mensagem), vai como pedido.
-      // Envio normal não avisa nada: a conversa abre e a mensagem já está lá.
-      if (conv.pedido) toast({ title: 'Boas-vindas enviada como pedido 👋', description: `${p.name} vê nos Pedidos de mensagem e decide se aceita.` });
-      onAbrirConversa(String(conv.id));
+      definirSituacao(p.id, { tipo: 'enviado', pedido: !!conv.pedido });
+      onEnviada?.();
     } catch (err: any) {
       const codigo = err?.response?.data?.error;
+      const mensagem = err?.response?.data?.message as string | undefined;
       if (codigo === 'premium_required') { navigate('/subscriptions'); return; }
-      toast({
-        title: 'Não deu para enviar',
-        description: err?.response?.data?.message || 'Tente novamente em instantes.',
-        variant: 'destructive',
-      });
-      if (codigo === 'boas_vindas_limite') setEscrevendoPara(null);
+      if (codigo === 'message_not_allowed') {
+        definirSituacao(p.id, { tipo: 'recusado', motivo: motivoRecusa(mensagem) });
+        return;
+      }
+      if (codigo === 'boas_vindas_limite') {
+        if (mensagem && /já deu boas-vindas/.test(mensagem)) marcar(p.id, { boasVindasEnviada: true });
+        else definirSituacao(p.id, { tipo: 'recusado', motivo: mensagem || 'Não dá para dar boas-vindas a esse perfil agora.' });
+        return;
+      }
+      toast({ title: 'Não deu para enviar', description: mensagem || 'Tente novamente em instantes.', variant: 'destructive' });
     } finally {
-      setEnviando(false);
+      setEnviandoPara(null);
     }
   };
 
@@ -140,7 +147,7 @@ export default function NovosNaRegiao({ viewerId, premiumAccess, onAbrirConversa
       <p className="mb-3 rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 text-[13px] leading-snug text-foreground/85">
         Perfis que entraram nos últimos 7 dias {cidade ? `em ${cidade} ou perto` : 'perto de você'} e combinam com o que você procura.
         {' '}Quem chega e é bem recebido fica.{' '}
-        <strong className="font-semibold text-primary">{restantes > 0 ? `Você pode dar mais ${restantes} boas-vindas hoje.` : 'Suas boas-vindas de hoje acabaram — amanhã tem mais.'}</strong>
+        <strong className="font-semibold text-primary">Toque em Boas-vindas para mandar um oi pronto.</strong>
       </p>
 
       {erro ? (
@@ -157,8 +164,11 @@ export default function NovosNaRegiao({ viewerId, premiumAccess, onAbrirConversa
           {perfis.map((p) => {
             const distancia = textoDistancia(p.distanceKm, { cidade: p.city });
             const entrou = formatDistanceToNowStrict(new Date(p.createdAt), { locale: ptBR, addSuffix: true });
+            const sit = situacao[p.id];
+            const recusado = sit?.tipo === 'recusado';
             return (
-              <li key={p.id} className="flex items-center gap-3 rounded-2xl border p-2.5">
+              <li key={p.id} className="rounded-2xl border p-2.5">
+               <div className="flex items-center gap-3">
                 <Link to={getUserProfileHref(p.id, viewerId, '/chat?aba=regiao')} className="shrink-0">
                   <img src={resolveServerUrl(p.avatar)} alt="" width={56} height={56} className="h-14 w-14 rounded-full object-cover" />
                 </Link>
@@ -171,11 +181,11 @@ export default function NovosNaRegiao({ viewerId, premiumAccess, onAbrirConversa
                   <Button
                     size="sm"
                     className="h-8 rounded-full px-3 text-xs"
-                    variant={p.boasVindasEnviada ? 'outline' : 'default'}
-                    disabled={p.boasVindasEnviada || (restantes <= 0 && premiumAccess)}
-                    onClick={() => abrirBoasVindas(p)}
+                    variant={p.boasVindasEnviada || recusado ? 'outline' : 'default'}
+                    disabled={p.boasVindasEnviada || recusado || enviandoPara === p.id}
+                    onClick={() => void darBoasVindas(p)}
                   >
-                    {p.boasVindasEnviada ? 'Enviado ✓' : '👋 Boas-vindas'}
+                    {p.boasVindasEnviada ? 'Enviado ✓' : recusado ? 'Não aceita' : enviandoPara === p.id ? 'Enviando...' : '👋 Boas-vindas'}
                   </Button>
                   <Button
                     size="sm"
@@ -188,29 +198,19 @@ export default function NovosNaRegiao({ viewerId, premiumAccess, onAbrirConversa
                     {p.curtido ? 'Curtido' : 'Curtir'}
                   </Button>
                 </div>
+               </div>
+                {sit?.tipo === 'recusado' && (
+                  <p className="mt-2 rounded-lg bg-muted px-2.5 py-1.5 text-xs text-muted-foreground">{sit.motivo}</p>
+                )}
+                {sit?.tipo === 'enviado' && sit.pedido && (
+                  <p className="mt-2 px-1 text-[11px] text-muted-foreground">Foi para os pedidos de mensagem desse perfil.</p>
+                )}
               </li>
             );
           })}
         </ul>
       )}
 
-      <Dialog open={!!escrevendoPara} onOpenChange={(aberto) => { if (!aberto && !enviando) setEscrevendoPara(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogTitle>Dar boas-vindas a {escrevendoPara?.name}</DialogTitle>
-          <DialogDescription>Pode mudar o texto antes de enviar. A conversa abre em seguida.</DialogDescription>
-          <textarea
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            maxLength={500}
-            rows={4}
-            className="w-full resize-none rounded-xl border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-          />
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" disabled={enviando} onClick={() => setEscrevendoPara(null)}>Cancelar</Button>
-            <Button disabled={enviando || !texto.trim()} onClick={() => void enviar()}>{enviando ? 'Enviando...' : 'Enviar 👋'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -1555,12 +1555,7 @@ export default function Chat() {
           <NovosNaRegiao
             viewerId={user?.id}
             premiumAccess={premiumAccess}
-            onAbrirConversa={(id) => {
-              void loadConversations().finally(() => {
-                setCaixa('conversas');
-                navigate(`/chat/${encodeURIComponent(id)}`);
-              });
-            }}
+            onEnviada={() => { void loadConversations(); }}
           />
         ) : caixa === 'grupos' ? (
           <div className="flex-1 overflow-y-auto overscroll-y-contain p-2" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
