@@ -204,7 +204,7 @@ export default function Layout() {
   // Chat em grupo no celular: tela cheia como a conversa (a barra de baixo
   // cobria o campo de mensagem e a página rolava).
   const isMobileGroupChatRoute = isMobile && location.pathname.startsWith('/chat/group/');
-  const isMobileChatRoute = isMobile && (location.pathname === '/chat' || isMobileGroupChatRoute);
+  const isMobileChatRoute = isMobile && (location.pathname === '/chat' || location.pathname.startsWith('/chat/') || isMobileGroupChatRoute);
   const isMobileReelsRoute = isMobile && location.pathname === '/reels';
   const [isChatConvOpen, setIsChatConvOpen] = useState(false);
   const [isReelsMaximized, setIsReelsMaximized] = useState(false);
@@ -755,7 +755,7 @@ export default function Layout() {
       {!isMobileReelsMaximized && (
       <header
         ref={cabecalhoRef}
-        className="sticky top-0 z-40 glass-strong border-b"
+        className={cn("sticky top-0 z-40 glass-strong border-b", isMobileChatRoute && isChatConvOpen && "hidden md:block")}
         // No app instalado do iPhone a barra de status fica por cima da tela:
         // sem este recuo o topo briga com o relógio e a bateria.
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}

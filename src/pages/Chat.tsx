@@ -463,56 +463,19 @@ export default function Chat() {
       const vWidth = viewport ? Math.round(viewport.width) : window.innerWidth;
 
       if (selectedChat) {
-        // Conversation open → full-screen fixed panel, keyboard-aware.
-        //
-        // iOS Safari problem with the previous approach (top: headerPx, height: vh - headerPx):
-        //   position:fixed on iOS is relative to the LAYOUT viewport, not the visual
-        //   viewport. When the keyboard opens, iOS internally scrolls the page to keep
-        //   the focused input visible. That scroll shifts the layout viewport origin,
-        //   so our `top: 56px` container ends up rendered at the wrong position —
-        //   input bar appears at the top, messages area appears mostly off-screen.
-        //
-        // Fix: anchor to top:0 / bottom:0 (always covers full screen height in the
-        //   layout viewport), then use paddingBottom equal to the keyboard height so
-        //   the *content* stays above the keyboard. zIndex:60 covers the Layout header
-        //   (z-40) for a true full-screen chat experience on mobile.
-        //   paddingTop:env(safe-area-inset-top) protects content from the notch/island.
-        const kbHeight = Math.max(0, window.innerHeight - Math.round(vh));
-        // When the keyboard is open kbHeight pushes content above it.
-        // When the keyboard is closed kbHeight ≈ 0, but we still need to keep
-        // the input bar above the iPhone home indicator (~34 px on modern iPhones).
-        // Using env(safe-area-inset-bottom) for this avoids double-counting
-        // because iOS includes the home-indicator zone inside the keyboard footprint
-        // when kbHeight is calculated, so the two branches are mutually exclusive.
-        // Teclado aberto: o iPhone rola a área visível (offsetTop) para mostrar o
-        // campo. Ancorar em top:0 + paddingBottom deixava uma faixa vazia do
-        // tamanho dessa rolagem entre o campo e o teclado. Agora o painel ocupa
-        // exatamente a área visível: começa no offsetTop e tem a altura dela.
-        const vTop = viewport ? Math.max(0, Math.round(viewport.offsetTop)) : 0;
-        setMobileStyle(kbHeight > 0 ? {
+        const vTop = Math.max(0, Math.round(viewport?.offsetTop ?? 0));
+        const tecladoAberto = window.innerHeight - vh > 100;
+        setMobileStyle({
           position: 'fixed',
           top: vTop,
+          left: vLeft,
+          width: vWidth,
           height: Math.round(vh),
-          left: vLeft,
-          width: Math.max(vWidth, 280),
-          maxWidth: '100vw',
-          paddingTop: vTop > 0 ? 0 : 'env(safe-area-inset-top)',
-          paddingBottom: 0,
+          paddingTop: `max(0px, calc(env(safe-area-inset-top, 0px) - ${vTop}px))`,
+          paddingBottom: tecladoAberto ? 0 : 'env(safe-area-inset-bottom, 0px)',
           boxSizing: 'border-box',
           zIndex: 60,
-          overflowX: 'hidden',
-        } : {
-          position: 'fixed',
-          top: 0,
-          bottom: 0,
-          left: vLeft,
-          width: Math.max(vWidth, 280),
-          maxWidth: '100vw',
-          paddingTop: 'env(safe-area-inset-top)',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-          boxSizing: 'border-box',
-          zIndex: 60,
-          overflowX: 'hidden',
+          overflow: 'hidden',
         });
       } else {
         // Conversation list on iPhone Safari also needs visual viewport tracking,
@@ -1422,6 +1385,7 @@ export default function Chat() {
         // On mobile with a conversation open the container is position:fixed
         // – no overflow-hidden needed (the fixed bounds contain children) and
         // it would clip the input bar's box-shadow at the bottom edge.
+        isMobileViewport && selectedChat && "bg-background",
         !isMobileViewport && "overflow-hidden"
       )}
       style={isMobileViewport ? mobileStyle : undefined}
@@ -1993,7 +1957,7 @@ export default function Chat() {
             {/* Spacer: pushes messages to the bottom when content < container height.
                 Fica de fora quando a conversa está vazia — ele brigaria com o
                 justify-center acima, sempre vencendo por ter flex-1 próprio. */}
-            {!conversaVazia && <div className="flex-1 shrink-0" />}
+            {!conversaVazia && <div className="hidden md:block md:flex-1 md:shrink-0" />}
             <div className="flex flex-col gap-2.5 px-2.5 py-3 md:gap-4 md:p-4">
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
               {conversaVazia && activeConversation && (
