@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import { textoDistancia } from '@/utils/distancia';
@@ -457,23 +458,26 @@ export default function Chat() {
     const headerRem = 'var(--app-header-h, 3.5rem)';
 
     const vv = window.visualViewport;
+    let alturaSemTeclado = vv?.height ?? window.innerHeight;
 
     const update = () => {
       const viewport = window.visualViewport;
       const vh = viewport ? viewport.height : window.innerHeight;
-      const vLeft = viewport ? Math.round(viewport.offsetLeft) : 0;
       const vWidth = viewport ? Math.round(viewport.width) : window.innerWidth;
 
       if (selectedChat) {
-        const vTop = Math.max(0, Math.round(viewport?.offsetTop ?? 0));
-        const tecladoAberto = window.innerHeight - vh > 100;
+        const editando = document.activeElement === messageInputRef.current;
+        if (!editando) alturaSemTeclado = Math.max(vh, window.innerHeight);
+        const tecladoAberto = Math.max(alturaSemTeclado, window.innerHeight) - vh > 100;
+        // No Safari a página pode rolar durante a animação do teclado.
+        // O portal usa as coordenadas do documento, como visualViewport.pageTop.
         setMobileStyle({
-          position: 'fixed',
-          top: vTop,
-          left: vLeft,
+          position: 'absolute',
+          top: viewport?.pageTop ?? window.scrollY,
+          left: viewport?.pageLeft ?? window.scrollX,
           width: vWidth,
           height: Math.round(vh),
-          paddingTop: `max(0px, calc(env(safe-area-inset-top, 0px) - ${vTop}px))`,
+          paddingTop: 'env(safe-area-inset-top, 0px)',
           paddingBottom: tecladoAberto ? 0 : 'env(safe-area-inset-bottom, 0px)',
           boxSizing: 'border-box',
           zIndex: 60,
@@ -499,7 +503,15 @@ export default function Chat() {
       vv.addEventListener('scroll', update);
     }
     window.addEventListener('resize', update);
-    update(); // run immediately
+    window.addEventListener('scroll', update, { passive: true });
+    let aposTeclado: ReturnType<typeof setTimeout>;
+    const aoMudarFoco = () => {
+      clearTimeout(aposTeclado);
+      aposTeclado = setTimeout(update, 400);
+    };
+    document.addEventListener('focusin', aoMudarFoco);
+    document.addEventListener('focusout', aoMudarFoco);
+    update();
 
     return () => {
       const vv2 = window.visualViewport;
@@ -507,6 +519,10 @@ export default function Chat() {
         vv2.removeEventListener('resize', update);
         vv2.removeEventListener('scroll', update);
       }
+      clearTimeout(aposTeclado);
+      document.removeEventListener('focusin', aoMudarFoco);
+      document.removeEventListener('focusout', aoMudarFoco);
+      window.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
       setMobileStyle({});
     };
@@ -1380,7 +1396,7 @@ export default function Chat() {
     }
   };
 
-  return (
+  const painelChat = (
     <div
       className={cn(
         "flex w-full min-h-0 max-w-full md:overflow-hidden md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]",
@@ -2374,7 +2390,7 @@ export default function Chat() {
               to anchor to the viewport bottom (behind the home indicator) instead
               of the container bottom, which clips the icons on the left. */}
           <div
-            className="w-full min-w-0 max-w-full border-t bg-background/96 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4"
+            className="w-full min-w-0 max-w-full border-t bg-background/96 pt-2 pb-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4"
             style={{
               paddingLeft: 'max(0.625rem, env(safe-area-inset-left))',
               paddingRight: 'max(0.625rem, env(safe-area-inset-right))',
@@ -2939,4 +2955,5 @@ export default function Chat() {
       <ReferralPaywallModal open={paywallStories} onClose={() => setPaywallStories(false)} contexto="stories" />
     </div>
   );
+  return isMobileViewport && selectedChat ? createPortal(painelChat, document.body) : painelChat;
 }
