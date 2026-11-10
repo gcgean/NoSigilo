@@ -826,12 +826,18 @@ function StoryViewer({
   }, [story.id]);
 
   // Resposta rápida (emoji) → vai como resposta do story, direto para o chat.
+  const respostaEmAndamento = useRef(false);
   const enviarRespostaRapida = async (emoji: string) => {
+    if (respostaEmAndamento.current) return;
+    respostaEmAndamento.current = true;
     try {
       await storiesService.addComment(story.id, emoji);
-      toast({ title: `${emoji} enviado!`, description: 'Foi direto para as mensagens.' });
+      setAvisoViewer(`${emoji} enviado nas mensagens.`);
     } catch {
-      toast({ title: 'Não foi possível enviar', variant: 'destructive' });
+      setAvisoViewer('Não foi possível enviar. Tente novamente.');
+    } finally {
+      respostaEmAndamento.current = false;
+      window.setTimeout(() => setAvisoViewer(''), 2500);
     }
   };
 
@@ -1192,7 +1198,13 @@ function StoryViewer({
 
       {/* Comment bar + Like (not own story) */}
       {story.author.id !== myUserId && (
-        <div className={cn('relative z-30 flex items-center gap-2 border-t border-white/10 bg-black/80 px-3 py-3 transition-opacity duration-200', paused && 'opacity-0')}>
+        <div
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDigitando(false);
+          }}
+          className={cn('relative z-30 flex items-center gap-2 border-t border-white/10 bg-black/80 px-3 py-3 transition-opacity duration-200', paused && 'opacity-0')}>
           {/* Respostas rápidas: aparecem ao tocar em "Responder" */}
           {digitando && (
             <div className="absolute bottom-full left-0 right-0 flex justify-around bg-gradient-to-t from-black/90 to-transparent px-4 pb-3 pt-8">
@@ -1200,9 +1212,9 @@ function StoryViewer({
                 <button
                   key={emoji}
                   type="button"
-                  onMouseDown={(e) => e.preventDefault()}
+                  onPointerDown={(e) => e.preventDefault()}
                   onClick={() => void enviarRespostaRapida(emoji)}
-                  className="text-3xl leading-none transition-transform active:scale-90 hover:scale-110"
+                  className="flex h-11 min-w-0 max-w-12 flex-1 touch-manipulation items-center justify-center rounded-full text-3xl leading-none active:scale-90"
                   aria-label={`Responder com ${emoji}`}
                 >
                   {emoji}
@@ -1279,7 +1291,7 @@ function StoryViewer({
           {/* Input comentário com efeito de apagar */}
           <input
             className={cn(
-              'flex-1 rounded-full bg-white/10 px-4 py-2 text-[16px] text-white placeholder:text-white/40 outline-none transition-opacity duration-200',
+              'min-w-0 flex-1 rounded-full bg-white/10 px-4 py-2 text-[16px] text-white placeholder:text-white/40 outline-none transition-opacity duration-200',
               clearing ? 'opacity-0' : 'opacity-100'
             )}
             placeholder="Enviar mensagem..."
@@ -1287,8 +1299,6 @@ function StoryViewer({
             onChange={(e) => setComment(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void handleSendComment(); }}
             onFocus={() => setDigitando(true)}
-            // Espera um pouco: tocar num emoji tira o foco antes do clique chegar.
-            onBlur={() => setTimeout(() => setDigitando(false), 220)}
             disabled={sending}
           />
           <button
