@@ -1912,7 +1912,7 @@ export const adminService = {
 
   receitaPorCanal: async (params: { city?: string; state?: string; createdFrom?: string; createdTo?: string }): Promise<{ canais: Array<{ canal: string; receitaCents: number; pagantes: number }>; indisponivel?: boolean }> =>
     (await apiClient.get('/admin/finance/receita-por-canal', { params })).data,
-  getUsers: async (params?: { page?: number; limit?: number; search?: string; city?: string; state?: string; createdFrom?: string; createdTo?: string; origem?: string; canal?: string; verificado?: string }) => {
+  getUsers: async (params?: { page?: number; limit?: number; search?: string; city?: string; state?: string; createdFrom?: string; createdTo?: string; origem?: string; canal?: string; verificado?: string; situacao?: string }) => {
     const response = await apiClient.get('/admin/users', { params });
     return response.data;
   },

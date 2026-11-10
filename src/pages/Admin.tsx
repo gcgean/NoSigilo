@@ -458,6 +458,7 @@ export default function Admin() {
   // '' = todas, 'regional' = veio de alguma pagina de SEO, 'direto' = home/link/convite
   const [filterOrigem, setFilterOrigem] = useState('');
   const [filterVerificado, setFilterVerificado] = useState('');
+  const [filterSituacao, setFilterSituacao] = useState('');
   // Canal do primeiro contato (Instagram, Google...) + contagem de cada um.
   const [filterCanal, setFilterCanal] = useState('');
   const [contagemCanais, setContagemCanais] = useState<Array<{ canal: string; total: number; homens?: number; mulheres?: number; casais?: number; outros?: number }>>([]);
@@ -907,6 +908,7 @@ export default function Admin() {
       createdFrom: filterCreatedFrom || undefined,
       origem: filterOrigem || undefined,
       verificado: filterVerificado || undefined,
+      situacao: filterSituacao || undefined,
       canal: filterCanal || undefined,
       createdTo: filterCreatedTo || undefined,
     });
@@ -1011,7 +1013,7 @@ export default function Admin() {
     }, 400);
     return () => { if (usersFilterDebounceRef.current) clearTimeout(usersFilterDebounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, filterCity, filterState, filterCreatedFrom, filterCreatedTo, filterOrigem, filterVerificado, filterCanal]);
+  }, [searchQuery, filterCity, filterState, filterCreatedFrom, filterCreatedTo, filterOrigem, filterVerificado, filterSituacao, filterCanal]);
 
   // Rolagem infinita: observa o sentinel no fim da lista e carrega a próxima
   // página quando ele entra na viewport.
@@ -1860,6 +1862,18 @@ export default function Admin() {
                   <option value="0">Não verificados</option>
                 </select>
               </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Situação</label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={filterSituacao}
+                  onChange={(e) => setFilterSituacao(e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  <option value="banido">Só banidos</option>
+                  <option value="ativo">Só ativos</option>
+                </select>
+              </div>
             </div>
 
             {contagemCanais.length > 0 && (
@@ -1911,7 +1925,7 @@ export default function Admin() {
                       {showOnlyShowcase ? <> · {filteredUsers.length} na vitrine</> : null}
                     </>}
               </p>
-              {(filterCity || filterState || filterCreatedFrom || filterCreatedTo || searchQuery || filterOrigem || filterVerificado || filterCanal) && (
+              {(filterCity || filterState || filterCreatedFrom || filterCreatedTo || searchQuery || filterOrigem || filterVerificado || filterSituacao || filterCanal) && (
                 <button
                   type="button"
                   className="text-xs text-muted-foreground hover:text-foreground underline"
@@ -1923,6 +1937,7 @@ export default function Admin() {
                     setFilterCreatedTo('');
                     setFilterOrigem('');
                     setFilterVerificado('');
+                    setFilterSituacao('');
                     setFilterCanal('');
                   }}
                 >

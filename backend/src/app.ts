@@ -19338,6 +19338,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const origemFilter = String(req.query.origem || '').trim();
       // Filtro de verificação: '1' só verificados, '0' só não verificados.
       const verificadoFilter = String(req.query.verificado || '').trim();
+      // Situação da conta: 'banido' só banidos, 'ativo' só quem não está banido.
+      const situacaoFilter = String(req.query.situacao || '').trim();
 
       const conditions: string[] = [];
       const whereParams: unknown[] = [];
@@ -19363,6 +19365,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       }
       if (verificadoFilter === '1') conditions.push('is_verified = 1');
       else if (verificadoFilter === '0') conditions.push('(is_verified = 0 OR is_verified IS NULL)');
+      if (situacaoFilter === 'banido') conditions.push('is_banned = 1');
+      else if (situacaoFilter === 'ativo') conditions.push('(is_banned = 0 OR is_banned IS NULL)');
       if (origemFilter === 'regional') {
         conditions.push('signup_source IS NOT NULL');
       } else if (origemFilter === 'direto') {
