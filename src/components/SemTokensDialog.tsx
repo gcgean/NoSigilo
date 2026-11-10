@@ -47,7 +47,7 @@ export default function SemTokensDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) setMostrarCompra(false); onOpenChange(v); }}>
-      <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
+      <DialogContent overlayClassName="z-[80]" className="z-[80] max-h-[90dvh] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Faltam tokens 🪙</DialogTitle>
           <DialogDescription>{recurso} custa {custo} tokens.</DialogDescription>

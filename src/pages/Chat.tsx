@@ -2878,7 +2878,8 @@ export default function Chat() {
       )}
 
       <Dialog open={highlightDialogOpen} onOpenChange={setHighlightDialogOpen}>
-        <DialogContent>
+        {/* Acima do chat do celular (z-index 60). */}
+        <DialogContent overlayClassName="z-[80]" className="z-[80]">
           <DialogTitle>Destacar conversa</DialogTitle>
           <DialogDescription>
             Marque esta conversa como prioridade e adicione um lembrete rápido para não esquecer.
