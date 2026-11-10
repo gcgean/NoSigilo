@@ -1,3 +1,4 @@
+import { MODO_PONTE } from './modoPonte.js';
 import cors from 'cors';
 import { textoDaDica, ESPERA_EM_DIAS, TOTAL_DE_DICAS, pediuParaParar, RESPOSTA_PARAR, RESPOSTA_AUTOMATICA } from './dicasChat.js';
 import express from 'express';
@@ -13881,7 +13882,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       console.error('[upload] retomar vídeos pendentes falhou:', err);
     }
   }
-  if (process.env.NODE_ENV !== 'test') setTimeout(() => void retomarVideosPendentes(), 15_000);
+  if (process.env.NODE_ENV !== 'test' && !MODO_PONTE) setTimeout(() => void retomarVideosPendentes(), 15_000);
 
   // Vídeo terminou de processar: publica os posts que só esperavam por ele
   // (data = agora, para entrar no topo do feed) e avisa o autor.
@@ -20052,7 +20053,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   };
 
   setInterval(() => { void vigiarRecursos(); }, 5 * 60 * 1000);
-  setTimeout(() => { void vigiarRecursos(); }, 90 * 1000);
+  if (!MODO_PONTE) setTimeout(() => { void vigiarRecursos(); }, 90 * 1000);
 
   // ─── Diagnóstico diário: está na hora de fazer upgrade? ────────────────────
   // O alerta acima pega aperto de 10 minutos. Este olha os últimos 7 dias e só
@@ -23187,7 +23188,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   };
   // Uma passada logo depois de subir (senão a fila espera meia hora a cada
   // deploy) e depois a cada 30 minutos.
-  setTimeout(triagemAutomatica, 60 * 1000);
+  if (!MODO_PONTE) setTimeout(triagemAutomatica, 60 * 1000);
   setInterval(triagemAutomatica, 30 * 60 * 1000);
 
   app.put('/api/admin/reports/:reportId/resolve', requireAuth(env, db), requireAdmin(), async (req, res) => {

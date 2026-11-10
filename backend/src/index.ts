@@ -1,3 +1,5 @@
+// Precisa vir primeiro: desliga as tarefas de fundo no contêiner ponte do deploy.
+import { MODO_PONTE } from './modoPonte.js';
 import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
@@ -562,11 +564,14 @@ async function main() {
   await ensureAdministrativeAccess(db);
 
   const app = createApp({ db, env });
-  startWeekendEngagementScheduler(db, env); // e-mail automático sex/sáb 20h (BRT)
-  startNovosNaRegiaoScheduler(db, env); // aviso "gente nova na sua região" 19h30 (BRT)
-  startAdminDailySummaryScheduler(db, env); // resumo diário pro admin no Telegram, todo dia 8h (BRT)
-  startRenewalReminderScheduler(db, env); // lembrete de renovação (e-mail + push) 3 dias antes e no dia, 10h (BRT)
-  startVisitasRetention(db);
+  // No contêiner ponte do deploy nenhuma tarefa agendada roda (ver modoPonte.ts).
+  if (!MODO_PONTE) {
+    startWeekendEngagementScheduler(db, env); // e-mail automático sex/sáb 20h (BRT)
+    startNovosNaRegiaoScheduler(db, env); // aviso "gente nova na sua região" 19h30 (BRT)
+    startAdminDailySummaryScheduler(db, env); // resumo diário pro admin no Telegram, todo dia 8h (BRT)
+    startRenewalReminderScheduler(db, env); // lembrete de renovação (e-mail + push) 3 dias antes e no dia, 10h (BRT)
+    startVisitasRetention(db);
+  }
   const httpServer = createServer(app);
   const onlineCounts = new Map<string, number>();
   const io = new SocketIOServer(httpServer, {
@@ -679,7 +684,7 @@ async function main() {
 
   // Start automatic email scheduler (reengagement + weekly summary)
   // Pass presence so push "users online" can check real counts
-  startScheduler(db, app.get('presence') as { countOnline: () => number } | undefined);
+  if (!MODO_PONTE) startScheduler(db, app.get('presence') as { countOnline: () => number } | undefined);
 }
 
 main().catch((err) => {
