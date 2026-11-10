@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import { textoDistancia } from '@/utils/distancia';
-import { ArrowLeft, BellOff, Check, CheckCheck, ChevronRight, Copy, Crown, Eye, EyeOff, Heart, HeartHandshake, Image, Lock, Mail, MessageCircle, MoreVertical, Phone, Pin, Radio, Reply, Search, Send, Smile, Star, Trash2, User, Users, Video, WifiOff, X, Zap } from 'lucide-react';
+import { ArrowLeft, BellOff, Check, CheckCheck, ChevronRight, Copy, Crown, Eye, EyeOff, Heart, HeartHandshake, Image, Lock, Mail, MessageCircle, MoreVertical, Phone, Pin, Plus, Radio, Reply, Search, Send, Smile, Star, Trash2, User, Users, Video, WifiOff, X, Zap } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -293,6 +293,8 @@ export default function Chat() {
   const [showOnlyHighlighted, setShowOnlyHighlighted] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [acoesAbertas, setAcoesAbertas] = useState(false);
+  useEffect(() => { setAcoesAbertas(false); }, [selectedChat]);
   const [isViewOnceEnabled, setIsViewOnceEnabled] = useState(false);
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   // 🎁 Presentes no chat (pagos em tokens, que vão para a pessoa).
@@ -2525,7 +2527,7 @@ export default function Chat() {
                 ? "border border-yellow-400/70 bg-yellow-400/8 shadow-[0_0_0_2px_rgba(250,204,21,0.18)]"
                 : "border border-border/70 bg-background"
             )}>
-              <div className="flex w-full min-w-0 max-w-full items-end gap-2">
+              <div className="flex w-full min-w-0 max-w-full flex-wrap items-end gap-1 md:flex-nowrap md:gap-2">
                 <input
                 type="file"
                 ref={fileInputRef}
@@ -2533,7 +2535,16 @@ export default function Chat() {
                 accept="image/*"
                 onChange={handleImageUpload}
                 />
-                <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-muted/40 px-0.5 py-0.5 md:gap-0 md:bg-transparent md:px-0 md:py-0">
+                <Button type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-full md:hidden"
+                  aria-label="Mais opções de mensagem" aria-controls="chat-acoes" aria-expanded={acoesAbertas}
+                  onPointerDown={(e) => e.preventDefault()} onClick={() => setAcoesAbertas(v => !v)}>
+                  {acoesAbertas ? <X /> : <Plus />}
+                </Button>
+                <div id="chat-acoes" className={cn(
+                  "order-first w-full items-center justify-around rounded-xl bg-muted/40 py-1 md:order-none md:flex md:w-auto md:shrink-0 md:bg-transparent md:py-0",
+                  "max-md:[&_button[aria-label]]:h-auto max-md:[&_button[aria-label]]:min-h-11 max-md:[&_button[aria-label]]:w-auto max-md:[&_button[aria-label]]:flex-col max-md:[&_button[aria-label]]:gap-1 max-md:[&_button[aria-label]]:px-1",
+                  acoesAbertas ? "flex" : "hidden"
+                )}>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -2547,7 +2558,8 @@ export default function Chat() {
                     ) : (
                       <Image className="w-5 h-5" />
                     )}
-                  </Button>
+                  <span className="text-[11px] leading-none md:hidden">Foto</span>
+                    </Button>
 
                   {/* z-[70] nas janelas do chat: no celular a conversa fica numa camada fixa z-60
                       e o padrão (z-50) abria por trás — o 🎁 "não fazia nada". */}
@@ -2555,7 +2567,8 @@ export default function Chat() {
                     <PopoverTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-11 w-9 rounded-xl text-lg md:h-9 md:w-9" aria-label="Mandar presente">
                         🎁
-                      </Button>
+                      <span className="text-[11px] leading-none md:hidden">Presente</span>
+                    </Button>
                     </PopoverTrigger>
                     <PopoverContent side="top" align="center" sideOffset={8} collisionPadding={8} className="z-[70] w-72 p-3">
                       <p className="text-sm font-semibold">Mandar um presente</p>
@@ -2577,7 +2590,8 @@ export default function Chat() {
                     <PopoverTrigger asChild>
                       <Button variant="ghost" size="icon" disabled={!podeConversar} className="h-11 w-9 rounded-xl md:h-9 md:w-9" aria-label="Inserir emoji">
                         <Smile className="w-5 h-5" />
-                      </Button>
+                      <span className="text-[11px] leading-none md:hidden">Emoji</span>
+                    </Button>
                     </PopoverTrigger>
                     <PopoverContent
                       side="top"
@@ -2632,7 +2646,8 @@ export default function Chat() {
                           disabled={!podeConversar}
                         >
                           <Zap className={cn("w-5 h-5 transition-all", isViewOnceEnabled && "fill-yellow-400 drop-shadow-[0_0_4px_rgba(250,204,21,0.8)]")} />
-                        </Button>
+                        <span className="text-[11px] leading-none md:hidden">Ver uma vez</span>
+                    </Button>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="z-[70] max-w-[220px] text-center text-xs">
                         <p className="font-semibold">⚡ Visualização única</p>
@@ -2648,6 +2663,7 @@ export default function Chat() {
 
               <textarea
                 ref={messageInputRef}
+                onFocus={() => setAcoesAbertas(false)}
                 placeholder={isMobileViewport ? "Mensagem..." : "Digite sua mensagem..."}
                 value={message}
                 onChange={(e) => {
@@ -2663,7 +2679,7 @@ export default function Chat() {
                 }}
                 rows={1}
                 className={cn(
-                  "min-h-[48px] w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-3 text-[16px] leading-5 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
+                  "min-h-[48px] w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-3xl border px-3.5 py-3 text-[16px] leading-5 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
                   isViewOnceEnabled
                     ? "border-yellow-400/50 bg-yellow-400/5 focus-visible:ring-yellow-400/40 placeholder:text-yellow-700/50 dark:placeholder:text-yellow-300/50"
                     : "border-primary/15 bg-background focus-visible:ring-primary/40"
@@ -2680,7 +2696,7 @@ export default function Chat() {
               />
               <Button
                 size="icon"
-                className="h-11 w-11 shrink-0 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
+                className="h-11 w-11 shrink-0 rounded-full bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
                 onMouseDown={(e) => {
                   // Prevent textarea from losing focus on iOS (keeps keyboard open)
                   e.preventDefault();
