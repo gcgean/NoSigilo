@@ -5,7 +5,7 @@ import { fechaHoje, HORARIO_DA_CASA_TEXTO } from '@/utils/horarioDaCasa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '@/utils/apiClient';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { enablePushNotifications } from '@/utils/pushNotifications';
 
@@ -90,6 +90,7 @@ export default function LancamentoDaCasa() {
   return (
     <Dialog open={aberto} onOpenChange={setAberto}>
       <DialogContent className="max-w-sm overflow-hidden border-fuchsia-500/40 bg-gradient-to-br from-zinc-950 via-fuchsia-950 to-rose-900 p-0 text-white">
+        <DialogTitle className="sr-only">A Casa: reserve seu lugar</DialogTitle>
         <div className="space-y-3 p-6 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-200">{lancamento ? (ehHoje ? 'É hoje! Inauguração às 21h' : 'Inauguração · sexta 23/10 · 21h') : ehHoje ? `É hoje · às ${horaHoje}` : `Próxima noite · ${quando}`}</p>
           <h2 className="text-3xl font-black">A Casa 🔥</h2>

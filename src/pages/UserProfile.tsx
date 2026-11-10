@@ -6,7 +6,7 @@ import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircl
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { adminService, feedService, usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService, matchService, subscriptionsService } from '@/services/api';
@@ -324,6 +324,7 @@ function PhotoItem({
         </div>
       </DialogTrigger>
       <DialogContent className="max-h-[96dvh] max-w-[96vw] overflow-y-auto border-white/10 bg-black/92 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] shadow-2xl sm:p-3">
+        <DialogTitle className="sr-only">Foto ampliada</DialogTitle>
         <Button
           type="button"
           size="icon"
@@ -2109,6 +2110,7 @@ export default function UserProfile() {
         }}
       >
         <DialogContent className="h-[100dvh] w-screen max-w-none rounded-none border-0 bg-black p-0 sm:h-[96dvh] sm:max-w-[96vw] sm:rounded-xl sm:border sm:border-white/15">
+          <DialogTitle className="sr-only">Vídeo em tela cheia</DialogTitle>
           <div className="relative flex h-full w-full flex-col">
             <Button
               type="button"

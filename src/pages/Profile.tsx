@@ -1173,7 +1173,14 @@ export default function Profile() {
                   aria-label="Ver foto de perfil ampliada"
                   className={cn("w-32 h-32 rounded-full overflow-hidden ring-4 shadow-glow", profileData.premium ? "ring-gold/70" : "ring-primary/30")}
                 >
-                  <img src={mainPhotoUrl} alt={profileData.name} className="w-full h-full object-cover" />
+                  {mainPhotoUrl ? (
+                    <img src={mainPhotoUrl} alt={profileData.name} className="w-full h-full object-cover" />
+                  ) : (
+                    // Sem foto: inicial do nome em vez de imagem quebrada com o texto por cima da capa.
+                    <span className="flex h-full w-full items-center justify-center bg-secondary text-4xl font-bold text-muted-foreground">
+                      {String(profileData.name || '?').trim().charAt(0).toUpperCase()}
+                    </span>
+                  )}
                 </button>
               </DialogTrigger>
               <DialogContent className="p-0 max-w-3xl bg-transparent border-0 shadow-none">
@@ -1592,15 +1599,15 @@ export default function Profile() {
       {/* Photos Section */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4 flex h-auto w-full flex-wrap gap-1 p-1">
-          <TabsTrigger value="posts" className="flex-1 gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="posts" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <Image className="w-4 h-4" />
             Postagens
           </TabsTrigger>
-          <TabsTrigger value="photos" className="flex-1 gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="photos" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <Image className="w-4 h-4" />
             Fotos
           </TabsTrigger>
-          <TabsTrigger value="private" className="flex-1 gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="private" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <Lock className="w-4 h-4" />
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate">Privadas</span>
@@ -1616,21 +1623,21 @@ export default function Profile() {
               )}
             </span>
           </TabsTrigger>
-          <TabsTrigger value="videos" className="flex-1 gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="videos" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <Video className="w-4 h-4" />
             Vídeos{myVideos.length > 0 ? ` (${myVideos.length})` : ''}
           </TabsTrigger>
-          <TabsTrigger value="mural" className="flex-1 gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="mural" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <MessageSquareQuote className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">Mural</span>
           </TabsTrigger>
-          <TabsTrigger value="testimonials" className="flex-1 gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="testimonials" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <Star className="w-4 h-4" />
             Recomendações{approvedTestimonials.length > 0 ? ` (${approvedTestimonials.length})` : ''}
           </TabsTrigger>
           {/* Visitas/avisos e informações pessoais viraram abas: antes eram
               seções acima da galeria e empurravam as fotos para baixo. */}
-          <TabsTrigger value="avisos" className="flex-1 gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="avisos" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <Eye className="w-4 h-4" />
             Avisos
             {unreadNotifications.length + profileVisits.length > 0 && (
@@ -1639,7 +1646,7 @@ export default function Profile() {
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="sobre" className="flex-1 gap-1.5 text-xs sm:text-sm">
+          <TabsTrigger value="sobre" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <Users className="w-4 h-4" />
             Sobre
           </TabsTrigger>

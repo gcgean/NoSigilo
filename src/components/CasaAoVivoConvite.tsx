@@ -1,9 +1,9 @@
+import { buscarCasaPublico } from '@/utils/casaPublico';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { conviteDaCasaPodeAbrir, usePrimeirosPassosAtivos } from '@/utils/primeiroAcesso';
 import { fechaHoje } from '@/utils/horarioDaCasa';
 import { useLocation, useNavigate } from 'react-router-dom';
-import apiClient from '@/utils/apiClient';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
@@ -30,7 +30,7 @@ export default function CasaAoVivoConvite() {
     try { if (localStorage.getItem(CHAVE) === noite) return; } catch { /* sem storage: segue */ }
     const t = setTimeout(async () => {
       try {
-        const { data } = await apiClient.get('/casa/publico');
+        const data = await buscarCasaPublico();
         if (!data?.aberta || !conviteDaCasaPodeAbrir()) return;
         setInfo({ tema: data?.tema?.nome ?? null, pessoas: Number(data?.pessoas || 0) });
         setAberto(true);

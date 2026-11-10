@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { locationService } from '@/services/api';
+import { useBannerSlot } from '@/contexts/FeedBannerQueueContext';
 
 const FECHADO_KEY = 'nosigilo:aviso-localizacao-fechado';
 const SETE_DIAS = 7 * 24 * 60 * 60 * 1000;
@@ -22,7 +23,12 @@ export default function AvisoLocalizacao({ aoAtivar, compacto = false }: { aoAti
     try { return Date.now() - Number(localStorage.getItem(FECHADO_KEY) || 0) < SETE_DIAS; } catch { return false; }
   });
 
-  if (!user || user.localizacaoGps || fechado) return null;
+  // Enquanto este aviso está na tela, ele ocupa a vez na fila de avisos do topo:
+  // "Instale o app" e os outros esperam, em vez de empilhar com ele.
+  const visivel = Boolean(user) && !user?.localizacaoGps && !fechado;
+  useBannerSlot('aviso-localizacao', 10, visivel, true);
+
+  if (!visivel || !user) return null;
 
   const fechar = () => {
     try { localStorage.setItem(FECHADO_KEY, String(Date.now())); } catch { /* ok */ }

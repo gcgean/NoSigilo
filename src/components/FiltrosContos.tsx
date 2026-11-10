@@ -88,7 +88,7 @@ export default function FiltrosContos({
         ))}
       </div>
 
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none" aria-label="Temas">
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none sm:flex-wrap sm:overflow-visible" aria-label="Temas">
         {onSoComAudio && (
           <button type="button" className={chip(soComAudio)} aria-pressed={soComAudio} onClick={() => onSoComAudio(!soComAudio)}>
             🎧 Com áudio

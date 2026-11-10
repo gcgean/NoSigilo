@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Coins, Heart, Radio, Images, Eye, Calendar, Lock, Flame, ArrowRight } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
 // Aparece UMA única vez por dispositivo (localStorage), logo após o cadastro /
@@ -40,6 +40,7 @@ export default function WelcomeModal() {
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) dismiss(); }}>
       <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
+        <DialogTitle className="sr-only">Boas-vindas ao NoSigilo</DialogTitle>
         {/* Hero sensual */}
         <div className="relative overflow-hidden bg-gradient-to-br from-primary via-rose-600 to-[#2a0a18] px-6 pb-6 pt-8 text-center text-white">
           <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-3xl" />

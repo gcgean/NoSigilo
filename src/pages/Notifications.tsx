@@ -207,7 +207,7 @@ export default function Notifications() {
             onClick={() => setFiltro(f.id)}
             aria-pressed={filtro === f.id}
             className={cn(
-              'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+              'min-h-[40px] rounded-full border px-3 py-1.5 text-xs font-medium transition-colors sm:min-h-0',
               filtro === f.id ? 'border-primary bg-primary/15 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
             )}
           >

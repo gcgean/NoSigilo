@@ -61,12 +61,19 @@ export function FeedBannerQueueProvider({ children }: { children: ReactNode }) {
  * `eligible`: a própria condição que hoje decide "mostrar ou não" o aviso —
  * a fila só decide QUEM aparece entre os elegíveis, não inventa elegibilidade.
  */
-export function useBannerSlot(id: string, priority: number, eligible: boolean): boolean {
+export function useBannerSlot(id: string, priority: number, eligible: boolean, liberarAoSair = false): boolean {
   const ctx = useContext(FeedBannerQueueContext);
 
   useEffect(() => {
     ctx?.register(id, priority, eligible);
   }, [ctx, id, priority, eligible]);
+
+  // Aviso que só existe em algumas telas (ex.: o de localização, na Busca e no
+  // Match) devolve a vez ao sair da tela; sem isso ele seguraria a fila para sempre.
+  useEffect(() => {
+    if (!liberarAoSair) return;
+    return () => ctx?.register(id, priority, false);
+  }, [ctx, id, priority, liberarAoSair]);
 
   // Sem provider (ex.: um teste isolado do componente), não bloqueia — deixa
   // a própria condição de elegibilidade decidir, como era antes da fila.

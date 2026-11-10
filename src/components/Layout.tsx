@@ -761,7 +761,7 @@ export default function Layout() {
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="container mx-auto flex h-14 items-center justify-between gap-2 px-3 sm:h-16 sm:gap-4 sm:px-4">
-          <NavLink to="/feed" className="flex min-w-0 shrink-0 items-center gap-2">
+          <NavLink to="/feed" aria-label="Ir para o Feed" className="flex min-w-0 shrink-0 items-center gap-2">
             <BrandLogo
               size="sm"
               className="gap-2"
@@ -772,10 +772,10 @@ export default function Layout() {
 
           <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2">
             <TokenBadge />
-            <NavLink to="/notifications" onClick={handleNotificationsBellClick}>
+            <NavLink to="/notifications" onClick={handleNotificationsBellClick} aria-label="Notificações">
               {/* 44px de área de toque no mobile (era 36px); o ícone
                   (h-4.5) e o badge não mudam de tamanho, só o botão. */}
-              <Button variant="ghost" size="icon" className="relative h-11 w-11 rounded-full sm:h-10 sm:w-10">
+              <Button variant="ghost" size="icon" tabIndex={-1} aria-hidden="true" className="relative h-11 w-11 rounded-full sm:h-10 sm:w-10">
                 <Bell className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
                 {unreadCount > 0 ? (
                   <span className="absolute right-0.5 top-0.5 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground sm:right-1 sm:top-1 sm:min-w-5 sm:h-5 sm:text-xs">
@@ -976,7 +976,7 @@ export default function Layout() {
                     }
                   }}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative",
+                    "flex items-center gap-3 px-4 py-3 [@media(max-height:900px)]:py-1.5 rounded-lg transition-all relative",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary"
@@ -998,14 +998,19 @@ export default function Layout() {
 
             <div className="border-t my-3" />
 
-            {visibleExtraNavItems.map((item) => {
+            {/* Os dois botões de divulgação vão para o fim: numa tela de notebook
+                (768px de altura) eles empurravam Buscar, Vídeos e Suporte para fora
+                da área visível. Só muda a ordem aqui, no menu lateral do computador. */}
+            {(() => {
+              const divulgacao = ['/invites', '/ganhe'];
+              const itemExtra = (item: (typeof visibleExtraNavItems)[number]) => {
               const isActive = location.pathname === item.path;
               return (
                 <NavLink
                   key={item.path}
                   to={item.path}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative",
+                    "flex items-center gap-3 px-4 py-3 [@media(max-height:900px)]:py-1.5 rounded-lg transition-all relative",
                     item.highlight && !isActive && "bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90",
                     item.highlight && isActive && "bg-primary text-primary-foreground shadow-glow",
                     !item.highlight &&
@@ -1023,14 +1028,17 @@ export default function Layout() {
                   ) : null}
                 </NavLink>
               );
-            })}
+            };
+              return (
+                <>
+                  {visibleExtraNavItems.filter((i) => !divulgacao.includes(i.path)).map(itemExtra)}
 
             {/* Suporte — mesmo estilo dos itens acima, mas abre o chat direto
                 em vez de navegar (não tem rota própria). */}
             <button
               type="button"
               onClick={() => { setSupportOpen(true); setSupportUnreadCount(0); }}
-              className="relative flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-muted-foreground transition-all hover:bg-secondary hover:text-foreground"
+              className="relative flex w-full items-center gap-3 rounded-lg px-4 py-3 [@media(max-height:900px)]:py-1.5 text-left text-muted-foreground transition-all hover:bg-secondary hover:text-foreground"
             >
               <LifeBuoy className="h-5 w-5" />
               <span className="font-medium">Suporte</span>
@@ -1040,6 +1048,10 @@ export default function Layout() {
                 </span>
               )}
             </button>
+                  {visibleExtraNavItems.filter((i) => divulgacao.includes(i.path)).map(itemExtra)}
+                </>
+              );
+            })()}
           </nav>
 
           <div className="border-t pt-4 space-y-1">
@@ -1047,7 +1059,7 @@ export default function Layout() {
               <NavLink
                 to="/admin"
                 className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
+                  "flex items-center gap-3 px-4 py-3 [@media(max-height:900px)]:py-1.5 rounded-lg transition-colors",
                   location.pathname === "/admin"
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-secondary"
@@ -1064,7 +1076,7 @@ export default function Layout() {
                 type="button"
                 onClick={() => setShowPwaInstallTutorial(true)}
                 className={cn(
-                  'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
+                  'w-full flex items-center gap-3 px-4 py-3 [@media(max-height:900px)]:py-1.5 rounded-lg transition-colors',
                   noNavegadorHaSemanas
                     ? 'bg-primary/10 text-primary hover:bg-primary/15'
                     : 'text-muted-foreground hover:text-primary hover:bg-primary/10'
@@ -1081,7 +1093,7 @@ export default function Layout() {
             <NavLink
               to="/settings"
               className={cn(
-                "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
+                "flex items-center gap-3 px-4 py-3 [@media(max-height:900px)]:py-1.5 rounded-lg transition-colors",
                 location.pathname === "/settings"
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary"
@@ -1093,7 +1105,7 @@ export default function Layout() {
 
             <button
               onClick={() => setLogoutConfirmOpen(true)}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 [@media(max-height:900px)]:py-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
             >
               <LogOut className="w-5 h-5" />
               <span className="font-medium">Sair</span>

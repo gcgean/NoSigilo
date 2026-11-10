@@ -29,7 +29,7 @@ import {
   Heart, ImagePlus, MapPin, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { CitySearch } from '@/components/CitySearch';
 import { profileService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -411,6 +411,7 @@ function ProfileGateModal({ missingFields, onComplete, onDismiss }: GateModalPro
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onDismiss(); }}>
       <DialogContent className="max-w-sm w-full p-0 overflow-hidden rounded-2xl border-0">
+        <DialogTitle className="sr-only">Complete seu perfil</DialogTitle>
         {/* Header */}
         <div className="relative bg-gradient-to-br from-violet-600 via-primary to-rose-500 px-6 pt-7 pb-9 text-white">
           <button onClick={onDismiss} className="absolute top-3 right-3 rounded-full bg-white/20 p-1.5 text-white/80 hover:bg-white/30 transition-colors">

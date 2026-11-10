@@ -1,3 +1,4 @@
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useEffect, useCallback, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import ComprarTokens from '@/components/ComprarTokens';
@@ -45,6 +46,7 @@ const RANKING_TABS: Array<{ id: 'homem' | 'mulher' | 'casal'; label: string }> =
 ];
 
 export default function Tokens() {
+  useDocumentTitle('Tokens');
   const [summary, setSummary] = useState<TokenSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [rankTab, setRankTab] = useState<'homem' | 'mulher' | 'casal'>('homem');

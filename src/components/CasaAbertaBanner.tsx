@@ -1,8 +1,8 @@
+import { buscarCasaPublico } from '@/utils/casaPublico';
 import { useEffect, useState } from 'react';
 import { fechaHoje } from '@/utils/horarioDaCasa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import apiClient from '@/utils/apiClient';
 
 /**
  * Aviso em todas as telas enquanto A Casa está aberta de verdade (sex/sáb 22h–1h
@@ -23,7 +23,7 @@ export default function CasaAbertaBanner() {
     let vivo = true;
     const carregar = async () => {
       try {
-        const { data } = await apiClient.get('/casa/publico');
+        const data = await buscarCasaPublico();
         if (vivo) setInfo({ aberta: !!data?.aberta, tema: data?.tema ?? null, pessoas: Number(data?.pessoas || 0) });
       } catch { /* sem aviso */ }
     };

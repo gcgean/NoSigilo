@@ -1,3 +1,4 @@
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -164,6 +165,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 }
 
 export default function PromoterLanding() {
+  useDocumentTitle('Indique e ganhe');
   const navigate = useNavigate();
   const { user } = useAuth();
 

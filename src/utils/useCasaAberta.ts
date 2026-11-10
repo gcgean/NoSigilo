@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import apiClient from '@/utils/apiClient';
+import { buscarCasaPublico } from '@/utils/casaPublico';
 
 /**
  * Situação d'A Casa para trocar atalhos e avisos na tela (rota pública: o modo
@@ -12,11 +12,11 @@ export function useCasaStatus() {
   useEffect(() => {
     let vivo = true;
     const carregar = () => {
-      apiClient.get('/casa/publico')
-        .then((r) => {
+      buscarCasaPublico()
+        .then((data) => {
           if (!vivo) return;
-          const proxima = r.data?.proximaAbertura ? Date.parse(String(r.data.proximaAbertura)) : NaN;
-          setStatus({ aberta: !!r.data?.aberta, proxima: Number.isFinite(proxima) ? proxima : null });
+          const proxima = data?.proximaAbertura ? Date.parse(String(data.proximaAbertura)) : NaN;
+          setStatus({ aberta: !!data?.aberta, proxima: Number.isFinite(proxima) ? proxima : null });
         })
         .catch(() => {});
     };

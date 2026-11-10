@@ -622,27 +622,27 @@ export default function Settings() {
 
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-6">
         <TabsList className="grid h-auto w-full grid-cols-5">
-          <TabsTrigger value="profile" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
+          <TabsTrigger value="profile" className="flex-col gap-0.5 px-1 py-2 sm:flex-row sm:gap-2 sm:px-3">
             <User className="w-4 h-4" />
             <span className="text-[10px] sm:hidden">Perfil</span>
             <span className="hidden sm:inline">Perfil</span>
           </TabsTrigger>
-          <TabsTrigger value="privacy" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
+          <TabsTrigger value="privacy" className="flex-col gap-0.5 px-1 py-2 sm:flex-row sm:gap-2 sm:px-3">
             <Eye className="w-4 h-4" />
-            <span className="text-[10px] sm:hidden">Privac.</span>
+            <span className="text-[10px] sm:hidden">Privacidade</span>
             <span className="hidden sm:inline">Privacidade</span>
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
+          <TabsTrigger value="notifications" className="flex-col gap-0.5 px-1 py-2 sm:flex-row sm:gap-2 sm:px-3">
             <Bell className="w-4 h-4" />
-            <span className="text-[10px] sm:hidden">Notif.</span>
+            <span className="text-[10px] sm:hidden">Avisos</span>
             <span className="hidden sm:inline">Notificações</span>
           </TabsTrigger>
-          <TabsTrigger value="security" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
+          <TabsTrigger value="security" className="flex-col gap-0.5 px-1 py-2 sm:flex-row sm:gap-2 sm:px-3">
             <Shield className="w-4 h-4" />
-            <span className="text-[10px] sm:hidden">Segur.</span>
+            <span className="text-[10px] sm:hidden">Segurança</span>
             <span className="hidden sm:inline">Segurança</span>
           </TabsTrigger>
-          <TabsTrigger value="suggestions" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
+          <TabsTrigger value="suggestions" className="flex-col gap-0.5 px-1 py-2 sm:flex-row sm:gap-2 sm:px-3">
             <Lightbulb className="w-4 h-4" />
             <span className="text-[10px] sm:hidden">Dicas</span>
             <span className="hidden sm:inline">Sugestões</span>
@@ -872,7 +872,7 @@ export default function Settings() {
                               Seu último pedido (para "{generoSituacao.requestedGender}") foi recusado{generoSituacao.reviewNote ? `: ${generoSituacao.reviewNote}` : '.'}
                             </p>
                           )}
-                          <Button type="button" size="sm" variant="outline" className="h-9" onClick={() => setGeneroAberto(true)}>
+                          <Button type="button" size="sm" variant="outline" className="h-auto min-h-9 whitespace-normal py-2 text-left" onClick={() => setGeneroAberto(true)}>
                             Cadastrou errado? Pedir mudança de tipo de perfil
                           </Button>
                         </div>

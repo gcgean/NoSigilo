@@ -446,11 +446,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'billingAddressState',
         ];
         const patch: Partial<User> = {};
+        // Só grava o que mudou de verdade. Quando a tela recarrega o usuário do
+        // servidor (updateUser(getMe())), vinha o perfil inteiro e ele era
+        // regravado à toa; em conta sem foto o avatar vazio era recusado (400).
         for (const key of allowedKeys) {
-          if (key in data) (patch as any)[key] = (data as any)[key];
+          if (!(key in data)) continue;
+          const novo = (data as any)[key];
+          if (JSON.stringify(novo ?? null) === JSON.stringify((prev as any)[key] ?? null)) continue;
+          (patch as any)[key] = novo;
         }
         if (Object.keys(patch).length > 0) {
-          void profileService.updateProfile(patch);
+          void profileService.updateProfile(patch).catch(() => { /* a tela que pediu a mudança já avisa */ });
         }
       }
       return updated;

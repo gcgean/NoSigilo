@@ -302,8 +302,19 @@ export default function SearchPage() {
       .then((prefs) => {
         setSavedPrefs(prefs);
         if (prefs === null) {
-          // No prefs yet → show first-time wizard
-          setShowWizard(true);
+          // Quem já respondeu "Quem você curte?" nas boas-vindas não vê a mesma
+          // pergunta de novo: a resposta vira o padrão da busca, sem assistente.
+          // (Todos os tipos marcados = sem filtro.) Dá para ajustar em Filtros.
+          const jaRespondeu = (user?.lookingFor ?? []).filter((v) => genderOptions.some((o) => o.value === v));
+          if (jaRespondeu.length > 0) {
+            const tipos = jaRespondeu.length >= genderOptions.length ? [] : jaRespondeu;
+            const herdadas = { profileTypes: tipos, maxDistance: null, intentions: [] as string[], availabilityFilter: null };
+            setSavedPrefs({ ...herdadas, updatedAt: new Date().toISOString() });
+            if (tipos.length > 0) setSelectedGenders(tipos);
+            void usersService.saveSearchPreferences(herdadas).catch(() => {});
+          } else {
+            setShowWizard(true);
+          }
         } else {
           // Apply saved prefs as initial filter state
           if (prefs.profileTypes?.length > 0) setSelectedGenders(prefs.profileTypes);
@@ -742,7 +753,7 @@ export default function SearchPage() {
                 <button
                   type="button"
                   onClick={() => setShowWizard(false)}
-                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                  className="-my-3 -mr-3 inline-flex min-h-[44px] items-center px-3 text-xs text-muted-foreground underline hover:text-foreground"
                 >
                   Pular
                 </button>

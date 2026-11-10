@@ -2369,7 +2369,9 @@ export default function Feed() {
                 onPaste={handlePasteOnComposer}
                 onFocus={() => setComposerAtivo(true)}
                 className={cn(
-                  'min-w-0 flex-1 resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input',
+                  // No celular o campo fechado é estreito: o texto de exemplo fica um pouco
+                  // menor para "Poste algo picante 🔥" caber inteiro (o que se digita segue em 16px).
+                  'min-w-0 flex-1 resize-none rounded-xl border-2 border-primary/15 bg-background px-3 py-3 text-base leading-6 placeholder:text-[12px] min-[430px]:px-4 min-[430px]:placeholder:text-base focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input',
                   composerEmUso ? 'min-h-[92px]' : 'min-h-[48px] overflow-hidden whitespace-nowrap text-ellipsis'
                 )}
                 rows={composerEmUso ? 2 : 1}

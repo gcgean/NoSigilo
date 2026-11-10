@@ -23,11 +23,11 @@ export default function RankingDaCasa() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-1.5">
-        <Button size="sm" variant={periodo === 'noite' ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setPeriodo('noite')}>Da noite</Button>
-        <Button size="sm" variant={periodo === 'mes' ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setPeriodo('mes')}>Do mês</Button>
+        <Button size="sm" variant={periodo === 'noite' ? 'default' : 'outline'} className="h-9 text-xs sm:h-7" onClick={() => setPeriodo('noite')}>Da noite</Button>
+        <Button size="sm" variant={periodo === 'mes' ? 'default' : 'outline'} className="h-9 text-xs sm:h-7" onClick={() => setPeriodo('mes')}>Do mês</Button>
         <span className="mx-1" />
-        <Button size="sm" variant={cat === 'casal' ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setCat('casal')}>💑 Casais</Button>
-        <Button size="sm" variant={cat === 'todos' ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setCat('todos')}>Todos</Button>
+        <Button size="sm" variant={cat === 'casal' ? 'default' : 'outline'} className="h-9 text-xs sm:h-7" onClick={() => setCat('casal')}>💑 Casais</Button>
+        <Button size="sm" variant={cat === 'todos' ? 'default' : 'outline'} className="h-9 text-xs sm:h-7" onClick={() => setCat('todos')}>Todos</Button>
       </div>
       {linhas === null && <p className="text-xs text-muted-foreground">Carregando…</p>}
       {linhas?.length === 0 && <p className="text-xs text-muted-foreground">Ninguém pontuou ainda. Cumpra desafios, vença duelos e receba drinks para subir 🔥</p>}

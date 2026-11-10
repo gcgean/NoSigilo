@@ -1519,7 +1519,7 @@ export default function Chat() {
           </div>
           {/* Filtros numa linha só (rola para o lado se não couber), para sobrar
               espaço para as conversas no celular. Contador só quando há algo. */}
-          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none sm:flex-wrap sm:overflow-visible">
             {([
               { id: 'all', rotulo: 'Todas', total: 0 },
               { id: 'unread', rotulo: 'Não lidas', total: unreadTabCount },
@@ -1532,7 +1532,7 @@ export default function Chat() {
                   type="button"
                   size="sm"
                   variant={ativo ? 'default' : 'outline'}
-                  className="h-7 shrink-0 rounded-full px-3 text-xs"
+                  className="h-9 shrink-0 rounded-full px-3 text-xs sm:h-7"
                   onClick={() => setConversationTab(f.id)}
                 >
                   {f.rotulo}
@@ -1551,7 +1551,7 @@ export default function Chat() {
                   type="button"
                   size="sm"
                   variant={showOnlyHighlighted ? 'default' : 'outline'}
-                  className="h-7 shrink-0 rounded-full px-3 text-xs"
+                  className="h-9 shrink-0 rounded-full px-3 text-xs sm:h-7"
                   onClick={() => setShowOnlyHighlighted((prev) => !prev)}
                   aria-pressed={showOnlyHighlighted}
                 >

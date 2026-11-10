@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, CheckCircle2, Crown, Gift, Star, UserPlus, Users, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { invitesService } from '@/services/api';
 import SubscribeModal from '@/components/SubscribeModal';
 import InviteModal from '@/components/InviteModal';
@@ -76,6 +76,7 @@ export default function ReferralPaywallModal({ open, onClose, contexto }: Props)
       <InviteModal open={showInviteModal} onClose={() => setShowInviteModal(false)} />
       <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
         <DialogContent className="max-w-md w-full p-0 overflow-hidden rounded-2xl border-0">
+          <DialogTitle className="sr-only">NoSigilo Premium</DialogTitle>
           {/* Header gradient */}
           <div className="relative bg-gradient-to-br from-primary/90 via-primary to-purple-600 px-6 pt-8 pb-10 text-white">
             <button

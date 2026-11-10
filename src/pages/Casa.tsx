@@ -31,6 +31,7 @@ import ComprarTokens from '@/components/ComprarTokens';
 import FeedbackDaCasa from '@/components/FeedbackDaCasa';
 import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas, SugestoesDeMencao, TextoComMencoes } from '@/components/ChatDaCasaUi';
 import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
 import TemaDaProxima from '@/components/TemaDaProxima';
 import CabinesFechadas, { type CabineFechada } from '@/components/CabinesFechadas';
@@ -298,6 +299,7 @@ function ContagemRegressiva({ alvo }: { alvo: string | null }) {
 }
 
 export default function Casa() {
+  useDocumentTitle('A Casa');
   const navigate = useNavigate();
   const { toast } = useToast();
   const { on, off } = useSocket();

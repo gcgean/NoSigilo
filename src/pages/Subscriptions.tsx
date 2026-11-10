@@ -1,3 +1,4 @@
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Crown, Gift, QrCode, Star, Users, Zap, Radar, Video, Calendar, Lock, ExternalLink, RefreshCw, CheckCircle2, ArrowRight, CreditCard, FileText, Repeat } from 'lucide-react';
@@ -82,6 +83,7 @@ const premiumBenefits = [
 ] as const;
 
 export default function Subscriptions() {
+  useDocumentTitle('Planos');
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();

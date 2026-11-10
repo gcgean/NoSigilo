@@ -19,11 +19,14 @@ export function CitySearch({ value, onChange, onSelect, placeholder = 'Cidade...
   const [cityResults, setCityResults] = useState<Array<{ name: string; state: string }>>([]);
   const [isCityLoading, setIsCityLoading] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  // Só sugere depois que a pessoa digita: sem isso a lista abria sozinha ao
+  // carregar a tela com a cidade já preenchida, e reabria logo após escolher.
+  const [digitou, setDigitou] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     const q = String(value || '').trim();
-    if (q.length < 2) {
+    if (!digitou || q.length < 2) {
       setCityResults([]);
       return;
     }
@@ -41,7 +44,7 @@ export function CitySearch({ value, onChange, onSelect, placeholder = 'Cidade...
     }, 300);
 
     return () => window.clearTimeout(handle);
-  }, [value]);
+  }, [value, digitou]);
 
   const handleUseLocation = async () => {
     if (!navigator.geolocation) {
@@ -59,6 +62,7 @@ export function CitySearch({ value, onChange, onSelect, placeholder = 'Cidade...
             } else {
               onChange(nearest.name);
             }
+            setDigitou(false);
             setCityResults([]);
           }
         } catch {
@@ -82,7 +86,7 @@ export function CitySearch({ value, onChange, onSelect, placeholder = 'Cidade...
         <Input
           placeholder={placeholder}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => { setDigitou(true); onChange(e.target.value); }}
           className="pl-9 pr-10"
         />
         {showLocate && (
@@ -92,6 +96,7 @@ export function CitySearch({ value, onChange, onSelect, placeholder = 'Cidade...
             size="icon"
             onClick={handleUseLocation}
             disabled={isLocating}
+            aria-label="Usar minha localização"
             className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
           >
             <LocateFixed className={cn('w-4 h-4', isLocating && 'animate-spin')} />
@@ -118,6 +123,7 @@ export function CitySearch({ value, onChange, onSelect, placeholder = 'Cidade...
                 } else {
                   onChange(c.name);
                 }
+                setDigitou(false);
                 setCityResults([]);
               }}
             >

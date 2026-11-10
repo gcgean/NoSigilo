@@ -5,6 +5,7 @@ import CasaAoVivoConvite from './CasaAoVivoConvite';
 import LancamentoDaCasa from './LancamentoDaCasa';
 import apiClient from '@/utils/apiClient';
 import { concluirPrimeirosPassos, marcarNovoCadastro } from '@/utils/primeiroAcesso';
+import { esquecerCasaPublico } from '@/utils/casaPublico';
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'novo' } }) }));
 vi.mock('@/utils/apiClient', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
@@ -19,6 +20,7 @@ describe('convite da Casa para quem acabou de se cadastrar', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-11-07T12:00:00Z')); // sábado, Casa fechada
     vi.clearAllMocks();
+    esquecerCasaPublico(); // cada teste consulta a situação da Casa do zero
     localStorage.clear();
     marcarNovoCadastro('novo');
     window.history.replaceState({}, '', '/feed');

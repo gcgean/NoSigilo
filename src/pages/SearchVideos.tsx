@@ -1,3 +1,4 @@
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import { useNavigate } from 'react-router-dom';
@@ -260,6 +261,7 @@ function VideoCard({
 const PAGE_SIZE_CONST = PAGE_SIZE;
 
 export default function SearchVideos() {
+  useDocumentTitle('Vídeos');
   const navigate = useNavigate();
   const { user } = useAuth();
   const premiumAccess = hasPremiumAccess(user);
@@ -506,7 +508,7 @@ export default function SearchVideos() {
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ordenar</span>
-            <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none" role="tablist">
+            <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none sm:flex-wrap sm:overflow-visible" role="tablist">
               {sortOptions.map(({ value, label, icon: Icon }) => {
                 const ativo = sortFilter === value;
                 return (
@@ -518,7 +520,7 @@ export default function SearchVideos() {
                     title={ativo ? `Ordenando por ${label}` : `Ordenar por ${label}`}
                     onClick={() => setSortFilter(value)}
                     className={cn(
-                      'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-all',
+                      'flex shrink-0 items-center gap-1.5 rounded-full min-h-[40px] px-3 py-1.5 text-xs transition-all sm:min-h-0',
                       ativo
                         ? 'bg-primary font-bold text-primary-foreground shadow-[0_2px_10px_rgba(236,72,153,0.35)]'
                         : 'border border-dashed border-border font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground'
@@ -534,13 +536,13 @@ export default function SearchVideos() {
 
           <div className="flex items-center gap-2">
             <span className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ver</span>
-            <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+            <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none sm:flex-wrap sm:overflow-visible">
               <button
                 type="button"
                 aria-pressed={!onlyUnseen && colecao === null}
                 onClick={() => { setOnlyUnseen(false); setColecao(null); }}
                 className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-all',
+                  'flex shrink-0 items-center gap-1.5 rounded-full min-h-[40px] px-3 py-1.5 text-xs transition-all sm:min-h-0',
                   !onlyUnseen && colecao === null
                     ? 'bg-primary font-bold text-primary-foreground shadow-[0_2px_10px_rgba(236,72,153,0.35)]'
                     : 'border border-dashed border-border font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground'
@@ -555,7 +557,7 @@ export default function SearchVideos() {
                 title={onlyUnseen ? 'Vendo só os que você ainda não viu' : 'Ver só os que você ainda não viu'}
                 onClick={() => { setOnlyUnseen((v) => !v); setColecao(null); }}
                 className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-all',
+                  'flex shrink-0 items-center gap-1.5 rounded-full min-h-[40px] px-3 py-1.5 text-xs transition-all sm:min-h-0',
                   onlyUnseen
                     ? 'bg-emerald-500 font-bold text-white shadow-[0_2px_10px_rgba(16,185,129,0.35)]'
                     : 'border border-dashed border-border font-medium text-muted-foreground hover:border-emerald-500/50 hover:text-foreground'
@@ -578,7 +580,7 @@ export default function SearchVideos() {
                     title={ativo ? `Vendo ${rotulo}` : `Ver ${rotulo}`}
                     onClick={() => { setColecao((atual) => (atual === valor ? null : valor)); setOnlyUnseen(false); }}
                     className={cn(
-                      'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-all',
+                      'flex shrink-0 items-center gap-1.5 rounded-full min-h-[40px] px-3 py-1.5 text-xs transition-all sm:min-h-0',
                       ativo
                         ? 'bg-sky-500 font-bold text-white shadow-[0_2px_10px_rgba(14,165,233,0.35)]'
                         : 'border border-dashed border-border font-medium text-muted-foreground hover:border-sky-500/50 hover:text-foreground'
@@ -595,7 +597,7 @@ export default function SearchVideos() {
           {temasVideo.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tema</span>
-              <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+              <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none sm:flex-wrap sm:overflow-visible">
                 {[
                   { slug: '', nome: 'Todos', total: null as number | null },
                   // Temas com vídeo primeiro; os vazios continuam visíveis, só apagados.
@@ -611,7 +613,7 @@ export default function SearchVideos() {
                       aria-pressed={ativo}
                       onClick={() => setTemaFilter(t.slug)}
                       className={cn(
-                        'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-all',
+                        'flex shrink-0 items-center gap-1.5 rounded-full min-h-[40px] px-3 py-1.5 text-xs transition-all sm:min-h-0',
                         ativo
                           ? 'bg-fuchsia-600 font-bold text-white shadow-[0_2px_10px_rgba(192,38,211,0.35)]'
                           : 'border border-dashed border-border font-medium text-muted-foreground hover:border-fuchsia-500/50 hover:text-foreground',

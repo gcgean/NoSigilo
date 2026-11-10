@@ -121,10 +121,11 @@ export async function searchCities(db: DbHandle, q: string, limit: number, deQue
     db,
     `SELECT name, state, lat, lon FROM cities WHERE name_norm LIKE ? ${filtroPortugal}
       ORDER BY CASE WHEN name_norm = ? THEN 0 ELSE 1 END,
+               CASE WHEN name_norm LIKE ? THEN 0 ELSE 1 END, -- começa com o que foi digitado
                CASE WHEN state = '${UF_PORTUGAL}' THEN ${emPortugal ? 0 : 1} ELSE ${emPortugal ? 1 : 0} END,
                name_norm ASC
       LIMIT ?`,
-    [`%${query}%`, query, safeLimit]
+    [`%${query}%`, query, `${query}%`, safeLimit]
   )) as any[];
   return rows.map((r) => ({ name: r.name, state: r.state, lat: Number(r.lat), lon: Number(r.lon) }));
 }
