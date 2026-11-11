@@ -477,6 +477,27 @@ for (const [estado, cidades] of Object.entries(NOVAS_CIDADES_2026_11)) {
   for (const c of cidades) if (!ja.has(c.slug)) ENABLED_CITIES[estado].push(c);
 }
 
+// Cidades novas de 11/11/2026, saídas de `--candidatas` (15+ perfis). De fora:
+// "Jardim Paulista" (bairro de SP) e "Porto" (Portugal, sem UF).
+const NOVAS_CIDADES_2026_11B = {
+  'alagoas': [{ name: "Satuba", slug: 'satuba' }],
+  'bahia': [{ name: "Porto Seguro", slug: 'porto-seguro' }],
+  'espirito-santo': [{ name: "Linhares", slug: 'linhares' }],
+  'goias': [{ name: "Formosa", slug: 'formosa' }, { name: "Jataí", slug: 'jatai' }, { name: "Morrinhos", slug: 'morrinhos' }, { name: "Catalão", slug: 'catalao' }],
+  'minas-gerais': [{ name: "João Monlevade", slug: 'joao-monlevade' }],
+  'para': [{ name: "Marabá", slug: 'maraba' }, { name: "Canaã dos Carajás", slug: 'canaa-dos-carajas' }],
+  'parana': [{ name: "Toledo", slug: 'toledo' }, { name: "Umuarama", slug: 'umuarama' }],
+  'rio-de-janeiro': [{ name: "Itaboraí", slug: 'itaborai' }, { name: "Itaguaí", slug: 'itaguai' }],
+  'rio-grande-do-sul': [{ name: "Capão da Canoa", slug: 'capao-da-canoa' }, { name: "Alvorada", slug: 'alvorada' }],
+  'santa-catarina': [{ name: "Brusque", slug: 'brusque' }, { name: "Palhoça", slug: 'palhoca' }, { name: "Jaraguá do Sul", slug: 'jaragua-do-sul' }, { name: "Indaial", slug: 'indaial' }, { name: "São José", slug: 'sao-jose' }, { name: "Rio do Sul", slug: 'rio-do-sul' }, { name: "Tubarão", slug: 'tubarao' }, { name: "Barra Velha", slug: 'barra-velha' }],
+  'sao-paulo': [{ name: "Poá", slug: 'poa' }, { name: "Sertãozinho", slug: 'sertaozinho' }, { name: "Santa Bárbara d'Oeste", slug: 'santa-barbara-d-oeste' }, { name: "Paulínia", slug: 'paulinia' }, { name: "Atibaia", slug: 'atibaia' }, { name: "São Carlos", slug: 'sao-carlos' }, { name: "Catanduva", slug: 'catanduva' }],
+  'sergipe': [{ name: "Itabaiana", slug: 'itabaiana' }],
+};
+for (const [estado, cidades] of Object.entries(NOVAS_CIDADES_2026_11B)) {
+  const ja = new Set((ENABLED_CITIES[estado] ||= []).map((c) => c.slug));
+  for (const c of cidades) if (!ja.has(c.slug)) ENABLED_CITIES[estado].push(c);
+}
+
 const ALL_STATES = STATES;
 const SELECTED_STATES = ENABLED_STATES === 'all'
   ? ALL_STATES
