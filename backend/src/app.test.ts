@@ -5530,6 +5530,17 @@ describe('nosigilo backend', () => {
     expect(aviso?.title).toContain('50 pessoas');
   });
 
+  it('busca por nome ignora maiúsculas, espaços e @ (sugestões e lista)', async () => {
+    const alvo = await registerInvitedUser(ctx, sponsorToken, { name: 'Seu Amante22', email: 'seu-amante22@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    const quem = await registerInvitedUser(ctx, sponsorToken, { name: 'Quem Busca Nome', email: 'quem-busca-nome@example.com', password: 'senha123', gender: 'Mulher' });
+    for (const q of ['seuamante', '@SeuAmante', 'seu amante22', 'AMANTE2']) {
+      const r = await request(ctx.app).get('/api/users/suggest').query({ q }).set('Authorization', `Bearer ${quem.token}`).expect(200);
+      expect(r.body.users.map((u: any) => u.id), q).toContain(String(alvo.user.id));
+    }
+    const nada = await request(ctx.app).get('/api/users/suggest').query({ q: 'seuamantx' }).set('Authorization', `Bearer ${quem.token}`).expect(200);
+    expect(nada.body.users.map((u: any) => u.id)).not.toContain(String(alvo.user.id));
+  });
+
   it('cadastro: nome em uso devolve sugestões livres; origem do 1º contato é gravada', async () => {
     await registerInvitedUser(ctx, sponsorToken, { name: 'Casal Teste SP', email: 'casal-teste-sp@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
     const r = await request(ctx.app).get('/api/auth/check-name').query({ name: 'casal teste sp' }).expect(200);

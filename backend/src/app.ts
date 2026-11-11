@@ -2271,6 +2271,15 @@ async function isUserBlocked(options: { db: DbHandle }, data: { viewerId: string
   return !!row;
 }
 
+// Busca por nome sem diferenciar maiúsculas nem espaços: "seuamante" acha
+// "Seu Amante22". O LIKE do Postgres diferencia maiúsculas, e por isso a busca
+// não achava ninguém digitando em minúsculas (10/11/2026). Use com
+// NOME_SEM_ESPACO na consulta.
+const NOME_SEM_ESPACO = "REPLACE(LOWER(u.name), ' ', '')";
+function termoDeNome(q: string): string {
+  return q.trim().replace(/^@+/, '').toLowerCase().replace(/[\s%_]+/g, '');
+}
+
 async function conversaLiberadaEntre(db: DbHandle, fromUserId: string, toUserId: string): Promise<boolean> {
   // A iniciativa precisa partir de quem recebe: curtir perfil ou conteúdo do remetente.
   const initiative = await queryOne(db, `SELECT 1 FROM likes l
@@ -12446,7 +12455,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.get('/api/users/suggest', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
     const q = req.query.q ? String(req.query.q).trim() : '';
-    if (q.length < 2) { res.json({ users: [] }); return; }
+    const termo = termoDeNome(q);
+    if (termo.length < 2) { res.json({ users: [] }); return; }
     const rows = (await queryAll(
       db,
       `SELECT u.id, u.name, u.avatar, u.gender, u.city, u.state
@@ -12456,15 +12466,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND (u.is_admin = 0 OR u.is_admin IS NULL)
          AND (u.is_showcase = 0 OR u.is_showcase IS NULL)
-         AND u.name LIKE ?
+         AND ${NOME_SEM_ESPACO} LIKE ?
          AND NOT EXISTS (
            SELECT 1 FROM blocks b
            WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
               OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
          )
-       ORDER BY CASE WHEN LOWER(u.name) = LOWER(?) THEN 0 WHEN LOWER(u.name) LIKE LOWER(?) THEN 1 ELSE 2 END, u.name ASC
+       ORDER BY CASE WHEN ${NOME_SEM_ESPACO} = ? THEN 0 WHEN ${NOME_SEM_ESPACO} LIKE ? THEN 1 ELSE 2 END, LOWER(u.name) ASC
        LIMIT 8`,
-      [viewerId, `%${q}%`, viewerId, viewerId, q, `${q}%`]
+      [viewerId, `%${termo}%`, viewerId, viewerId, termo, `${termo}%`]
     )) as any[];
     res.json({
       users: rows.map((r: any) => ({
@@ -12929,8 +12939,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     conditions.push('(u.is_showcase = 0 OR u.is_showcase IS NULL)');
 
     if (search) {
-      conditions.push('(u.name LIKE ? OR u.city LIKE ? OR u.state LIKE ?)');
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      conditions.push(`(${NOME_SEM_ESPACO} LIKE ? OR LOWER(u.city) LIKE ? OR LOWER(u.state) LIKE ?)`);
+      const minusculo = String(search).trim().toLowerCase();
+      params.push(`%${termoDeNome(String(search))}%`, `%${minusculo}%`, `%${minusculo}%`);
     }
 
     if (city) {
@@ -14103,8 +14114,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
 
     if (search) {
-      whereClause += ' AND u.name LIKE ?';
-      params.push(`%${search}%`);
+      whereClause += ` AND ${NOME_SEM_ESPACO} LIKE ?`;
+      params.push(`%${termoDeNome(String(search))}%`);
     }
 
     if (ageRange && ageRange !== 'all') {
