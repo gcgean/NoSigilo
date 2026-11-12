@@ -5560,6 +5560,24 @@ describe('nosigilo backend', () => {
     await runAvisoStoriesNovos(ctx.db, {} as any);
   });
 
+  it('busca sem filtro de tipo respeita o "O que procuro" do perfil', async () => {
+    const casal = await registerInvitedUser(ctx, sponsorToken, { name: 'Casal So Mulher', email: 'casal-so-mulher@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)', lookingFor: ['Mulher'] });
+    await grantPremium(ctx, String(casal.user.id));
+    const ela = await registerInvitedUser(ctx, sponsorToken, { name: 'Ela Na Busca', email: 'ela-na-busca@example.com', password: 'senha123', gender: 'Mulher' });
+    const ele = await registerInvitedUser(ctx, sponsorToken, { name: 'Ele Fora Da Busca', email: 'ele-fora-da-busca@example.com', password: 'senha123', gender: 'Homem' });
+    await run(ctx.db, "UPDATE users SET looking_for_json = ? WHERE id = ?", [JSON.stringify(['Mulher']), String(casal.user.id)]);
+    const r = await request(ctx.app).get('/api/users').query({ limit: 40 }).set('Authorization', `Bearer ${casal.token}`).expect(200);
+    const ids = (r.body.users as any[]).map((u) => String(u.id));
+    expect(ids).not.toContain(String(ele.user.id));
+    expect((r.body.users as any[]).every((u) => u.gender === 'Mulher')).toBe(true);
+    // Filtro marcado vale mais que o perfil; busca por nome acha qualquer tipo.
+    const homens = await request(ctx.app).get('/api/users').query({ genders: 'Homem', limit: 40 }).set('Authorization', `Bearer ${casal.token}`).expect(200);
+    expect((homens.body.users as any[]).map((u) => String(u.id))).toContain(String(ele.user.id));
+    const porNome = await request(ctx.app).get('/api/users').query({ search: 'Ele Fora' }).set('Authorization', `Bearer ${casal.token}`).expect(200);
+    expect((porNome.body.users as any[]).map((u) => String(u.id))).toContain(String(ele.user.id));
+    expect(String(ela.user.id)).toBeTruthy();
+  });
+
   it('busca por nome ignora maiúsculas, espaços e @ (sugestões e lista)', async () => {
     const alvo = await registerInvitedUser(ctx, sponsorToken, { name: 'Seu Amante22', email: 'seu-amante22@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
     const quem = await registerInvitedUser(ctx, sponsorToken, { name: 'Quem Busca Nome', email: 'quem-busca-nome@example.com', password: 'senha123', gender: 'Mulher' });

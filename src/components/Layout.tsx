@@ -64,6 +64,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { syncPushSubscription } from '@/utils/pushNotifications';
 import PwaInstallTutorial, { emNavegadorDeApp } from '@/components/PwaInstallTutorial';
 import VerificacaoPerfil from '@/components/VerificacaoPerfil';
+import { useLocalizacaoAutomatica } from '@/utils/useLocalizacaoAutomatica';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -146,6 +147,11 @@ function formatDetailedRemainingTime(targetMs: number, nowMs: number) {
 
 export default function Layout() {
   const { user, logout, updateUser } = useAuth();
+  // Quem já autorizou o GPS tem a localização atualizada sozinha (ver o hook).
+  const aoAtualizarLocal = useCallback((r: { city: string | null; state: string | null }) => {
+    if (r.city) updateUser({ city: r.city, state: r.state ?? undefined } as any);
+  }, [updateUser]);
+  useLocalizacaoAutomatica(!!user?.id, aoAtualizarLocal);
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   useRestaurarRolagem();

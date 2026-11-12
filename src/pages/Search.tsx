@@ -411,8 +411,11 @@ export default function SearchPage() {
 
     let cancelled = false;
     setIsLoadingFallback(true);
+    // Amplia distância, idade e o resto, mas NUNCA o tipo de perfil: quem marcou
+    // "Mulher" não pode cair em homens e casais (12/11/2026). Sem tipo marcado,
+    // o servidor usa o "O que procuro" do perfil.
     usersService
-      .searchUsers({ page: 1, limit: PAGE_SIZE, sort: 'nearby' })
+      .searchUsers({ page: 1, limit: PAGE_SIZE, sort: 'nearby', genders: selectedGenders.length > 0 ? selectedGenders.join(',') : undefined })
       .then((data) => {
         if (cancelled) return;
         setFallbackResults(data.users || []);
@@ -434,7 +437,8 @@ export default function SearchPage() {
 
   const displayResults = onlyLiked ? filteredLiked : results;
   // isEmpty = truly no results and no fallback is covering for us
-  const isEmpty = prefsReady && !isLoading && !isLoadingFallback && displayResults.length === 0 && !isFallback;
+  // Ampliada e ainda vazia (ex.: nenhuma mulher na plataforma toda): mostra o vazio, não uma tela em branco.
+  const isEmpty = prefsReady && !isLoading && !isLoadingFallback && displayResults.length === 0 && (!isFallback || fallbackResults.length === 0);
 
   const hasDistanceData = displayResults.some((p) => typeof p.distanceKm === 'number');
 
@@ -1231,7 +1235,9 @@ export default function SearchPage() {
                   Sem perfis com esses filtros
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Mostrando todos os perfis da plataforma. Ajuste os filtros para refinar.
+                  {selectedGenders.length > 0
+                    ? `Mostrando ${selectedGenders.join(', ')} mais perto de você, sem os outros filtros.`
+                    : 'Mostrando os perfis que você procura mais perto de você, sem os outros filtros.'}
                 </p>
               </div>
               <button

@@ -13060,7 +13060,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
-    const viewerRow = (await queryOne(db, 'SELECT is_admin, lat, lon, city, state FROM users WHERE id = ?', [viewerId])) as any;
+    const viewerRow = (await queryOne(db, 'SELECT is_admin, lat, lon, city, state, looking_for_json FROM users WHERE id = ?', [viewerId])) as any;
     const viewerIsAdmin = Number(viewerRow?.is_admin || 0) === 1;
     const page   = Math.max(1, Number(req.query.page  || 1));
     const limit  = Math.min(40, Math.max(1, Number(req.query.limit || 20)));
@@ -13113,6 +13113,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (!search && genders.length > 0) {
       conditions.push(`u.gender IN (${genders.map(() => '?').join(',')})`);
       params.push(...genders);
+    } else if (!search && req.query.todosOsTipos !== '1') {
+      // Sem filtro de tipo marcado, vale o "O que procuro" do perfil (como nos
+      // stories e no Match). Antes a Busca mostrava todo mundo: um casal que só
+      // procura mulheres via homens e casais (12/11/2026).
+      const procuro: string[] = (safeJsonParse(viewerRow?.looking_for_json) ?? []).map((g: unknown) => String(g || '').trim()).filter(Boolean);
+      if (procuro.length > 0) {
+        const partes = procuro.map((g) => (g.startsWith('Casal') ? "u.gender LIKE 'Casal%'" : 'u.gender = ?'));
+        conditions.push(`(${partes.join(' OR ')})`);
+        params.push(...procuro.filter((g) => !g.startsWith('Casal')));
+      }
     }
 
     // Faixa de idade: ageMin/ageMax (novo, livre) ou ageRange ("26-35", "45+",
