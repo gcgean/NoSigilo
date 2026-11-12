@@ -1,3 +1,4 @@
+import { getCoupleLabels } from '@/utils/profileAgeLabel';
 import SaibaMais from '@/components/SaibaMais';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
@@ -194,6 +195,8 @@ export default function Settings() {
   );
 
   const isCoupleProfile = profile.gender.startsWith('Casal');
+  // "Ele" e "Ela" (ou Ele 1/Ele 2, Ela 1/Ela 2) no lugar de "Pessoa 1" e "Pessoa 2" (12/11/2026).
+  const rotulosDoCasal = getCoupleLabels(profile.gender);
 
   const [privacy, setPrivacy] = useState({
     profilePublic: true,
@@ -1140,7 +1143,7 @@ export default function Settings() {
                     >
                       {/* Pessoa 1 não tem nome próprio (o nome do perfil é do casal):
                           mostrar o nome do perfil aqui parecia um campo editável. */}
-                      {p === 1 ? 'Pessoa 1' : (profile.partnerName || 'Pessoa 2')}
+                      {p === 1 ? rotulosDoCasal[0] : (profile.partnerName || rotulosDoCasal[1])}
                     </button>
                   ))}
                 </div>
@@ -1152,7 +1155,7 @@ export default function Settings() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {(!isCoupleProfile || profilePerson === 1) && (
                     <div className="space-y-2">
-                      <Label htmlFor="birthDate">{isCoupleProfile ? `Nascimento — Pessoa 1` : 'Data de nascimento'}</Label>
+                      <Label htmlFor="birthDate">{isCoupleProfile ? `Nascimento — ${rotulosDoCasal[0]}` : 'Data de nascimento'}</Label>
                       <div className="relative">
                         <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
@@ -1168,7 +1171,7 @@ export default function Settings() {
                   {isCoupleProfile && profilePerson === 2 && (
                     <>
                       <div className="space-y-2">
-                        <Label htmlFor="partnerName">Nome</Label>
+                        <Label htmlFor="partnerName">Nome — {rotulosDoCasal[1]}</Label>
                         <Input
                           id="partnerName"
                           value={profile.partnerName}
@@ -1178,7 +1181,7 @@ export default function Settings() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="partnerBirthDate">Data de nascimento</Label>
+                        <Label htmlFor="partnerBirthDate">Nascimento — {rotulosDoCasal[1]}</Label>
                         <div className="relative">
                           <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                           <Input

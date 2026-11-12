@@ -4,7 +4,8 @@ function isCoupleProfile(gender?: string | null) {
   return String(gender || '').trim().startsWith('Casal');
 }
 
-function getCoupleLabels(gender?: string | null) {
+/** Como chamar cada pessoa do casal: Ele/Ela, Ele 1/Ele 2, Ela 1/Ela 2. */
+export function getCoupleLabels(gender?: string | null): [string, string] {
   const value = String(gender || '').trim();
   if (value === 'Casal (Ele/Ela)') return ['Ele', 'Ela'];
   if (value === 'Casal (Ele/Ele)') return ['Ele 1', 'Ele 2'];
