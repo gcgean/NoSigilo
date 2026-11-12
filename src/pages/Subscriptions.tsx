@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { hasPremiumAccess } from '@/utils/premium';
 import { cn } from '@/lib/utils';
 import VerificacaoPerfil from '@/components/VerificacaoPerfil';
+import { dataCurta, situacaoDoAcesso } from '@/utils/situacaoDoAcesso';
 
 type Plan = {
   id: string;
@@ -372,6 +373,8 @@ export default function Subscriptions() {
   // Premium ATIVO = pago e ainda não vencido. Um assinante vencido (is_premium=1
   // mas licença expirada) deixa de ser "ativo" → mostra "Regularize", não "Você já é Premium".
   const isPremiumActive = !!user?.isPremium && hasPremiumAccess(user);
+  // Até quando o acesso vale (dias grátis ou assinatura) e se a assinatura venceu.
+  const situacao = situacaoDoAcesso(user as any);
 
   // Mulher: tudo liberado, sem assinatura (desde 11/10/2026).
   if (String(user?.gender || '') === 'Mulher') {
@@ -451,6 +454,30 @@ export default function Subscriptions() {
             Você ainda não pode ver quem são. Assine e comece a conversar com elas hoje.
           </p>
         </div>
+      )}
+
+      {/* Quem não está com a assinatura paga em dia: até quando pode usar e se
+          a assinatura venceu (antes a página não dizia nada disso). */}
+      {!isLoading && !isPremiumActive && situacao && (
+        <Card className={cn('p-4', situacao.tipo === 'vencido' ? 'border-destructive/40 bg-destructive/5' : 'border-emerald-500/30 bg-emerald-500/5')}>
+          <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Seu acesso</p>
+          {situacao.tipo === 'vencido' ? (
+            <p className="mt-1 text-base font-bold text-destructive">
+              Vencido desde {situacao.ate ? dataCurta(situacao.ate) : '—'}. Assine abaixo para voltar a usar tudo.
+            </p>
+          ) : (
+            <p className="mt-1 text-base">
+              <b>Premium liberado até {situacao.ate ? dataCurta(situacao.ate) : '—'}</b>
+              {' '}({situacao.dias === 1 ? 'falta 1 dia' : `faltam ${situacao.dias} dias`})
+              {situacao.tipo === 'gratis' ? ' — são dias grátis (do cadastro ou ganhos com convites, pontos e prêmios).' : '.'}
+            </p>
+          )}
+          {situacao.assinaturaVencidaEm && situacao.tipo !== 'vencido' && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Sua assinatura paga venceu em {dataCurta(situacao.assinaturaVencidaEm)}. Para continuar depois dos dias grátis, assine abaixo.
+            </p>
+          )}
+        </Card>
       )}
 
       {/* Status premium ativo — pode renovar/estender mesmo já sendo Premium */}

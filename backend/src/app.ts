@@ -590,9 +590,14 @@ function popcount(n: number) {
 }
 
 async function grantPremiumDays(db: DbHandle, userId: string, days: number) {
-  const row = (await queryOne(db, 'SELECT trial_ends_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  // Os dias ganhos começam a contar depois do que já está valendo, inclusive da
+  // assinatura paga. Antes contavam só a partir do período grátis: um casal com
+  // assinatura até 10/11 ganhou 20 dias em 28/10 e 13 deles correram junto com
+  // o tempo pago (11/11/2026).
+  const row = (await queryOne(db, 'SELECT trial_ends_at, hub_license_end_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
   const currentEndsTs = row?.trial_ends_at ? new Date(String(row.trial_ends_at)).getTime() : 0;
-  const base = Math.max(currentEndsTs, Date.now());
+  const licencaTs = row?.hub_license_end_at ? new Date(String(row.hub_license_end_at)).getTime() : 0;
+  const base = Math.max(currentEndsTs, Number.isFinite(licencaTs) ? licencaTs : 0, Date.now());
   const newEndsAt = new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
   await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [newEndsAt, userId]);
 }
