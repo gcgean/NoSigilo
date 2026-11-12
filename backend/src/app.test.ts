@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, seedPortugalCities } from './seedCities.js';
-import { createApp, ehPlanoPortugal, totalDeVisitas, visitasPor, syncHubAccessForUser, runLembretesRenovacao } from './app.js';
+import { createApp, ehPlanoPortugal, totalDeVisitas, visitasPor, syncHubAccessForUser, runLembretesRenovacao, runIncentivoStoryMulher, runAvisoStoriesNovos } from './app.js';
 import { calcularPermanencia, escolherFotoDaCabine, ordenarParaResponder, pessoasDoMapa, quemFoiMarcado } from './casa.js';
 import type { DbHandle } from './db.js';
 
@@ -5528,6 +5528,36 @@ describe('nosigilo backend', () => {
       if (!aviso) await new Promise((r) => setTimeout(r, 50));
     }
     expect(aviso?.title).toContain('50 pessoas');
+  });
+
+  it('stories: mulher ganha +15 no 1º story da semana e recebe incentivo quando o último teve público', async () => {
+    const ela = await registerInvitedUser(ctx, sponsorToken, { name: 'Bia Incentivo', email: 'bia-incentivo@example.com', password: 'senha123', gender: 'Mulher' });
+    const homem = await registerInvitedUser(ctx, sponsorToken, { name: 'Leo Sem Bonus', email: 'leo-sem-bonus@example.com', password: 'senha123', gender: 'Homem' });
+    await grantPremium(ctx, String(homem.user.id));
+    const bonus = async (id: string) => Number(((await ctx.db.queryOne("SELECT COUNT(*) AS c FROM token_transactions WHERE user_id = ? AND action_type = 'story_semana'", [id])) as any)?.c || 0);
+    for (let i = 0; i < 2; i++) {
+      await request(ctx.app).post('/api/stories').set('Authorization', `Bearer ${ela.token}`).send({ text: `oi ${i}`, background: 'sunset' }).expect(200);
+      await request(ctx.app).post('/api/stories').set('Authorization', `Bearer ${homem.token}`).send({ text: `oi ${i}`, background: 'sunset' }).expect(200);
+    }
+    expect(await bonus(String(ela.user.id))).toBe(1);
+    expect(await bonus(String(homem.user.id))).toBe(0);
+
+    // Último story dela de 30h atrás com 40 visualizações: recebe o incentivo uma vez só.
+    const elaId = String(ela.user.id);
+    await run(ctx.db, 'DELETE FROM stories WHERE user_id = ?', [elaId]);
+    const antes = new Date(Date.now() - 30 * 3_600_000);
+    await run(ctx.db, "INSERT INTO stories (id, user_id, media_id, text, background, audience, created_at, expires_at) VALUES ('st-incentivo', ?, '', 'oi', 'sunset', 'all', ?, ?)",
+      [elaId, antes.toISOString(), new Date(antes.getTime() + 86_400_000).toISOString()]);
+    for (let i = 0; i < 40; i++) {
+      await run(ctx.db, 'INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)', [`sv-inc-${i}`, 'st-incentivo', `fa-${i}`, antes.toISOString()]);
+    }
+    await runIncentivoStoryMulher(ctx.db, {} as any);
+    await runIncentivoStoryMulher(ctx.db, {} as any);
+    const avisos = (await ctx.db.queryAll("SELECT title FROM notifications WHERE user_id = ? AND type = 'stories.incentivo'", [elaId])) as any[];
+    expect(avisos.length).toBe(1);
+    expect(avisos[0].title).toBe('🔥 Seu story teve 40 visualizações');
+    // O aviso das 21h roda sem erro no banco de teste (sem push configurado, ninguém recebe).
+    await runAvisoStoriesNovos(ctx.db, {} as any);
   });
 
   it('busca por nome ignora maiúsculas, espaços e @ (sugestões e lista)', async () => {

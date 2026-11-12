@@ -1,3 +1,5 @@
+import { HORA_INCENTIVO_MULHER, HORA_STORIES_NOVOS, INTERVALO_INCENTIVO_DIAS, MAX_STORIES_NOVOS_POR_SEMANA, MIN_STORIES_PARA_AVISO, MIN_VIEWS_PARA_INCENTIVO, semanaDoStory, textoIncentivoMulher, textoStoriesNovos } from './avisosDeStories.js';
+import { ordenarStories } from './ordemDosStories.js';
 import { MODO_PONTE } from './modoPonte.js';
 import cors from 'cors';
 import { textoDaDica, ESPERA_EM_DIAS, TOTAL_DE_DICAS, pediuParaParar, RESPOSTA_PARAR, RESPOSTA_AUTOMATICA } from './dicasChat.js';
@@ -609,6 +611,8 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   comment: { points: 3,  dailyCap: 10 },
   photo:   { points: 10, dailyCap: 3 },
   story:   { points: 8,  dailyCap: 3 },
+  // Mulher: primeiro story da semana (ref = semana, então 1 por semana).
+  story_semana: { points: 15, dailyCap: 1 },
   post:    { points: 5,  dailyCap: 3 },
   checkin: { points: 5,  dailyCap: 1 },
   // Pago uma vez só, na primeira abertura pelo app instalado.
@@ -3233,6 +3237,138 @@ export async function runAvisoNovosNaRegiao(db: DbHandle, env: Env) {
   } finally {
     avisoNovosNaRegiaoRodando = false;
   }
+}
+
+// ─── Agendador: avisos de stories (11/11/2026) ───────────────────────────────
+// 20h: incentivo para mulheres que postaram e tiveram público ("seu story teve
+// 170 visualizações, poste outro hoje"). 21h: "stories novos da sua região"
+// para quem não abriu os stories nas últimas 24h. Regras em avisosDeStories.ts.
+let avisosStoriesRodando = false;
+const avisosStoriesUltimo: Record<string, string> = {};
+
+async function avisosDeStoriesRecentes(db: DbHandle, tipo: string, desdeIso: string) {
+  const mapa = new Map<string, { c: number; ultimo: string }>();
+  for (const r of (await queryAll(db, 'SELECT user_id, COUNT(*) AS c, MAX(enviado_em) AS ultimo FROM avisos_stories WHERE tipo = ? AND enviado_em >= ? GROUP BY user_id', [tipo, desdeIso])) as any[]) {
+    mapa.set(String(r.user_id), { c: Number(r.c || 0), ultimo: String(r.ultimo || '') });
+  }
+  return mapa;
+}
+
+export async function runAvisoStoriesNovos(db: DbHandle, env: Env) {
+  const agora = Date.now();
+  const DIA = 86_400_000;
+  const agoraIso = new Date(agora).toISOString();
+  const stories = (await queryAll(
+    db,
+    `SELECT s.user_id, u.gender, UPPER(TRIM(COALESCE(u.state, ''))) AS uf
+       FROM stories s JOIN users u ON u.id = s.user_id
+      WHERE s.expires_at > ? AND (s.audience IS NULL OR s.audience <> 'favorites')
+        AND COALESCE(u.is_showcase, 0) = 0 AND COALESCE(u.is_banned, 0) = 0`,
+    [agoraIso]
+  )) as any[];
+  if (stories.length === 0) return;
+  const leitores = (await queryAll(
+    db,
+    `SELECT u.id, u.state, u.gender, u.looking_for_json, u.email, u.is_premium, u.trial_ends_at, u.hub_license_end_at
+       FROM users u
+      WHERE u.last_seen_at >= ? AND u.deleted_at IS NULL
+        AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_deactivated, 0) = 0 AND COALESCE(u.is_showcase, 0) = 0
+        AND EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_id = u.id)
+        AND NOT EXISTS (SELECT 1 FROM story_views v WHERE v.viewer_id = u.id AND v.viewed_at >= ?)`,
+    [new Date(agora - 7 * DIA).toISOString(), new Date(agora - DIA).toISOString()]
+  )) as any[];
+  const enviados7d = await avisosDeStoriesRecentes(db, 'stories_novos', new Date(agora - 7 * DIA).toISOString());
+  const limiteHoje = new Date(agora - 20 * 60 * 60 * 1000).toISOString();
+  const assinaturasLigadas = await getSubscriptionsEnabled(db);
+  let enviados = 0;
+  for (const r of leitores) {
+    try {
+      const a = enviados7d.get(String(r.id));
+      if (a && (a.c >= MAX_STORIES_NOVOS_POR_SEMANA || a.ultimo >= limiteHoje)) continue;
+      // Sem acesso, os stories abrem trancados: não chama para ver o que não dá.
+      if (!hasPremiumAccess(r, assinaturasLigadas, env.BILLING_TEST_EMAILS)) continue;
+      const uf = String(r.state || '').trim().toUpperCase();
+      if (!uf) continue;
+      const busco: string[] = safeJsonParse(r.looking_for_json) ?? [];
+      const n = stories.filter((st) => st.uf === uf && String(st.user_id) !== String(r.id) && matchesLookingFor(busco, st.gender)).length;
+      if (n < MIN_STORIES_PARA_AVISO) continue;
+      const texto = textoStoriesNovos(n, uf);
+      const ok = await sendPushToUser({ db, env }, { userId: String(r.id), payload: { ...texto, url: '/stories', tag: 'stories-novos' } });
+      if (ok > 0) {
+        await run(db, 'INSERT INTO avisos_stories (user_id, tipo, enviado_em) VALUES (?, ?, ?)', [String(r.id), 'stories_novos', nowIso()]);
+        enviados += 1;
+      }
+    } catch (err) {
+      console.error('[avisos-stories] stories novos: erro para', r.id, err);
+    }
+  }
+  await db.persist();
+  console.log(`[avisos-stories] stories novos: aviso enviado a ${enviados} de ${leitores.length} pessoa(s) sem abrir stories`);
+}
+
+export async function runIncentivoStoryMulher(db: DbHandle, env: Env) {
+  const agora = Date.now();
+  const HORA = 3_600_000;
+  const ultimos = (await queryAll(
+    db,
+    `SELECT x.user_id, x.id, x.created_at, (SELECT COUNT(*) FROM story_views v WHERE v.story_id = x.id) AS views
+       FROM (
+         SELECT s.user_id, s.id, s.created_at, ROW_NUMBER() OVER (PARTITION BY s.user_id ORDER BY s.created_at DESC) AS rn
+           FROM stories s JOIN users u ON u.id = s.user_id
+          WHERE s.created_at >= ? AND (LOWER(TRIM(u.gender)) = 'mulher' OR LOWER(TRIM(u.gender)) LIKE 'mulher %')
+            AND COALESCE(u.is_showcase, 0) = 0 AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_deactivated, 0) = 0
+       ) x
+      WHERE x.rn = 1`,
+    [new Date(agora - 72 * HORA).toISOString()]
+  )) as any[];
+  const recentes = await avisosDeStoriesRecentes(db, 'incentivo_mulher', new Date(agora - INTERVALO_INCENTIVO_DIAS * 24 * HORA).toISOString());
+  const limitePostou = new Date(agora - 20 * HORA).toISOString();
+  let enviados = 0;
+  for (const r of ultimos) {
+    try {
+      // Postou nas últimas 20h: não precisa de empurrão.
+      if (String(r.created_at) > limitePostou) continue;
+      const views = Number(r.views || 0);
+      if (views < MIN_VIEWS_PARA_INCENTIVO) continue;
+      if (recentes.has(String(r.user_id))) continue;
+      const texto = textoIncentivoMulher(views);
+      await run(
+        db,
+        `INSERT INTO notifications (id, user_id, type, title, description, is_read, created_at) VALUES (?, ?, 'stories.incentivo', ?, ?, 0, ?)`,
+        [randomUUID(), String(r.user_id), texto.title, texto.body, nowIso()]
+      );
+      await sendPushToUser({ db, env }, { userId: String(r.user_id), payload: { ...texto, url: '/stories', tag: 'stories-incentivo' } });
+      await run(db, 'INSERT INTO avisos_stories (user_id, tipo, enviado_em) VALUES (?, ?, ?)', [String(r.user_id), 'incentivo_mulher', nowIso()]);
+      enviados += 1;
+    } catch (err) {
+      console.error('[avisos-stories] incentivo: erro para', r.user_id, err);
+    }
+  }
+  await db.persist();
+  console.log(`[avisos-stories] incentivo para mulheres: ${enviados} aviso(s)`);
+}
+
+export function startAvisosDeStoriesScheduler(db: DbHandle, env: Env) {
+  const check = () => {
+    const brt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const dia = brt.toISOString().slice(0, 10);
+    const hora = brt.getUTCHours();
+    const tarefas: Array<[string, number, (d: DbHandle, e: Env) => Promise<void>]> = [
+      ['incentivo', HORA_INCENTIVO_MULHER, runIncentivoStoryMulher],
+      ['novos', HORA_STORIES_NOVOS, runAvisoStoriesNovos],
+    ];
+    for (const [nome, h, fn] of tarefas) {
+      if (hora !== h || avisosStoriesUltimo[nome] === dia || avisosStoriesRodando) continue;
+      avisosStoriesUltimo[nome] = dia;
+      avisosStoriesRodando = true;
+      fn(db, env)
+        .catch((err) => console.error(`[avisos-stories] ${nome} fatal`, err))
+        .finally(() => { avisosStoriesRodando = false; });
+    }
+  };
+  setInterval(check, 5 * 60 * 1000);
+  check();
+  console.log(`[avisos-stories] agendador ativo (incentivo ${HORA_INCENTIVO_MULHER}h, stories novos ${HORA_STORIES_NOVOS}h BRT)`);
 }
 
 export function startNovosNaRegiaoScheduler(db: DbHandle, env: Env) {
@@ -8458,6 +8594,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename,
               (CASE WHEN sv.story_id IS NOT NULL THEN 1 ELSE 0 END) as is_viewed,
               (CASE WHEN pin.pinned_user_id IS NOT NULL THEN 1 ELSE 0 END) as is_pinned,
+              COALESCE(u.is_showcase, 0) as is_showcase_autor,
               s.destaque_ate
        FROM stories s
        LEFT JOIN media m ON m.id = s.media_id
@@ -8494,7 +8631,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     // Filtra pelo interesse do viewer: só mostra stories de autores cujo gênero
     // combina com a preferência do usuário (ou tudo, se ele não tiver preferência).
-    const filtered = rows.filter((r: any) => {
+    const filtradosPorInteresse = rows.filter((r: any) => {
       if (myLookingFor.length === 0) return true;
       return matchesLookingFor(myLookingFor, r.gender);
     });
@@ -8513,6 +8650,34 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Curtidas e reações de TODOS os stories em duas consultas, em vez de três
     // por story. Com ~120 stories ativos isso eram 366 idas ao banco a cada
     // abertura da tela; agora são 2, e o custo para de crescer com a base.
+    // Quais autores desta fileira eu ja curti. Curtir perfil e o que este app
+    // tem de "seguir" (o proprio /api/profile/stats chama isso de following),
+    // e e o que o filtro "So de quem eu curti" usa na tela de Stories.
+    //
+    // Uma consulta para a fileira inteira, restrita aos autores que estao nela:
+    // sem o IN, quem curtiu 300 perfis trazia 300 linhas para filtrar ~40.
+    const autorIds = Array.from(new Set(filtradosPorInteresse.map((r: any) => String(r.user_id))));
+    const curtidosPorMim = new Set<string>();
+    if (autorIds.length > 0) {
+      const ph = autorIds.map(() => '?').join(',');
+      const curtidas = (await queryAll(
+        db,
+        `SELECT target_id FROM likes
+         WHERE user_id = ? AND target_type = 'user' AND target_id IN (${ph})`,
+        [userId, ...autorIds]
+      )) as any[];
+      for (const row of curtidas) curtidosPorMim.add(String(row.target_id));
+    }
+
+    // Mesmo estado primeiro e, dentro dele, os tipos de perfil que a pessoa
+    // busca (mulheres e casais antes, homens por último): ver ordemDosStories.ts.
+    const filtered = ordenarStories(filtradosPorInteresse, {
+      estado: String(me?.state || ''),
+      busco: myLookingFor,
+      curti: curtidosPorMim,
+      agoraIso: now,
+    });
+
     const storyIds = filtered.map((r: any) => String(r.id));
     const marcadores = storyIds.map(() => '?').join(',');
     const [reacoesRows, minhasRows] = storyIds.length
@@ -8547,25 +8712,6 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const minhaReacaoPorStory = new Map<string, string>();
     for (const row of minhasRows) {
       minhaReacaoPorStory.set(String(row.story_id), String(row.reaction));
-    }
-
-    // Quais autores desta fileira eu ja curti. Curtir perfil e o que este app
-    // tem de "seguir" (o proprio /api/profile/stats chama isso de following),
-    // e e o que o filtro "So de quem eu curti" usa na tela de Stories.
-    //
-    // Uma consulta para a fileira inteira, restrita aos autores que estao nela:
-    // sem o IN, quem curtiu 300 perfis trazia 300 linhas para filtrar ~40.
-    const autorIds = Array.from(new Set(filtered.map((r: any) => String(r.user_id))));
-    const curtidosPorMim = new Set<string>();
-    if (autorIds.length > 0) {
-      const ph = autorIds.map(() => '?').join(',');
-      const curtidas = (await queryAll(
-        db,
-        `SELECT target_id FROM likes
-         WHERE user_id = ? AND target_type = 'user' AND target_id IN (${ph})`,
-        [userId, ...autorIds]
-      )) as any[];
-      for (const row of curtidas) curtidosPorMim.add(String(row.target_id));
     }
 
     const storiesOut = filtered.map((r: any) => {
@@ -8983,6 +9129,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     await persist();
     // Só mulheres e casais ganham tokens por story.
     await awardContentTokensIfEligible(db, userId, 'story', id, req.app.get('io'));
+    // Mulher ganha +15 no primeiro story da semana (incentivo de 11/11/2026:
+    // mulheres são as mais curtidas nos stories e as que menos postam).
+    if (!paraFavoritos) {
+      const autora = (await queryOne(db, 'SELECT gender, is_showcase FROM users WHERE id = ?', [userId])) as any;
+      if (ehMulher(autora?.gender) && !Number(autora?.is_showcase || 0)) {
+        await awardTokens(db, userId, 'story_semana', `semana:${semanaDoStory()}`, req.app.get('io'));
+      }
+    }
 
     // Menções (@nome) no texto do story (texto puro ou overlay sobre a mídia).
     // Em story restrito a notificação está desligada: ela levaria a pessoa a

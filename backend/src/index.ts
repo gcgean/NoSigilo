@@ -5,7 +5,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
 import { initDb, type DbHandle } from './db.js';
 import { runShowcaseRotation, seedInterestForNewUsers, runShowcaseFeedLikes, runShowcaseStoryEngagement, backfillOrphanShowcaseDMs, runShowcaseProfileLikes } from './showcase.js';
-import { createApp, premiarTopDoDia, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler, startNovosNaRegiaoScheduler, startAdminDailySummaryScheduler, startRenewalReminderScheduler } from './app.js';
+import { createApp, premiarTopDoDia, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler, startNovosNaRegiaoScheduler, startAdminDailySummaryScheduler, startRenewalReminderScheduler, startAvisosDeStoriesScheduler } from './app.js';
 import { seedBrazilianCities, seedPortugalCities } from './seedCities.js';
 import path from 'node:path';
 import jwt from 'jsonwebtoken';
@@ -568,6 +568,7 @@ async function main() {
   if (!MODO_PONTE) {
     startWeekendEngagementScheduler(db, env); // e-mail automático sex/sáb 20h (BRT)
     startNovosNaRegiaoScheduler(db, env); // aviso "gente nova na sua região" 19h30 (BRT)
+    startAvisosDeStoriesScheduler(db, env); // incentivo p/ mulheres 20h e "stories novos" 21h (BRT)
     startAdminDailySummaryScheduler(db, env); // resumo diário pro admin no Telegram, todo dia 8h (BRT)
     startRenewalReminderScheduler(db, env); // lembrete de renovação (e-mail + push) 3 dias antes e no dia, 10h (BRT)
     startVisitasRetention(db);

@@ -60,7 +60,7 @@ A Casa (boate virtual de swing do NoSigilo; menu da foto do perfil › "A Casa �
 - Regras: só maiores de 18, consentimento, sem Pix/dinheiro, sem contato de fora na sala, sem mídia de terceiros. Print e gravação de tela são proibidos na Casa (a tela tem marca d'água com a identificação de quem vê); quem vazar conteúdo é banido. A Lola modera e pode retirar a pessoa da noite; dá para denunciar alguém tocando na foto dele na sala.
 
 Tokens (menu Tokens)
-- Ganha pontos usando o app: curtir (1, até 20 por dia), comentar (3, até 10 por dia), foto nova (10, até 3 por dia), story (8, até 3 por dia), postagem (5, até 3 por dia; pontos por postagem só para perfis de mulher e casal) e check-in diário (5, 1 por dia).
+- Ganha pontos usando o app: curtir (1, até 20 por dia), comentar (3, até 10 por dia), foto nova (10, até 3 por dia), story (8, até 3 por dia; mulher ganha mais 15 no primeiro story da semana), postagem (5, até 3 por dia; pontos por postagem só para perfis de mulher e casal) e check-in diário (5, 1 por dia).
 - Top do Dia: todo dia às 11h, os autores dos posts mais curtidos das últimas 24h ganham tokens: 1º lugar 30, 2º 20, 3º 15, do 4º ao 12º 10 (só perfis de mulher e casal, como os outros pontos por conteúdo).
 - Coração Quente nos stories custa 1 token; a curtida normal e as outras reações do story são grátis e dão 1 ponto.
 - A cada 100 pontos, vira automaticamente 1 dia de Premium grátis.
@@ -88,8 +88,9 @@ Stories
 - Assistir: os stories vêm separados por perfil (as barrinhas do topo são só da pessoa atual). Tocar no lado direito avança, no esquerdo volta; deslizar para o lado pula para o próximo perfil; deslizar para baixo fecha; segurar o dedo pausa. Começa sempre no primeiro story que a pessoa ainda não viu. No computador: setas, espaço pausa e Esc fecha.
 - Toque duplo no meio da tela curte o story (coração grande). Ao tocar em "Responder", aparecem reações rápidas (🔥😍😈💦👏😮) que vão direto para o chat; o story pausa enquanto a pessoa digita.
 - Quem não assina vê uma amostra com os 3 stories mais curtidos do momento (só fotos; vídeo de story é Premium) e depois é convidado a assinar.
-- Avisos: quando alguém que a pessoa curtiu ou fixou posta um story, ela recebe uma notificação no celular (no máximo 2 desse tipo por dia). Quem posta recebe aviso quando o story chega a 25, 50, 100, 200 e 500 visualizações.
+- Avisos: quando alguém que a pessoa curtiu ou fixou posta um story, ela recebe uma notificação no celular (no máximo 2 desse tipo por dia). Quem posta recebe aviso quando o story chega a 50 e a 200 visualizações. Às 21h, quem ainda não viu os stories do dia pode receber aviso de "stories novos" da região (no máximo 1 por dia). Mulher que teve bom público no último story recebe um lembrete para postar de novo.
 - Filtros para ver todos, só os fixados ou só de perfis curtidos.
+- Ordem dos stories: fixados e não vistos primeiro; depois quem é do mesmo estado e, dentro dele, os tipos de perfil que a pessoa busca (mulheres e casais antes; homens no fim, a não ser que ela busque homens). Ninguém some, só muda a ordem.
 - Dá para postar story só para Favoritos (estrela verde), escolhendo quem são os favoritos na hora.
 - Dá para fixar um perfil como fã, para os stories dele aparecerem primeiro. O dono vê quem visualizou e quem fixou o perfil dele (Premium).
 
