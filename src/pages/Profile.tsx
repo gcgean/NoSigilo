@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { BadgeCheck, Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star, MessageSquareQuote, ShieldCheck, Tag } from 'lucide-react';
+import { BadgeCheck, Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star, MessageSquareQuote, ShieldCheck, Tag, ArrowLeft } from 'lucide-react';
 import { DialogoTemaVideo, nomeDoTema, useTemasVideo } from '@/components/TemasVideo';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -352,24 +352,15 @@ function PhotoItem({
         </Button>
       </div>
 
-      {/* Lixeira direto na miniatura, só no celular (no desktop o hover já
-          mostra). 36px com área de toque de 44px pelo padding: abaixo disso o
-          iOS erra o alvo. stopPropagation para não abrir a foto junto. */}
-      <button
-        type="button"
-        aria-label="Excluir foto"
-        onClick={(e) => { e.stopPropagation(); setConfirmacao('excluir'); }}
-        className="absolute right-0 top-0 p-1 sm:hidden"
-      >
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20">
-          <Trash2 className="h-4 w-4" />
+      {/* Foto limpa (12/11/2026): antes cada miniatura tinha lixeira e a frase
+          "Pública • toque para opções" por cima, e quase não dava para ver a
+          foto. Tocar continua abrindo a foto com Definir principal, Tornar
+          privada e Excluir. Só a privada leva um cadeado pequeno. */}
+      {photo.isPrivate && (
+        <span className="pointer-events-none absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20" aria-label="Foto privada">
+          <Lock className="h-3.5 w-3.5" />
         </span>
-      </button>
-
-      {/* Mobile hint */}
-      <div className="absolute bottom-2 left-2 right-2 rounded-lg bg-black/55 px-2 py-1.5 text-[11px] text-white/90 sm:hidden pointer-events-none">
-        {photo.isPrivate ? 'Privada • toque para opções' : 'Pública • toque para opções'}
-      </div>
+      )}
 
       <AlertDialog open={confirmacao !== null} onOpenChange={(aberto) => { if (!aberto) setConfirmacao(null); }}>
         <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
@@ -507,6 +498,8 @@ export default function Profile() {
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
+  const fotosPrivadasRef = useRef<HTMLInputElement | null>(null);
+  const [escolhaDeFotoAberta, setEscolhaDeFotoAberta] = useState(false);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
 
   // Escolheu vídeo(s): antes de publicar, pergunta o tema (vale para todos do lote).
@@ -776,8 +769,9 @@ export default function Profile() {
   };
 
   useEffect(() => {
-    if (activeTab !== 'private') return;
-    void loadPhotos();
+    // Na aba Fotos também: ela mostra o aviso "N pessoas pediram para ver suas privadas".
+    if (activeTab !== 'private' && activeTab !== 'photos') return;
+    if (activeTab === 'private') void loadPhotos();
     void loadPrivatePhotoRequests();
   }, [activeTab]);
 
@@ -931,6 +925,25 @@ export default function Profile() {
       });
     } finally {
       setIsUpdatingGpsLocation(false);
+    }
+  };
+
+  // Várias fotos de uma vez, públicas ou privadas (botão "Adicionar fotos").
+  const handleUploadVarias = async (arquivos: File[], privada: boolean) => {
+    setIsUploading(true);
+    let ok = 0;
+    for (const arquivo of arquivos) {
+      try {
+        await profileService.uploadMedia(arquivo, { isPrivate: privada });
+        ok += 1;
+      } catch { /* conta abaixo */ }
+    }
+    try { await loadPhotos(); } catch { /* recarrega na próxima */ }
+    setIsUploading(false);
+    if (ok === arquivos.length) {
+      toast({ title: ok === 1 ? 'Foto adicionada' : `${ok} fotos adicionadas`, description: privada ? 'Só quem vocês liberarem vai ver.' : undefined });
+    } else {
+      toast({ title: `${ok} de ${arquivos.length} fotos enviadas`, description: 'Alguma foto não foi aceita. Tente de novo com ela.', variant: 'destructive' });
     }
   };
 
@@ -1393,30 +1406,9 @@ export default function Profile() {
                   Configurações
                 </Button>
               </NavLink>
-              {/* Atalho pedido o tempo todo no suporte: leva direto à Zona de
-                  Perigo, já com a aba certa aberta. */}
-              {/* Verificação em duas etapas: mostra se está ligada e leva direto
-                  para o bloco nas Configurações, já destacado. */}
-              <NavLink to="/settings?aba=security#duas-etapas">
-                <Button variant="ghost" size="sm" className="w-full gap-2">
-                  <ShieldCheck className={cn('w-4 h-4', duasEtapasAtiva ? 'text-emerald-500' : 'text-muted-foreground')} />
-                  Verificação em duas etapas
-                  {duasEtapasAtiva !== null && (
-                    <span className={cn(
-                      'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                      duasEtapasAtiva ? 'bg-emerald-500/15 text-emerald-600' : 'bg-amber-500/15 text-amber-600'
-                    )}>
-                      {duasEtapasAtiva ? 'Ativada' : 'Desativada'}
-                    </span>
-                  )}
-                </Button>
-              </NavLink>
-              <NavLink to="/settings?aba=security#excluir-conta">
-                <Button variant="ghost" size="sm" className="w-full gap-2 text-muted-foreground hover:text-destructive">
-                  <Trash2 className="w-4 h-4" />
-                  Excluir minha conta
-                </Button>
-              </NavLink>
+              {/* Verificação em duas etapas e Excluir conta ficam em Configurações ›
+                  Segurança (12/11/2026): no topo do perfil confundiam quem
+                  só queria ver as próprias fotos. */}
               <Button
                 type="button"
                 variant="ghost"
@@ -1598,7 +1590,7 @@ export default function Profile() {
 
       {/* Photos Section */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4 flex h-auto w-full flex-wrap gap-1 p-1">
+        <TabsList className="mb-4 grid h-auto w-full grid-cols-4 gap-1 p-1">
           <TabsTrigger value="posts" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <Image className="w-4 h-4" />
             Postagens
@@ -1607,50 +1599,29 @@ export default function Profile() {
             <Image className="w-4 h-4" />
             Fotos
           </TabsTrigger>
-          <TabsTrigger value="private" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
-            <Lock className="w-4 h-4" />
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate">Privadas</span>
-              {(approvedPrivatePhotoAccessCount > 0 || pendingPrivatePhotoAccessCount > 0) && (
-                <span className="hidden sm:inline-flex items-center gap-1">
-                  <Badge variant="secondary" className="bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 px-2 py-0 text-[10px]">
-                    {approvedPrivatePhotoAccessCount} com acesso
-                  </Badge>
-                  <Badge variant="secondary" className="bg-amber-500/15 text-amber-600 border border-amber-500/30 px-2 py-0 text-[10px]">
-                    {pendingPrivatePhotoAccessCount} pendentes
-                  </Badge>
-                </span>
-              )}
-            </span>
-          </TabsTrigger>
           <TabsTrigger value="videos" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <Video className="w-4 h-4" />
             Vídeos{myVideos.length > 0 ? ` (${myVideos.length})` : ''}
-          </TabsTrigger>
-          <TabsTrigger value="mural" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
-            <MessageSquareQuote className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Mural</span>
-          </TabsTrigger>
-          <TabsTrigger value="testimonials" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
-            <Star className="w-4 h-4" />
-            Recomendações{approvedTestimonials.length > 0 ? ` (${approvedTestimonials.length})` : ''}
-          </TabsTrigger>
-          {/* Visitas/avisos e informações pessoais viraram abas: antes eram
-              seções acima da galeria e empurravam as fotos para baixo. */}
-          <TabsTrigger value="avisos" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
-            <Eye className="w-4 h-4" />
-            Avisos
-            {unreadNotifications.length + profileVisits.length > 0 && (
-              <span className="rounded-full bg-primary px-1.5 text-[10px] font-bold leading-4 text-white">
-                {Math.min(99, unreadNotifications.length + profileVisits.length)}
-              </span>
-            )}
           </TabsTrigger>
           <TabsTrigger value="sobre" className="min-h-[40px] flex-1 gap-1.5 text-xs sm:min-h-0 sm:text-sm">
             <Users className="w-4 h-4" />
             Sobre
           </TabsTrigger>
         </TabsList>
+
+        {/* Privadas, Mural, Recomendações e Avisos saíram da fileira de abas
+            (eram 8; no celular viravam 3 linhas de botões pequenos). Abrem por
+            Fotos e Sobre, e voltam por aqui. */}
+        {['private', 'mural', 'testimonials', 'avisos'].includes(activeTab) && (
+          <button
+            type="button"
+            onClick={() => setActiveTab(activeTab === 'private' ? 'photos' : 'sobre')}
+            className="mb-3 flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-semibold text-brand-pink"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar para {activeTab === 'private' ? 'Fotos' : 'Sobre'}
+          </button>
+        )}
 
         <TabsContent value="avisos">
         {unreadNotifications.length > 0 || profileVisits.length > 0 ? (
@@ -1826,6 +1797,26 @@ export default function Profile() {
         </TabsContent>
 
         <TabsContent value="sobre">
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          {([
+            { aba: 'mural', rotulo: 'Mural', Icone: MessageSquareQuote, n: 0 },
+            { aba: 'testimonials', rotulo: 'Recomendações', Icone: Star, n: approvedTestimonials.length },
+            { aba: 'avisos', rotulo: 'Avisos', Icone: Eye, n: unreadNotifications.length + profileVisits.length },
+          ] as const).map(({ aba, rotulo, Icone, n }) => (
+            <button
+              key={aba}
+              type="button"
+              onClick={() => setActiveTab(aba)}
+              className="relative flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border bg-secondary/30 px-1 text-xs font-medium"
+            >
+              <Icone className="h-5 w-5 text-primary" />
+              {rotulo}
+              {n > 0 && (
+                <span className="absolute right-1.5 top-1.5 rounded-full bg-primary px-1.5 text-[10px] font-bold leading-4 text-white">{Math.min(99, n)}</span>
+              )}
+            </button>
+          ))}
+        </div>
         <div className="glass rounded-2xl p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <h2 className="text-lg font-semibold">Informações Pessoais</h2>
@@ -1878,11 +1869,43 @@ export default function Profile() {
         </TabsContent>
 
         <TabsContent value="photos">
+          {/* Fotos simples (12/11/2026): públicas e privadas juntas (cadeado nas
+              privadas) e o botão de adicionar no TOPO, que pergunta "pública ou
+              privada?" e aceita várias de uma vez. Antes eram duas abas e o
+              "+ Adicionar" ficava no fim da galeria. */}
+          {!isLoadingPhotos && (
+            <Button
+              type="button"
+              disabled={isUploading}
+              onClick={() => setEscolhaDeFotoAberta(true)}
+              className="mb-3 h-12 w-full gap-2 bg-gradient-primary text-base"
+            >
+              <Plus className="h-5 w-5" />
+              {isUploading ? 'Enviando fotos…' : 'Adicionar fotos'}
+            </Button>
+          )}
+          {pendingPrivatePhotoAccessCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('private')}
+              className="mb-3 flex w-full items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-left text-sm"
+            >
+              <span>
+                <b>{pendingPrivatePhotoAccessCount} {pendingPrivatePhotoAccessCount === 1 ? 'pessoa pediu' : 'pessoas pediram'}</b> para ver suas fotos privadas
+              </span>
+              <span className="shrink-0 font-semibold text-brand-pink">Ver</span>
+            </button>
+          )}
           <div className="grid grid-cols-3 gap-3">
             {isLoadingPhotos && (
               <div className="col-span-3 text-sm text-muted-foreground">Carregando...</div>
             )}
-            {!isLoadingPhotos && photos.filter((p) => !p.isPrivate).map((photo) => (
+            {!isLoadingPhotos && photos.length === 0 && (
+              <div className="col-span-3 rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                Vocês ainda não têm fotos. Toque em <b>Adicionar fotos</b>.
+              </div>
+            )}
+            {!isLoadingPhotos && photos.map((photo) => (
               <PhotoItem
                 key={photo.id}
                 photo={photo}
@@ -1893,31 +1916,62 @@ export default function Profile() {
                 onRefreshPrivatePhotos={loadPhotos}
               />
             ))}
-            
-            {/* Add Photo Button — hidden while initial load is in progress */}
-            {!isLoadingPhotos && (
-              <button
-                type="button"
-                disabled={isUploading}
-                onClick={() => fileInputRef.current?.click()}
-                className="aspect-square rounded-xl border-2 border-dashed border-border hover:border-primary flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-8 h-8" />
-                <span className="text-sm">{isUploading ? 'Enviando...' : 'Adicionar'}</span>
-              </button>
-            )}
           </div>
+          {!isLoadingPhotos && approvedPrivatePhotoAccessCount + pendingPrivatePhotoAccessCount > 0 && (
+            <button type="button" onClick={() => setActiveTab('private')} className="mt-3 flex min-h-11 items-center gap-2 text-sm font-medium text-brand-pink">
+              <Lock className="h-4 w-4" />
+              Quem pode ver suas privadas ({approvedPrivatePhotoAccessCount})
+            </button>
+          )}
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             className="hidden"
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleUpload(file);
+              const arquivos = Array.from(e.target.files || []);
+              if (arquivos.length) void handleUploadVarias(arquivos, false);
               if (e.target) e.target.value = '';
             }}
           />
+          <input
+            ref={fotosPrivadasRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const arquivos = Array.from(e.target.files || []);
+              if (arquivos.length) void handleUploadVarias(arquivos, true);
+              if (e.target) e.target.value = '';
+            }}
+          />
+          <Dialog open={escolhaDeFotoAberta} onOpenChange={setEscolhaDeFotoAberta}>
+            <DialogContent className="max-w-sm rounded-2xl">
+              <DialogTitle>Quem pode ver estas fotos?</DialogTitle>
+              <DialogDescription>Dá para escolher várias de uma vez. Depois vocês podem mudar cada foto tocando nela.</DialogDescription>
+              <div className="grid gap-3">
+                <Button
+                  type="button"
+                  className="h-auto min-h-14 justify-start gap-3 bg-gradient-primary px-4 py-3 text-left"
+                  onClick={() => { setEscolhaDeFotoAberta(false); fileInputRef.current?.click(); }}
+                >
+                  <Image className="h-5 w-5 shrink-0" />
+                  <span><b className="block text-base">Pública</b><span className="text-xs opacity-90">Todo mundo vê no seu perfil</span></span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto min-h-14 justify-start gap-3 px-4 py-3 text-left"
+                  onClick={() => { setEscolhaDeFotoAberta(false); fotosPrivadasRef.current?.click(); }}
+                >
+                  <Lock className="h-5 w-5 shrink-0" />
+                  <span><b className="block text-base">Privada</b><span className="text-xs text-muted-foreground">Só quem vocês liberarem</span></span>
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="private">

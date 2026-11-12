@@ -1,3 +1,4 @@
+import SaibaMais from '@/components/SaibaMais';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import ContactProfileFilter from '@/components/ContactProfileFilter';
@@ -744,7 +745,7 @@ export default function Settings() {
                   onEnabledChange={(enabled) => setPrivacy({ ...privacy, blockOutsidePrefs: enabled })}
                   onSelectionChange={(selected) => setPrivacy({ ...privacy, contactProfileTypes: selected })}
                 />
-                <p className="text-xs text-muted-foreground">{privacy.pedidosContato ? 'Pedidos de contato ativados. Você decide quais desconhecidos entram nas conversas.' : 'Pedidos de contato desativados: contatos permitidos entram diretamente nas conversas.'} Ajuste as exceções na aba Privacidade.</p>
+                <p className="text-xs text-muted-foreground">{privacy.pedidosContato ? 'Desconhecidos chegam como pedido; vocês decidem.' : 'Contatos permitidos entram direto nas conversas.'}</p>
                 <Button type="button" onClick={handleSaveProfile} disabled={isLoading} className="min-h-11 w-full">{isLoading ? 'Salvando...' : 'Salvar minhas preferências'}</Button>
               </div>
 
@@ -1644,9 +1645,9 @@ export default function Settings() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="font-medium">Pedidos de contato</p>
-                  <p className="text-sm text-muted-foreground">
+                  <SaibaMais resumo="Desconhecidos chegam como pedido, e vocês decidem.">
                     Mensagem de quem você ainda não conhece cai em "Pedidos de contato", e não nas suas conversas, até você aceitar. Quem você curtiu ou é seu amigo vai sempre direto.
-                  </p>
+                  </SaibaMais>
                 </div>
                 <Switch
                   checked={privacy.pedidosContato}
@@ -2102,10 +2103,10 @@ export default function Settings() {
               <Download className="w-5 h-5 text-primary" />
               Seus dados
             </h3>
-            <p className="text-sm text-muted-foreground">
-              Baixe uma cópia de tudo que está na sua conta: perfil, fotos e vídeos (com links), posts, stories, contos,
-              comentários, curtidas, mensagens que você enviou, compras e comissões. É um arquivo .json, que abre em qualquer editor de texto.
-            </p>
+            <SaibaMais resumo="Baixe uma cópia de tudo que está na sua conta.">
+              Perfil, fotos e vídeos (com links), posts, stories, contos, comentários, curtidas, mensagens que você enviou,
+              compras e comissões. É um arquivo .json, que abre em qualquer editor de texto.
+            </SaibaMais>
             <Button
               variant="outline"
               className="gap-2 min-h-[44px]"
@@ -2146,9 +2147,9 @@ export default function Settings() {
             <div className="space-y-3 pb-5 border-b border-border/50">
               <div>
                 <p className="font-medium">Desativar perfil</p>
-                <p className="text-sm text-muted-foreground mt-1">
+                <SaibaMais className="mt-1" resumo="Esconde o perfil sem apagar nada.">
                   Seu perfil ficará oculto para outros usuários enquanto estiver desativado. Suas conversas, fotos e dados são preservados. Para reativar, basta fazer login novamente.
-                </p>
+                </SaibaMais>
               </div>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
