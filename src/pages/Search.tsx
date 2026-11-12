@@ -1,3 +1,4 @@
+import SeletorQueProcuro from '@/components/SeletorQueProcuro';
 import { FundoDoTipo } from '@/components/AvatarDoTipo';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GenteNaRegiao } from '@/components/GenteNaRegiao';
@@ -914,6 +915,9 @@ export default function SearchPage() {
 
       {/* Ativos agora — descoberta de perfis ativos nas últimas 2h */}
       {!showWizard && <ActiveNowBar />}
+
+      {/* "Mostrando: Mulheres ✎": o "O que procuro" à vista, com um toque. */}
+      <SeletorQueProcuro className="mb-3" onMudou={() => { setSelectedGenders([]); void fetchFirstPage(); }} />
 
       {/* Busca enxuta (28/10/2026): só a busca e uma linha de atalhos à vista;
           ordenar, "busca por", orientação, cidade e perfis ficam em Filtros. */}

@@ -34,6 +34,9 @@ describe('FirstAccessTutorial', () => {
 
     expect(await screen.findByRole('dialog', { name: 'Boas-vindas à comunidade NoSigilo' })).toBeTruthy();
     expect(localStorage.getItem(`nosigilo:welcome-tutorial-date:${mocks.userId}`)).toBeTruthy();
+    // Primeira entrada: uma tela só, sem contador de etapas.
+    expect(screen.getByRole('button', { name: /Começar a explorar/ })).toBeTruthy();
+    expect(screen.queryByText(/de 6/)).toBeNull();
   });
 
   it('reabre o mesmo tutorial pelo evento usado em Conheça a plataforma', async () => {
@@ -47,5 +50,7 @@ describe('FirstAccessTutorial', () => {
     });
 
     expect(await screen.findByRole('dialog', { name: 'Boas-vindas à comunidade NoSigilo' })).toBeTruthy();
+    // "Conheça a plataforma" abre o tour completo.
+    expect(screen.getByText('1 de 6')).toBeTruthy();
   });
 });

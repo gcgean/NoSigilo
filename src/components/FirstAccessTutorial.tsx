@@ -135,6 +135,24 @@ const TOUR_STEPS: TourStep[] = [
   },
 ];
 
+// Primeira entrada: uma tela só (12/11/2026). Casais com pouca prática em app
+// desistiam no meio das 6 telas do tour; o tour completo continua em
+// "Ver como funciona" e em "Conheça a plataforma".
+const RESUMO: TourStep = {
+  id: 'resumo',
+  title: 'Bem-vindos ao ',
+  highlight: 'NoSigilo.',
+  description: 'Uma comunidade discreta para casais e solteiros liberais. Comece pelo que importa:',
+  image: TOUR_STEPS[0].image,
+  imagePosition: TOUR_STEPS[0].imagePosition,
+  benefits: [
+    { icon: Search, title: 'Busca e Match', description: 'Ache perfis perto de você, do tipo que vocês procuram.' },
+    { icon: MessageCircle, title: 'Chat privado', description: 'Converse com discrição antes de qualquer encontro.' },
+    { icon: LockKeyhole, title: 'Fotos privadas', description: 'Vocês decidem quem vê.' },
+  ],
+  actionLabel: 'Começar a explorar',
+};
+
 const FEATURE_RAIL = [
   { icon: Heart, label: 'Match e Busca' },
   { icon: Images, label: 'Feed e Stories' },
@@ -153,6 +171,8 @@ export default function FirstAccessTutorial() {
   const naCasa = pathname.startsWith('/casa');
   const [open, setOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+  const [modo, setModo] = useState<'resumo' | 'tour'>('resumo');
+  const passos = modo === 'resumo' ? [RESUMO] : TOUR_STEPS;
 
   useEffect(() => {
     if (!user?.id || naCasa || outrasJanelasEsperam(user.id)) return;
@@ -164,12 +184,14 @@ export default function FirstAccessTutorial() {
       // O tutorial continua funcionando mesmo se o storage estiver indisponível.
     }
     setStepIndex(0);
+    setModo('resumo');
     setOpen(true);
   }, [user?.id, naCasa]);
 
   useEffect(() => {
     const handler = () => {
       setStepIndex(0);
+      setModo('tour');
       setOpen(true);
     };
     window.addEventListener(FIRST_ACCESS_TOUR_EVENT, handler);
@@ -180,14 +202,15 @@ export default function FirstAccessTutorial() {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'ArrowLeft') setStepIndex((current) => Math.max(0, current - 1));
-      if (event.key === 'ArrowRight') setStepIndex((current) => Math.min(TOUR_STEPS.length - 1, current + 1));
+      if (event.key === 'ArrowRight') setStepIndex((current) => Math.min(passos.length - 1, current + 1));
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open]);
+  }, [open, passos.length]);
 
-  const step = TOUR_STEPS[stepIndex];
-  const isLastStep = stepIndex === TOUR_STEPS.length - 1;
+  const step = passos[Math.min(stepIndex, passos.length - 1)];
+  const isLastStep = stepIndex >= passos.length - 1;
+  const ehResumo = modo === 'resumo';
 
   const finishTutorial = () => setOpen(false);
 
@@ -237,10 +260,12 @@ export default function FirstAccessTutorial() {
         </section>
 
         <section className="first-access-tour__content" key={step.id} aria-live="polite">
-          <div className="first-access-tour__progress-row">
-            <span>{stepIndex + 1} de {TOUR_STEPS.length}</span>
-            <button type="button" onClick={finishTutorial} className="first-access-tour__skip">Pular tutorial ›</button>
-          </div>
+          {!ehResumo && (
+            <div className="first-access-tour__progress-row">
+              <span>{stepIndex + 1} de {passos.length}</span>
+              <button type="button" onClick={finishTutorial} className="first-access-tour__skip">Pular tutorial ›</button>
+            </div>
+          )}
 
           <div className="first-access-tour__copy">
             <h2>
@@ -262,8 +287,8 @@ export default function FirstAccessTutorial() {
           </div>
 
           <div className="first-access-tour__navigation">
-            <div className="first-access-tour__dots" aria-label={`Etapa ${stepIndex + 1} de ${TOUR_STEPS.length}`}>
-              {TOUR_STEPS.map((tourStep, index) => (
+            <div className="first-access-tour__dots" hidden={ehResumo} aria-label={`Etapa ${stepIndex + 1} de ${passos.length}`}>
+              {passos.map((tourStep, index) => (
                 <button
                   key={tourStep.id}
                   type="button"
@@ -276,25 +301,31 @@ export default function FirstAccessTutorial() {
             </div>
 
             <div className="first-access-tour__actions">
-              <Button
-                type="button"
-                variant="outline"
-                className="first-access-tour__back"
-                onClick={goPrev}
-                disabled={stepIndex === 0}
-                aria-label="Voltar uma etapa"
-              >
-                <ArrowLeft data-icon="inline-start" />
-                Voltar
-              </Button>
+              {ehResumo ? (
+                <Button type="button" variant="outline" className="first-access-tour__back" onClick={() => { setModo('tour'); setStepIndex(0); }}>
+                  Ver como funciona
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="first-access-tour__back"
+                  onClick={goPrev}
+                  disabled={stepIndex === 0}
+                  aria-label="Voltar uma etapa"
+                >
+                  <ArrowLeft data-icon="inline-start" />
+                  Voltar
+                </Button>
+              )}
               <Button type="button" className="first-access-tour__next" onClick={goNext}>
                 {step.actionLabel}
-                {isLastStep ? <Crown data-icon="inline-end" /> : <ArrowRight data-icon="inline-end" />}
+                {ehResumo ? <ArrowRight data-icon="inline-end" /> : isLastStep ? <Crown data-icon="inline-end" /> : <ArrowRight data-icon="inline-end" />}
               </Button>
             </div>
           </div>
 
-          {isLastStep ? (
+          {isLastStep && !ehResumo ? (
             <button type="button" className="first-access-tour__explore" onClick={finishTutorial}>
               Quero explorar a comunidade primeiro
             </button>

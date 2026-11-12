@@ -196,7 +196,16 @@ export default function OnboardingModal() {
     setVisible(false);
   };
 
-  const totalSteps = 3;
+  // Só as etapas que faltam (12/11/2026): antes a primeira era sempre "Qual sua
+  // idade?", mesmo para quem já tinha dado a data no cadastro.
+  const etapas = ([
+    (!user.birthDate || (isCouple && !(user as any).partnerBirthDate)) ? 'idade' : null,
+    !user.lookingFor?.length ? 'busca' : null,
+    !(user as any).fetiches?.length ? 'fetiches' : null,
+  ].filter(Boolean) as Array<'idade' | 'busca' | 'fetiches'>);
+  if (etapas.length === 0) etapas.push('fetiches');
+  const totalSteps = etapas.length;
+  const etapa = etapas[Math.min(step, totalSteps - 1)];
 
   const toggleLookingFor = (val: string) =>
     setLookingFor((prev) => prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]);
@@ -255,7 +264,7 @@ export default function OnboardingModal() {
         <div className="p-6 space-y-5">
 
           {/* ── STEP 0: Idade ── */}
-          {step === 0 && (
+          {etapa === 'idade' && (
             <div className="space-y-5">
               <div className="text-center space-y-1.5">
                 <div className="flex justify-center mb-3">
@@ -263,18 +272,21 @@ export default function OnboardingModal() {
                     <CalendarDays className="h-7 w-7 text-primary" />
                   </div>
                 </div>
-                <h2 className="text-xl font-bold">Qual sua idade?</h2>
+                <h2 className="text-xl font-bold">{user.birthDate && isCouple ? `Qual a idade — ${coupleLabel2}?` : 'Qual sua idade?'}</h2>
                 <p className="text-sm text-muted-foreground">
                   Sua idade aparecerá ao lado do seu nome nas buscas e no Match — ajuda a encontrar perfis compatíveis.
                 </p>
               </div>
 
               <div className="space-y-3">
-                <BirthDatePicker
-                  label={isCouple ? `Nascimento — ${coupleLabel1}` : 'Data de nascimento'}
-                  value={birthDate}
-                  onChange={setBirthDate}
-                />
+                {/* A data de quem criou a conta já veio do cadastro: só pede a que falta. */}
+                {!user.birthDate && (
+                  <BirthDatePicker
+                    label={isCouple ? `Nascimento — ${coupleLabel1}` : 'Data de nascimento'}
+                    value={birthDate}
+                    onChange={setBirthDate}
+                  />
+                )}
                 {isCouple && (
                   <BirthDatePicker
                     label={`Nascimento — ${coupleLabel2}`}
@@ -287,7 +299,7 @@ export default function OnboardingModal() {
           )}
 
           {/* ── STEP 1: O que busca ── */}
-          {step === 1 && (
+          {etapa === 'busca' && (
             <div className="space-y-5">
               <div className="text-center space-y-1.5">
                 <div className="flex justify-center mb-3">
@@ -332,7 +344,7 @@ export default function OnboardingModal() {
           )}
 
           {/* ── STEP 2: Fetiches ── */}
-          {step === 2 && (
+          {etapa === 'fetiches' && (
             <div className="space-y-5">
               <div className="text-center space-y-1.5">
                 <div className="flex justify-center mb-3">
@@ -392,7 +404,7 @@ export default function OnboardingModal() {
                 size="sm"
                 className="gap-1 bg-gradient-to-r from-primary to-violet-600"
                 onClick={() => setStep((s) => s + 1)}
-                disabled={(step === 0 && !canAdvanceStep0) || (step === 1 && !canAdvanceStep1)}
+                disabled={(etapa === 'idade' && !canAdvanceStep0) || (etapa === 'busca' && !canAdvanceStep1)}
               >
                 Próximo <ChevronRight className="h-4 w-4" />
               </Button>
