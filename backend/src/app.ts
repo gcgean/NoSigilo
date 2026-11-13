@@ -8418,6 +8418,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         createdAt: r.created_at,
         temas: r.video_temas ? String(r.video_temas).split(',') : [],
         comentariosDesligados: Number(r.comentarios_desligados || 0) === 1,
+        // Mesmo estado ou até 100 km: o app separa a região do resto (13/11/2026).
+        daRegiao: !!sameStateByPostId.get(String(r.id)) || (() => { const d = distanceKmByPostId.get(String(r.id)); return typeof d === 'number' && d <= 100; })(),
         author: {
           id: r.author_id,
           name: r.author_name,

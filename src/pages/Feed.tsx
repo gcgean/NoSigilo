@@ -102,6 +102,8 @@ type FeedPost = {
   createdAt: string;
   /** O dono desligou os comentários desta publicação. */
   comentariosDesligados?: boolean;
+  /** Do mesmo estado ou até 100 km de quem vê (vem do servidor). */
+  daRegiao?: boolean;
   author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; birthDate?: string | null; partnerBirthDate?: string | null; isPremium?: boolean };
   mediaIds: string[];
   media: FeedMedia[];
@@ -618,7 +620,14 @@ export default function Feed() {
     const remaining: FeedPost[] = [];
     const authorOccurrences = new Map<string, number>();
 
-    for (const post of visiblePosts) {
+    // Região primeiro (13/11/2026): o reagrupamento abaixo chamava de
+    // "Novidades na sua região" posts de outros estados, e quem já tinha visto
+    // tudo da cidade achava que o feed estava errado. Agora a região passa pelo
+    // reagrupamento e os de fora vêm depois, com um aviso.
+    const daRegiao = visiblePosts.filter((p) => p.daRegiao !== false);
+    const deFora = visiblePosts.filter((p) => p.daRegiao === false);
+
+    for (const post of daRegiao) {
       const authorId = String(post.author.id || '');
       const occurrence = authorOccurrences.get(authorId) ?? 0;
       const seenBefore = feedSessionBaseline[authorId] ?? 0;
@@ -662,8 +671,26 @@ export default function Feed() {
       items.push(...remaining.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post })));
     }
 
+    if (deFora.length > 0) {
+      const lugar = String((user as any)?.city || '').trim() || 'da sua região';
+      items.push(daRegiao.length === 0
+        ? {
+          type: 'section',
+          id: 'feed-section-fim-regiao',
+          title: `📍 Você já viu tudo ${lugar === 'da sua região' ? lugar : `de ${lugar}`} por enquanto`,
+          description: 'Agora, publicações de outras regiões. Quando alguém daí postar, aparece primeiro aqui.',
+        }
+        : {
+          type: 'section',
+          id: 'feed-section-fim-regiao',
+          title: '✅ Fim das novidades da sua região',
+          description: 'Abaixo, publicações de outras regiões.',
+        });
+      items.push(...deFora.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post })));
+    }
+
     return items;
-  }, [feedFilter, feedSessionBaseline, visiblePosts, cityOnly, nearbyRadius, (user as any)?.state]);
+  }, [feedFilter, feedSessionBaseline, visiblePosts, cityOnly, nearbyRadius, (user as any)?.state, (user as any)?.city]);
 
   // "Sugestões para você" (perfis do Match) entra depois do 4º item do feed principal.
   const feedItensComSugestoes = useMemo(() => {
