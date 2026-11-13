@@ -167,6 +167,9 @@ type Msg = {
   resposta?: { id: string; nome: string; trecho: string };
   /** Observação que quem enviou a foto/vídeo escreveu junto. */
   legenda?: string;
+  /** Botões dentro da mensagem da Lola na cabine (13/11/2026): 'brincar' = ações
+   *  leves, 'liberar' = topar esquentar, 'jogos' = dado e provocação. */
+  convite?: 'brincar' | 'liberar' | 'jogos';
   /** Reações: emoji → ids públicos de quem reagiu. */
   reacoes?: Record<string, string[]>;
   /** Anúncio de brincadeira da Lola: os botões de votar aparecem dentro da própria mensagem. */
@@ -549,6 +552,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     fundadores: Set<string>;
     /** Último nível que a Lola anunciou (0 esquentando, 1 preliminares, 2 transa). */
     nivelAnunciado: number;
+    /** A Lola já mandou o convite com as ações leves (uma vez por cabine). */
+    convidouBrincar?: boolean;
     /** Foto de fundo sorteada ao abrir (null = fundo padrão da cabine). */
     fundo: { arquivo: string; intensidade: number } | null;
   };
@@ -652,9 +657,13 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     '🔥 Pergunta da Lola: o que cada um faria primeiro se estivessem no mesmo quarto agora? 😈',
     '🔥 Bora esquentar: cada um conta o que mais chamou atenção no outro 💋',
   ];
+  const CONVITE_BRINCAR = [
+    '😏 O papo tá bom… querem esquentar? Comecem leve, é só tocar:',
+    '😈 Tá rolando um clima aqui, hein? Que tal um primeiro passo:',
+  ];
   const apimentarCabineFria = (c: Cabine, agora: number) => {
     if (c.quente || c.membros.size < 2 || c.lembretesFrios >= 3) return;
-    if (agora - c.criadaEm < 2 * 60_000 || agora - c.ultimaProvocacao < 4 * 60_000) return;
+    if (agora - c.criadaEm < 3 * 60_000 || agora - c.ultimaProvocacao < 4 * 60_000) return;
     // Alguém fora (📴): não fala sozinha para quem não está vendo.
     if ([...c.membros.keys()].some((id) => c.ausentes.has(id))) return;
     const calados = agora - c.ultimaFala > 60_000;
@@ -662,6 +671,14 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     if (!calados && agora - c.ultimaFala < 20_000) return;
     c.ultimaProvocacao = agora;
     c.lembretesFrios += 1;
+    // 13/11/2026: só 19% das cabines chegavam a tocar no 🔥. Com conversa rolando e
+    // ninguém tendo feito nada ainda, a Lola convida com 3 ações leves ali mesmo,
+    // na mensagem (uma vez por cabine; nada fixo na tela).
+    if (!c.convidouBrincar && c.ultimaAcao.size === 0 && (!calados || c.lembretesFrios >= 3) && agora - c.criadaEm >= 3 * 60_000) {
+      c.convidouBrincar = true;
+      msgCabine(c, { tipo: 'lola', texto: sortear(CONVITE_BRINCAR), convite: 'brincar' });
+      return;
+    }
     const texto = c.lembretesFrios >= 3
       ? '😈 Quando quiserem apimentar de verdade, abram o 🔥 aqui embaixo: eu libero as brincadeiras e guio vocês. Só esquenta se todos toparem.'
       : calados ? sortear(QUEBRA_GELO_CABINE) : sortear(APIMENTA_CABINE);
@@ -757,12 +774,13 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const nivel = nivelPeloCalor(c);
     if (nivel > c.nivelAnunciado) {
       c.nivelAnunciado = nivel;
-      const falta = c.quente ? '' : ' Pra valer, todos aqui dentro tocam em "Liberar" 🔥';
+      const falta = c.quente ? '' : ' Pra valer, todos aqui dentro topam 👇';
       msgCabine(c, {
         tipo: 'lola',
         texto: nivel === 1
           ? `🔥 A conversa esquentou… liberei as PRELIMINARES! Abram o 🔥 e vejam o que tem lá 😈${falta}`
           : `💦 Vocês estão pegando fogo: liberei a TRANSA 😈 Quer de verdade? Toquem no 📷 e mandem foto ou vídeo de agora (até 60s), só a cabine vê.${falta}`,
+        ...(c.quente ? {} : { convite: 'liberar' as const }),
       });
     }
   };
@@ -4415,7 +4433,7 @@ Sala: ${salaId}`).catch(() => {});
     if (todos && !c.quente) {
       c.quente = true;
       c.quenteDesde = Date.now();
-      msgCabine(c, { tipo: 'lola', texto: '🔥 Todos toparam: a cabine esquentou! Conforme a conversa esquentar, eu vou liberando mais coisa no 🔥. Qualquer um pode tocar em "Esfriar" quando quiser 😈' });
+      msgCabine(c, { tipo: 'lola', texto: '🔥 Todos toparam: a cabine esquentou! Conforme a conversa esquentar, eu vou liberando mais coisa no 🔥. Querem um empurrãozinho? 😈', convite: 'jogos' });
       provocar(c);
     } else if (!todos) {
       const n = [...c.membros.keys()].filter((id) => c.topamEsquentar.has(id)).length;

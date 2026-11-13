@@ -25,7 +25,11 @@ import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
  */
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: string; naCasa?: boolean };
 type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao'; autor?: Pessoa; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; livre?: boolean }; efeito?: string;
-  resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; legenda?: string };
+  resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; legenda?: string;
+  /** Botões na mensagem da Lola: ações leves, topar esquentar, dado/provocação. */
+  convite?: 'brincar' | 'liberar' | 'jogos' };
+// Ações leves que a Lola oferece direto na conversa (sem abrir o painel).
+const ACOES_LEVES = ['beijo', 'pescoco', 'mao'];
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 
 // Ações da cabine (o backend confere etapa e tesão). Etapa 1 pede a cabine esquentada; etapa 2, tesão ≥ 40.
@@ -194,7 +198,7 @@ export default function CabineDaCasa({
     const aoEsquentar = (d: { cabineId: string; nome: string }) => {
       if (d.cabineId !== cabineId) return;
       void tocarSomDaCasa('fogo');
-      setAcoesAbertas(true);
+      try { navigator.vibrate?.([120, 60, 120]); } catch { /* sem vibração */ }
       setPedidoEsquentar(d.nome);
     };
     on('casa.cabine.esquentar', aoEsquentar);
@@ -336,6 +340,9 @@ export default function CabineDaCasa({
     } catch { /* fica o botão "Ver" */ }
   };
   const qtdMensagens = cab?.mensagens.length ?? 0;
+  // Só a última mensagem de cada convite mostra botões (sem repetir na conversa).
+  const ultimoConvite = new Map<string, string>();
+  for (const m of cab?.mensagens ?? []) if (m.convite) ultimoConvite.set(m.convite, m.id);
   useEffect(() => {
     for (const m of cab?.mensagens ?? []) if (m.tipo === 'midia' && m.midia?.livre && !urlsLivres[m.id]) void carregarLivre(m);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -359,7 +366,7 @@ export default function CabineDaCasa({
     const outros = (cab?.membros ?? []).filter((m) => m.id !== meuIdPublico);
     const com = outros.length === 1 ? outros[0].id : outros.some((o) => o.id === alvo) ? alvo : null;
     // Mais de uma pessoa e ninguém escolhido: pergunta com quem, já com as fotos.
-    if (!com) { setEscolhendoPara(acao); return; }
+    if (!com) { setAcoesAbertas(true); setEscolhendoPara(acao); return; }
     await post('acao', { acao, alvo: com });
   };
   const sair = async () => {
@@ -472,13 +479,6 @@ export default function CabineDaCasa({
             {cab.membros.length === 2 && (
               <button type="button" onClick={() => void continuarNoChat()} className="shrink-0 rounded-full border border-white/20 px-2.5 py-1 text-[11px]">💬 Ir pro chat</button>
             )}
-            {cab.quente && (
-              <>
-                <button type="button" onClick={() => void abrirProvocacoes()} className="shrink-0 rounded-full bg-rose-600 px-2.5 py-1 text-[11px] font-semibold">😈 Provocação</button>
-                <button type="button" onClick={() => void post('provocacao', { dado: true })} className="shrink-0 rounded-full bg-fuchsia-600 px-2.5 py-1 text-[11px] font-semibold">🎲 Dado</button>
-                <button type="button" onClick={() => void post('esquentar', { quer: false })} className="shrink-0 rounded-full border border-white/30 px-2.5 py-1 text-[11px]">🧊 Esfriar</button>
-              </>
-            )}
           </div>
           {convidando && (
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -525,6 +525,29 @@ export default function CabineDaCasa({
           <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2">
             <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-100">💋 Lola · anfitriã IA</p>
             <p className="whitespace-pre-line text-sm">{m.texto}</p>
+            {cab.souMembro && m.convite && ultimoConvite.get(m.convite) === m.id && (() => {
+              const chip = 'rounded-full bg-black/25 px-3 py-1.5 text-xs font-semibold ring-1 ring-white/25 active:scale-95';
+              if (m.convite === 'brincar' && nivelLiberado === 0 && !cab.quente) return (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {ACOES.filter((a) => ACOES_LEVES.includes(a.id)).map((a) => (
+                    <button key={a.id} type="button" onClick={() => void agir(a.id)} className={chip}>{a.emoji} {a.rotulo}</button>
+                  ))}
+                </div>
+              );
+              if (m.convite === 'liberar' && !cab.quente) return (
+                <button type="button" disabled={cab.voteiQuente} onClick={() => { setAcoesAbertas(true); void post('esquentar', { quer: true }); }}
+                  className={cn('mt-2', chip, cab.voteiQuente && 'opacity-60')}>
+                  {cab.voteiQuente ? `⏳ Você topou · ${cab.votosQuente}/${cab.membros.length}` : `🔓 Topo esquentar (${cab.votosQuente}/${cab.membros.length})`}
+                </button>
+              );
+              if (m.convite === 'jogos' && cab.quente) return (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <button type="button" onClick={() => void post('provocacao', { dado: true })} className={chip}>🎲 Jogar o dado</button>
+                  <button type="button" onClick={() => void abrirProvocacoes()} className={chip}>😈 Provocação</button>
+                </div>
+              );
+              return null;
+            })()}
           </div>
         ) : (
           <div key={m.id} className={cn('flex items-start gap-2', m.autor?.id === meuIdPublico && 'flex-row-reverse')}>
@@ -600,6 +623,13 @@ export default function CabineDaCasa({
               </div>
               <span className="w-8 text-right">{calor}%</span>
             </div>
+            {cab.quente && (
+              <div className="flex items-center gap-1.5">
+                <button type="button" onClick={() => void abrirProvocacoes()} className="rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold active:scale-95">😈 Provocação</button>
+                <button type="button" onClick={() => void post('provocacao', { dado: true })} className="rounded-full bg-fuchsia-600 px-3 py-1.5 text-xs font-semibold active:scale-95">🎲 Dado</button>
+                <button type="button" onClick={() => void post('esquentar', { quer: false })} className="ml-auto rounded-full px-2 py-1.5 text-[11px] text-white/60">🧊 Esfriar</button>
+              </div>
+            )}
             {escolhendoPara && outros.length > 1 && (
               <div className="space-y-1.5 rounded-xl bg-amber-500/15 p-2 ring-1 ring-amber-400/60">
                 <p className="text-xs font-bold">Com quem? 😏</p>
@@ -623,15 +653,6 @@ export default function CabineDaCasa({
                   <button key={o.id} type="button" onClick={() => setAlvo(o.id)}
                     className={cn('shrink-0 rounded-full px-2 py-1 text-[11px]', alvo === o.id ? 'bg-rose-600 font-bold' : 'bg-white/10')}>{o.nome}</button>
                 ))}
-              </div>
-            )}
-            {pedidoEsquentar && !cab.quente && !cab.voteiQuente && (
-              <div className="space-y-2 rounded-xl bg-amber-500/20 p-3 ring-2 ring-amber-400/70 shadow-[0_0_24px_rgba(245,158,11,0.45)]">
-                <p className="text-sm font-bold">🔥 {pedidoEsquentar} está te chamando pra transar: liberar as preliminares e a transa. Aceita?</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => { setPedidoEsquentar(null); void post('esquentar', { quer: false }); }} className="rounded-lg bg-white/10 px-3 py-2 text-sm">Agora não</button>
-                  <button type="button" onClick={() => { setPedidoEsquentar(null); void post('esquentar', { quer: true }); }} className="rounded-lg bg-gradient-to-r from-amber-500 to-rose-600 px-3 py-2 text-sm font-bold">Aceito 🔥</button>
-                </div>
               </div>
             )}
             <div className="flex gap-1.5">
@@ -689,6 +710,13 @@ export default function CabineDaCasa({
           </div>
         );
       })()}
+      {cab.souMembro && pedidoEsquentar && !cab.quente && !cab.voteiQuente && (
+        <div className="flex items-center gap-2 border-t border-amber-400/50 bg-amber-500/15 px-3 py-2">
+          <p className="min-w-0 flex-1 text-sm font-semibold">🔥 <b>{pedidoEsquentar}</b> quer esquentar. Topa?</p>
+          <button type="button" onClick={() => { setPedidoEsquentar(null); void post('esquentar', { quer: false }); }} className="shrink-0 rounded-full px-3 py-1.5 text-xs text-white/70">Agora não</button>
+          <button type="button" onClick={() => { setPedidoEsquentar(null); setAcoesAbertas(true); void post('esquentar', { quer: true }); }} className="shrink-0 rounded-full bg-gradient-to-r from-amber-500 to-rose-600 px-3 py-1.5 text-xs font-bold active:scale-95">Topo 🔥</button>
+        </div>
+      )}
       {cab.souMembro ? (
         <form className="relative flex items-center gap-2 border-t border-rose-500/30 px-3 py-2" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
           <button type="button" onClick={() => { setAcoesAbertas((v) => !v); setFogoPiscando(false); }}
