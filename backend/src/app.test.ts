@@ -5632,6 +5632,33 @@ describe('nosigilo backend', () => {
     expect(await cidade()).toMatchObject({ city: 'Recife', state: 'PE' });
   });
 
+  it('feed: post não visto do mesmo estado vem antes, mesmo fora da janela dos 400 mais recentes do país', async () => {
+    const leitor = await registerInvitedUser(ctx, sponsorToken, { name: 'Leitor Ceara Feed', email: 'leitor-ceara-feed@example.com', password: 'senha123', gender: 'Homem', city: 'Fortaleza', state: 'CE' });
+    await grantPremium(ctx, String(leitor.user.id));
+    await run(ctx.db, 'UPDATE users SET lat = ?, lon = ?, looking_for_json = NULL WHERE id = ?', [-3.82, -38.52, String(leitor.user.id)]);
+    const paulista = await registerInvitedUser(ctx, sponsorToken, { name: 'Muito Ativo SP', email: 'muito-ativo-sp@example.com', password: 'senha123', gender: 'Mulher', city: 'São Paulo', state: 'SP' });
+    const cearense = await registerInvitedUser(ctx, sponsorToken, { name: 'Casal Cearense Feed', email: 'casal-cearense-feed@example.com', password: 'senha123', gender: 'Mulher', city: 'Fortaleza', state: 'CE' });
+    await run(ctx.db, 'UPDATE users SET lat = ?, lon = ? WHERE id = ?', [-23.55, -46.63, String(paulista.user.id)]);
+    await run(ctx.db, 'UPDATE users SET lat = ?, lon = ? WHERE id = ?', [-3.73, -38.54, String(cearense.user.id)]);
+    const agora = Date.now();
+    for (let i = 0; i < 420; i++) {
+      await run(ctx.db, 'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [`sp-${i}`, String(paulista.user.id), i === 0 ? 'Sextou!' : `post ${i}`, '[]', 0, new Date(agora - i * 60_000).toISOString()]);
+    }
+    await run(ctx.db, 'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      ['ce-antigo', String(cearense.user.id), 'Oi Fortaleza', '[]', 0, new Date(agora - 3 * 86_400_000).toISOString()]);
+    await ctx.db.persist();
+    const r = await request(ctx.app).get('/api/feed').query({ limit: 5 }).set('Authorization', `Bearer ${leitor.token}`).expect(200);
+    const ids = (r.body.posts as any[]).map((p) => String(p.id));
+    const posCe = ids.indexOf('ce-antigo');
+    const posSp = ids.findIndex((id) => id.startsWith('sp-'));
+    expect(posCe).toBeGreaterThanOrEqual(0);
+    if (posSp >= 0) expect(posCe).toBeLessThan(posSp);
+    // O "Sextou" de São Paulo não ganha o topo nem o selo "na sua região".
+    const doPaulista = (r.body.posts as any[]).find((p) => p.feedContext?.label === 'Em alta na sua região' && p.author?.state === 'SP');
+    expect(doPaulista).toBeUndefined();
+  });
+
   it('busca por nome ignora maiúsculas, espaços e @ (sugestões e lista)', async () => {
     const alvo = await registerInvitedUser(ctx, sponsorToken, { name: 'Seu Amante22', email: 'seu-amante22@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
     const quem = await registerInvitedUser(ctx, sponsorToken, { name: 'Quem Busca Nome', email: 'quem-busca-nome@example.com', password: 'senha123', gender: 'Mulher' });

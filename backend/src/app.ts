@@ -7850,6 +7850,30 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       rows = unseen;
       // A janela veio cheia => ainda há não-vistos no acervo além dela.
       moreUnseenInDb = unseen.length >= fetchLimit;
+      // Janela regional (13/11/2026): a janela acima são os 400 posts mais
+      // recentes do Brasil (~1 dia), e os não-vistos da região de mais de 1 dia
+      // nunca entravam na disputa — quem é de Fortaleza recebia SC e SP com 166
+      // posts do Ceará da semana ainda por ver. Busca também os não-vistos do
+      // mesmo estado dos últimos 7 dias; a ordenação por proximidade abaixo os
+      // põe na frente.
+      if (!cityOnly && viewerStateRaw) {
+        const idsJa = new Set(unseen.map((r: any) => String(r.id)));
+        const regionais = (await queryAll(
+          db,
+          `${feedSelect}
+           AND u.state IS NOT NULL AND UPPER(TRIM(u.state)) = ?
+           AND p.created_at >= ?
+           AND NOT EXISTS (SELECT 1 FROM post_views pv WHERE pv.post_id = p.id AND pv.viewer_id = ?)
+           ${justShownClause}
+           ORDER BY p.created_at DESC LIMIT 200`,
+          [...baseParams, viewerStateRaw, isoHaDias(7), req.auth!.userId, ...seenIdsList]
+        )) as any[];
+        for (const r of regionais) {
+          if (!idsJa.has(String(r.id))) { unseen.push(r); idsJa.add(String(r.id)); }
+        }
+        rows = unseen;
+        if (regionais.length >= 200) moreUnseenInDb = true;
+      }
       // Só quando os não-vistos acabam é que o já-visto volta a aparecer: assim
       // a pessoa percorre o acervo inteiro antes de repetir qualquer coisa, e
       // mesmo quem já viu tudo continua com o feed cheio em vez de vazio.
@@ -8140,7 +8164,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               label = 'Você já interagiu';
             } else if (localPopularityScore >= 18) {
               reason = 'popular_local';
-              label = sameCity ? 'Em alta na sua cidade' : 'Em alta na sua região';
+              label = sameCity ? 'Em alta na sua cidade' : sameState || (distanceKm !== null && distanceKm <= 100) ? 'Em alta na sua região' : 'Em alta';
             }
 
             if (createdAtMs >= dayStartMs) {
@@ -8255,11 +8279,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const c = String(content || '').toLowerCase();
       return todayKeywords.some((k) => c.includes(k));
     };
-    // Coloca os posts do tema do dia na frente, preservando a ordem cronológica
+    // Coloca os posts do tema do dia na frente, preservando a ordem cronológica.
+    // Só os da região (mesmo estado ou até 100 km): um "Sextou" de Santa
+    // Catarina abria o feed de quem é de Fortaleza (13/11/2026).
+    const ehDaRegiao = (r: any) => {
+      const id = String(r.id);
+      const d = distanceKmByPostId.get(id);
+      return !!sameStateByPostId.get(id) || (typeof d === 'number' && d <= 100);
+    };
     const themeFirst = (arr: any[]) => {
       const onTheme: any[] = [];
       const rest: any[] = [];
-      for (const r of arr) (matchesTheme(r.content) ? onTheme : rest).push(r);
+      for (const r of arr) (matchesTheme(r.content) && ehDaRegiao(r) ? onTheme : rest).push(r);
       return [...onTheme, ...rest];
     };
 
