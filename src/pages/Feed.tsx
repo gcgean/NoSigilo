@@ -481,9 +481,6 @@ export default function Feed() {
   const [initialProximityPreference] = useState(readFeedProximityPreference);
   const [nearbyRadius, setNearbyRadius] = useState<NearbyOption | null>(initialProximityPreference.nearbyRadius);
   const [cityOnly, setCityOnly] = useState(initialProximityPreference.cityOnly);
-  // "Minha região": posts de outros estados só depois de tocar em "Ver outras regiões".
-  const [verOutrasRegioes, setVerOutrasRegioes] = useState(false);
-  useEffect(() => { setVerOutrasRegioes(false); }, [cityOnly]);
 
   useEffect(() => {
     const preference: FeedProximityPreference = cityOnly
@@ -585,45 +582,13 @@ export default function Feed() {
       return visiblePosts.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post }));
     }
 
-    // "Minha região": mantém a ordem do servidor (cidade → estado → resto) e
-    // avisa onde a região acaba. O reagrupamento abaixo (6 primeiros / novidades /
-    // em alta) embaralhava a região com posts de outros estados.
+    // "Minha região": mantém a ordem do servidor (cidade → estado → estados mais
+    // próximos → …), sem parar nem avisar que a região acabou (13/11/2026, a
+    // pedido do dono: feed vazio ou "você já viu tudo" passa a impressão de pouca
+    // gente e aumenta cancelamento). O reagrupamento abaixo embaralharia a ordem.
     const meuEstado = String((user as any)?.state || '').trim().toUpperCase();
     if (cityOnly && nearbyRadius === null && meuEstado) {
-      const itens: Array<
-        | { type: 'post'; id: string; post: FeedPost }
-        | { type: 'section'; id: string; title: string; description: string; acao?: 'outras-regioes' }
-      > = [];
-      // "Minha região" para no estado (13/11/2026): quem já viu tudo da cidade
-      // recebia Mossoró a 330 km sem pedir. Os de outros estados só aparecem
-      // depois de tocar em "Ver outras regiões". Post já visto nunca volta.
-      const minhaCidade = String((user as any)?.city || '').trim();
-      let avisou = false;
-      for (let i = 0; i < visiblePosts.length; i++) {
-        const post = visiblePosts[i];
-        const estadoDoPost = String((post.author as any)?.state || '').trim().toUpperCase();
-        if (!avisou && estadoDoPost && estadoDoPost !== meuEstado) {
-          avisou = true;
-          itens.push(i === 0
-            ? {
-              type: 'section',
-              id: 'feed-section-fim-regiao',
-              title: `📍 Você já viu tudo ${minhaCidade ? `de ${minhaCidade}` : 'da sua região'} por enquanto`,
-              description: 'Quando alguém daí postar, aparece aqui primeiro.',
-              acao: verOutrasRegioes ? undefined : 'outras-regioes',
-            }
-            : {
-              type: 'section',
-              id: 'feed-section-fim-regiao',
-              title: '✅ Você já viu as novidades da sua região',
-              description: verOutrasRegioes ? 'Abaixo, dos estados mais próximos para os mais longe.' : 'Quando alguém daí postar, aparece aqui primeiro.',
-              acao: verOutrasRegioes ? undefined : 'outras-regioes',
-            });
-          if (!verOutrasRegioes) break;
-        }
-        itens.push({ type: 'post', id: `post-${post.id}`, post });
-      }
-      return itens;
+      return visiblePosts.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post }));
     }
 
     const primary: FeedPost[] = [];
@@ -632,9 +597,8 @@ export default function Feed() {
     const authorOccurrences = new Map<string, number>();
 
     // Região primeiro (13/11/2026): o reagrupamento abaixo chamava de
-    // "Novidades na sua região" posts de outros estados, e quem já tinha visto
-    // tudo da cidade achava que o feed estava errado. Agora a região passa pelo
-    // reagrupamento e os de fora vêm depois, com um aviso.
+    // "Novidades na sua região" posts de outros estados. Agora a região passa
+    // pelo reagrupamento e os de fora vêm logo depois, sem faixa de aviso.
     const daRegiao = visiblePosts.filter((p) => p.daRegiao !== false);
     const deFora = visiblePosts.filter((p) => p.daRegiao === false);
 
@@ -682,29 +646,10 @@ export default function Feed() {
       items.push(...remaining.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post })));
     }
 
-    if (deFora.length > 0) {
-      const lugar = String((user as any)?.city || '').trim() || 'da sua região';
-      items.push(daRegiao.length === 0
-        ? {
-          type: 'section',
-          id: 'feed-section-fim-regiao',
-          title: `📍 Você já viu tudo ${lugar === 'da sua região' ? lugar : `de ${lugar}`} por enquanto`,
-          description: 'Agora, publicações de outras regiões. Quando alguém daí postar, aparece primeiro aqui.',
-        }
-        : {
-          type: 'section',
-          id: 'feed-section-fim-regiao',
-          title: '✅ Fim das novidades da sua região',
-          description: 'Abaixo, publicações de outras regiões.',
-        });
-      items.push(...deFora.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post })));
-    }
+    items.push(...deFora.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post })));
 
     return items;
-  }, [feedFilter, feedSessionBaseline, visiblePosts, cityOnly, nearbyRadius, (user as any)?.state, (user as any)?.city, verOutrasRegioes]);
-
-  // Em "Minha região", com os posts de outros estados escondidos, não carrega mais (só traria mais de longe).
-  const regiaoParou = feedDisplayItems.some((it) => it.type === 'section' && (it as any).acao === 'outras-regioes');
+  }, [feedFilter, feedSessionBaseline, visiblePosts, cityOnly, nearbyRadius, (user as any)?.state]);
 
   // "Sugestões para você" (perfis do Match) entra depois do 4º item do feed principal.
   const feedItensComSugestoes = useMemo(() => {
@@ -3256,11 +3201,6 @@ export default function Feed() {
                 <div className="flex flex-col items-center gap-0.5 text-center">
                   <span className="text-xs font-bold tracking-wide text-brand-pink uppercase">{item.title}</span>
                   <span className="text-sm text-muted-foreground max-w-[240px] leading-tight">{item.description}</span>
-                  {(item as any).acao === 'outras-regioes' ? (
-                    <Button type="button" size="sm" variant="outline" className="mt-2 min-h-11" onClick={() => setVerOutrasRegioes(true)}>
-                      Ver outras regiões
-                    </Button>
-                  ) : null}
                 </div>
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
               </div>
@@ -3756,14 +3696,14 @@ export default function Feed() {
               description="Assim que alguém postar no feed, você já vê por aqui."
             />
           ) : null}
-          {feedFilter !== 'experiences' && !isLoading && hasMore && allPosts.length > 0 && !regiaoParou ? (
+          {feedFilter !== 'experiences' && !isLoading && hasMore && allPosts.length > 0 ? (
             <Card className="p-4 glass flex items-center justify-center">
               <Button type="button" variant="secondary" disabled={isLoadingMore} onClick={() => void loadMore()}>
                 {isLoadingMore ? 'Carregando...' : 'Carregar mais'}
               </Button>
             </Card>
           ) : null}
-          {feedFilter !== 'experiences' && !regiaoParou ? <div ref={loadMoreRef} /> : null}
+          {feedFilter !== 'experiences' ? <div ref={loadMoreRef} /> : null}
         </div>
 
         {/* ── Sidebar — desktop only (col 3 of the grid) ────────────────── */}

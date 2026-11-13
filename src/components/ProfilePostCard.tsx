@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
-import { Heart, MessageCircle, Eye, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import { feedService, interactionsService } from '@/services/api';
+import { Heart, MessageCircle, Eye, Loader2, MoreHorizontal, Pencil, Trash2, Ban, MessageCircleOff } from 'lucide-react';
+import { feedService, interactionsService, usersService } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
@@ -35,6 +35,8 @@ export type PostDoPerfil = {
   commentsCount?: number;
   viewsCount?: number;
   likedByMe?: boolean;
+  /** O dono desligou os comentários desta publicação. */
+  comentariosDesligados?: boolean;
 };
 
 type Comentario = {
@@ -92,6 +94,50 @@ export default function ProfilePostCard({
   const [rascunhoTexto, setRascunhoTexto] = useState('');
   const [salvandoTexto, setSalvandoTexto] = useState(false);
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+  // Moderação dos comentários no próprio post (13/11/2026): as mesmas opções do feed.
+  const [comentariosDesligados, setComentariosDesligados] = useState(!!post.comentariosDesligados);
+  const [comentarioParaApagar, setComentarioParaApagar] = useState<Comentario | null>(null);
+  const [pessoaParaBloquear, setPessoaParaBloquear] = useState<{ id: string; name: string } | null>(null);
+  const [moderando, setModerando] = useState(false);
+  const ehMeuComentario = (c: Comentario) => !!viewerId && String(c.user?.id) === String(viewerId);
+  const alternarComentariosDoPost = async () => {
+    const desligar = !comentariosDesligados;
+    try {
+      await feedService.setComentariosDesligados(post.id, desligar);
+      setComentariosDesligados(desligar);
+      toast({ title: desligar ? 'Comentários desligados' : 'Comentários ligados', description: desligar ? 'Ninguém mais consegue comentar nesta publicação. Os comentários que já existem continuam.' : undefined });
+    } catch {
+      toast({ title: 'Não foi possível mudar', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+  const apagarComentario = async () => {
+    if (!comentarioParaApagar) return;
+    setModerando(true);
+    try {
+      await interactionsService.deleteComment(comentarioParaApagar.id);
+      setComentarios((lista) => lista.filter((c) => c.id !== comentarioParaApagar.id));
+      setTotalComentarios((n) => Math.max(0, n - 1));
+      setComentarioParaApagar(null);
+    } catch {
+      toast({ title: 'Não foi possível apagar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setModerando(false);
+    }
+  };
+  const bloquearPessoa = async () => {
+    if (!pessoaParaBloquear) return;
+    setModerando(true);
+    try {
+      await usersService.blockUser(String(pessoaParaBloquear.id));
+      setComentarios((lista) => lista.filter((c) => String(c.user?.id) !== String(pessoaParaBloquear.id)));
+      toast({ title: `${pessoaParaBloquear.name} foi bloqueado(a)`, description: 'Dá para desbloquear em Configurações › Privacidade.' });
+      setPessoaParaBloquear(null);
+    } catch {
+      toast({ title: 'Não foi possível bloquear', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setModerando(false);
+    }
+  };
   const [excluindo, setExcluindo] = useState(false);
   const temMidia = (post.media || []).length > 0;
   // Quem curtiu: só para o dono (o backend recusa para os outros).
@@ -224,6 +270,12 @@ export default function ProfilePostCard({
                 <DropdownMenuItem onClick={() => { setRascunhoTexto(texto); setEditando(true); }}>
                   <Pencil className="h-4 w-4" />
                   Editar texto
+                </DropdownMenuItem>
+              )}
+              {podeGerenciar && (
+                <DropdownMenuItem onClick={() => void alternarComentariosDoPost()}>
+                  {comentariosDesligados ? <MessageCircle className="h-4 w-4" /> : <MessageCircleOff className="h-4 w-4" />}
+                  {comentariosDesligados ? 'Ligar comentários' : 'Desligar comentários'}
                 </DropdownMenuItem>
               )}
               {/* Confirmação desenhada na página, não window.confirm: navegador
@@ -396,9 +448,23 @@ export default function ProfilePostCard({
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
-                  <Link to={getUserProfileHref(c.user?.id, viewerId)} className="text-sm font-medium hover:underline">
-                    {c.user?.name || 'Alguém'}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link to={getUserProfileHref(c.user?.id, viewerId)} className="min-w-0 truncate text-sm font-medium hover:underline">
+                      {c.user?.name || 'Alguém'}
+                    </Link>
+                    {!ehMeuComentario(c) && (
+                      <span className="ml-auto flex shrink-0 items-center gap-1">
+                        {podeGerenciar && (
+                          <button type="button" onClick={() => setComentarioParaApagar(c)} className="min-h-9 rounded-full px-2.5 text-xs font-medium text-destructive hover:bg-destructive/10">
+                            Apagar
+                          </button>
+                        )}
+                        <button type="button" aria-label={`Bloquear ${c.user?.name || 'esta pessoa'}`} onClick={() => setPessoaParaBloquear({ id: String(c.user?.id), name: c.user?.name || 'Esta pessoa' })} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                          <Ban className="h-4 w-4" />
+                        </button>
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     <PostContent content={c.content} />
                   </p>
@@ -407,6 +473,13 @@ export default function ProfilePostCard({
             ))
           )}
 
+          {comentariosDesligados && (
+            <p className="flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+              <MessageCircleOff className="h-4 w-4" />
+              {podeGerenciar ? 'Você desligou os comentários desta publicação.' : 'O autor desligou os comentários desta publicação.'}
+            </p>
+          )}
+          {!(comentariosDesligados && !podeGerenciar) && (
           <div className="flex gap-2">
             <input
               value={rascunho}
@@ -426,8 +499,39 @@ export default function ProfilePostCard({
               {enviando ? 'Enviando...' : 'Enviar'}
             </button>
           </div>
+          )}
         </div>
       ) : null}
+
+      {/* Confirmações desenhadas na página (navegador do Instagram bloqueia window.confirm). */}
+      <AlertDialog open={!!comentarioParaApagar} onOpenChange={(v) => { if (!v && !moderando) setComentarioParaApagar(null); }}>
+        <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar este comentário?</AlertDialogTitle>
+            <AlertDialogDescription>Ele some da sua publicação para todo mundo.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={moderando}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={moderando} onClick={(e) => { e.preventDefault(); void apagarComentario(); }}>
+              {moderando ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apagar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!pessoaParaBloquear} onOpenChange={(v) => { if (!v && !moderando) setPessoaParaBloquear(null); }}>
+        <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bloquear {pessoaParaBloquear?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>Vocês não vão mais se ver nem conseguir conversar. Dá para desbloquear em Configurações › Privacidade.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={moderando}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={moderando} onClick={(e) => { e.preventDefault(); void bloquearPessoa(); }}>
+              {moderando ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Bloquear'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </article>
   );
 }

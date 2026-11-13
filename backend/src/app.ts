@@ -8255,10 +8255,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           return createdDiff || aId.localeCompare(bId);
         })
       : maxDistanceKm !== null && viewerLat !== null && viewerLon !== null
-        ? orderedRows.filter((r: any) => {
-            const d = distanceKmByPostId.get(String(r.id));
-            return d !== null && d !== undefined && d <= maxDistanceKm;
-          })
+        // Filtro de km (13/11/2026): primeiro quem está dentro do raio; acabou,
+        // segue com os mais perto fora dele, por distância. Nunca fica vazio —
+        // feed vazio passa a impressão de pouca gente e aumenta cancelamento.
+        ? (() => {
+            const dist = (r: any) => {
+              const d = distanceKmByPostId.get(String(r.id));
+              return typeof d === 'number' ? d : Number.POSITIVE_INFINITY;
+            };
+            const dentro = orderedRows.filter((r: any) => dist(r) <= maxDistanceKm);
+            const fora = orderedRows.filter((r: any) => dist(r) > maxDistanceKm).sort((x: any, y: any) => dist(x) - dist(y));
+            return [...dentro, ...fora];
+          })()
         : orderedRows;
 
     // Tema do dia: prioriza posts on-theme (ex.: quinta = TBT) no topo, em ordem
@@ -13553,7 +13561,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const rows = await queryAll(
       db,
-      `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.video_temas, COALESCE(p.processando, 0) AS processando
+      `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.video_temas, COALESCE(p.processando, 0) AS processando, COALESCE(p.comentarios_desligados, 0) AS comentarios_desligados
        FROM posts p
        WHERE p.user_id = ?
          ${filtroProcessando}
@@ -13643,6 +13651,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           content: r.content,
           createdAt: r.created_at,
           processando: Number(r.processando || 0) === 1,
+          comentariosDesligados: Number(r.comentarios_desligados || 0) === 1,
           temas: r.video_temas ? String(r.video_temas).split(',') : [],
           media,
           likesCount: likesByPost.get(pid) ?? 0,
@@ -17793,7 +17802,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
     const post = (await queryOne(
       db,
-      `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.user_id, COALESCE(p.processando, 0) AS processando,
+      `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.user_id, COALESCE(p.processando, 0) AS processando, COALESCE(p.comentarios_desligados, 0) AS comentarios_desligados,
               u.name AS author_name,
               (SELECT m.filename FROM media m WHERE m.user_id = u.id AND m.is_main = 1 AND m.is_private = 0 LIMIT 1) AS author_avatar
        FROM posts p
@@ -17846,6 +17855,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         commentsCount: Number(comentarios?.c || 0),
         viewsCount: Number(visualizacoes?.c || 0),
         likedByMe: !!minha,
+        comentariosDesligados: Number(post.comentarios_desligados || 0) === 1,
         author: {
           id: String(post.user_id),
           name: String(post.author_name || ''),
