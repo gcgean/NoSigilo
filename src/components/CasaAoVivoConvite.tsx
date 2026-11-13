@@ -44,7 +44,7 @@ export default function CasaAoVivoConvite() {
 
   return (
     <Dialog open={aberto} onOpenChange={setAberto}>
-      <DialogContent className="max-w-sm overflow-hidden border-rose-500/50 bg-gradient-to-br from-zinc-950 via-fuchsia-950 to-rose-900 p-0 text-white">
+      <DialogContent className="max-h-[calc(100dvh-1.5rem)] max-w-sm overflow-y-auto overscroll-contain border-rose-500/50 bg-gradient-to-br from-zinc-950 via-fuchsia-950 to-rose-900 p-0 text-white">
         <div className="space-y-3 p-6 text-center">
           <p className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-rose-200">
             <span className="relative flex h-2.5 w-2.5"><span className="absolute inset-0 animate-ping rounded-full bg-rose-400" /><span className="relative h-2.5 w-2.5 rounded-full bg-rose-500" /></span>

@@ -75,7 +75,9 @@ export default function ReferralPaywallModal({ open, onClose, contexto }: Props)
       <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
       <InviteModal open={showInviteModal} onClose={() => setShowInviteModal(false)} />
       <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-        <DialogContent overlayClassName="z-[80]" className="z-[80] max-w-md w-full p-0 overflow-hidden rounded-2xl border-0">
+        {/* Altura limitada à tela, rolando por dentro: no celular a janela era mais
+            alta que a tela e o topo ficava cortado (tela de Eventos, 13/11/2026). */}
+        <DialogContent overlayClassName="z-[80]" className="z-[80] max-h-[calc(100dvh-1.5rem)] max-w-md w-[calc(100%-1.5rem)] overflow-y-auto overscroll-contain p-0 rounded-2xl border-0 sm:w-full">
           <DialogTitle className="sr-only">NoSigilo Premium</DialogTitle>
           {/* Header gradient */}
           <div className="relative bg-gradient-to-br from-primary/90 via-primary to-purple-600 px-6 pt-8 pb-10 text-white">

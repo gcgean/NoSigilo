@@ -412,7 +412,7 @@ function ProfileGateModal({ missingFields, onComplete, onDismiss }: GateModalPro
     <Dialog open onOpenChange={(v) => { if (!v) onDismiss(); }}>
       {/* z-[80]: no celular o chat aberto fica em z-index 60 e escondia esta
           janela — a mensagem "não enviava" sem aparecer nada (Gaaby, 10/11/2026). */}
-      <DialogContent overlayClassName="z-[80]" className="z-[80] max-w-sm w-full p-0 overflow-hidden rounded-2xl border-0">
+      <DialogContent overlayClassName="z-[80]" className="z-[80] max-h-[calc(100dvh-1.5rem)] max-w-sm w-full overflow-y-auto overscroll-contain p-0 rounded-2xl border-0">
         <DialogTitle className="sr-only">Complete seu perfil</DialogTitle>
         {/* Header */}
         <div className="relative bg-gradient-to-br from-violet-600 via-primary to-rose-500 px-6 pt-7 pb-9 text-white">

@@ -39,7 +39,7 @@ export default function WelcomeModal() {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) dismiss(); }}>
-      <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
+      <DialogContent className="max-h-[calc(100dvh-1.5rem)] max-w-md gap-0 overflow-y-auto overscroll-contain p-0">
         <DialogTitle className="sr-only">Boas-vindas ao NoSigilo</DialogTitle>
         {/* Hero sensual */}
         <div className="relative overflow-hidden bg-gradient-to-br from-primary via-rose-600 to-[#2a0a18] px-6 pb-6 pt-8 text-center text-white">

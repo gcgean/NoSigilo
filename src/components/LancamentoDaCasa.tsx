@@ -89,7 +89,7 @@ export default function LancamentoDaCasa() {
 
   return (
     <Dialog open={aberto} onOpenChange={setAberto}>
-      <DialogContent className="max-w-sm overflow-hidden border-fuchsia-500/40 bg-gradient-to-br from-zinc-950 via-fuchsia-950 to-rose-900 p-0 text-white">
+      <DialogContent className="max-h-[calc(100dvh-1.5rem)] max-w-sm overflow-y-auto overscroll-contain border-fuchsia-500/40 bg-gradient-to-br from-zinc-950 via-fuchsia-950 to-rose-900 p-0 text-white">
         <DialogTitle className="sr-only">A Casa: reserve seu lugar</DialogTitle>
         <div className="space-y-3 p-6 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-200">{lancamento ? (ehHoje ? 'É hoje! Inauguração às 21h' : 'Inauguração · sexta 23/10 · 21h') : ehHoje ? `É hoje · às ${horaHoje}` : `Próxima noite · ${quando}`}</p>
