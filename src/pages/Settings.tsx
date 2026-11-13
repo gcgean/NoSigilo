@@ -1,6 +1,6 @@
 import { getCoupleLabels } from '@/utils/profileAgeLabel';
 import SaibaMais from '@/components/SaibaMais';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import ContactProfileFilter from '@/components/ContactProfileFilter';
 import {
@@ -603,16 +603,23 @@ export default function Settings() {
     return () => window.clearTimeout(t);
   }, []);
 
-  useEffect(() => {
-    if (window.location.hash !== '#excluir-conta') return;
+  // Leva até "Pausar / Excluir conta" (aba Segurança) e destaca. Usado pelo link
+  // #excluir-conta e pelo atalho fixo no fim da tela (13/11/2026: muita gente ia
+  // ao suporte por não achar onde excluir).
+  const irParaZonaDePerigo = useCallback(() => {
     setAbaAtiva('security');
-    const t = window.setTimeout(() => {
+    window.setTimeout(() => {
       zonaPerigoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setDestacarZonaPerigo(true);
       window.setTimeout(() => setDestacarZonaPerigo(false), 2600);
     }, 250);
-    return () => window.clearTimeout(t);
   }, []);
+  useEffect(() => {
+    const conferir = () => { if (window.location.hash === '#excluir-conta') irParaZonaDePerigo(); };
+    conferir();
+    window.addEventListener('hashchange', conferir);
+    return () => window.removeEventListener('hashchange', conferir);
+  }, [irParaZonaDePerigo]);
 
   return (
     <div className="max-w-3xl mx-auto w-full">
@@ -2323,6 +2330,13 @@ export default function Settings() {
           <SuggestionsTab />
         </TabsContent>
       </Tabs>
+
+      {/* Atalho discreto, em qualquer aba: pausar ou excluir sem precisar procurar. */}
+      <div className="mt-8 border-t border-border/60 pt-4 text-center">
+        <button type="button" onClick={irParaZonaDePerigo} className="min-h-11 px-3 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+          Pausar ou excluir minha conta
+        </button>
+      </div>
     </div>
   );
 }
