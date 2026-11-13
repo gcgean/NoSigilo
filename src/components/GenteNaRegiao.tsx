@@ -40,7 +40,8 @@ export function GenteNaRegiao({ raioAtualKm, onVer }: { raioAtualKm: number | nu
     <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5">
       <MapPin className="h-4 w-4 shrink-0 text-emerald-500" />
       <p className="min-w-0 flex-1 text-xs leading-5 text-foreground">
-        Tem muito mais gente perto de você: <b>{numeroComMais(regiao.naRegiao)} perfis ativos</b> a até {regiao.raioKm} km.
+        {/* Sem a quantidade de perfis (13/11/2026, a pedido do dono). */}
+        Tem muito mais gente perto de você, a até <b>{regiao.raioKm} km</b>.
       </p>
       <button
         type="button"
