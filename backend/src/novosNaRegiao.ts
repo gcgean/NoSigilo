@@ -98,16 +98,25 @@ export function leitorDaLinha(row: any): Leitor {
   };
 }
 
-/** Está na região do leitor: mesma cidade/UF ou até RAIO_KM. */
-export function naRegiao(leitor: Leitor, p: PerfilNovo): { mesmaCidade: boolean } | null {
+/**
+ * Está na região do leitor: mesma cidade, até RAIO_KM ou (com `incluirEstado`)
+ * mesmo estado. `grupo` ordena a aba: 0 cidade, 1 até 50 km, 2 resto do estado.
+ */
+export function naRegiao(
+  leitor: Leitor,
+  p: PerfilNovo,
+  incluirEstado = false,
+): { mesmaCidade: boolean; grupo: number; km: number | null } | null {
+  const km = leitor.lat != null && leitor.lon != null && p.lat != null && p.lon != null
+    ? distanciaKm({ lat: leitor.lat, lon: leitor.lon }, { lat: p.lat, lon: p.lon })
+    : null;
   const mesmaCidade =
     !!leitor.city &&
     normalizar(leitor.city) === normalizar(p.city) &&
     (!leitor.state || !p.state || normalizar(leitor.state) === normalizar(p.state));
-  if (mesmaCidade) return { mesmaCidade: true };
-  if (leitor.lat != null && leitor.lon != null && p.lat != null && p.lon != null) {
-    if (distanciaKm({ lat: leitor.lat, lon: leitor.lon }, { lat: p.lat, lon: p.lon }) <= RAIO_KM) return { mesmaCidade: false };
-  }
+  if (mesmaCidade) return { mesmaCidade: true, grupo: 0, km };
+  if (km != null && km <= RAIO_KM) return { mesmaCidade: false, grupo: 1, km };
+  if (incluirEstado && !!leitor.state && normalizar(leitor.state) === normalizar(p.state)) return { mesmaCidade: false, grupo: 2, km };
   return null;
 }
 
@@ -163,19 +172,28 @@ export async function bloqueiosEntre(db: DbHandle, ids: string[]): Promise<Set<s
   return pares;
 }
 
-/** O que o leitor deve ver: da região, combina com ele, sem bloqueio, sem lotar. */
-export function novosParaLeitor(leitor: Leitor, perfis: PerfilNovo[], bloqueios: Set<string>) {
-  const lista: Array<PerfilNovo & { mesmaCidade: boolean }> = [];
-  for (const p of perfis) {
-    if (p.id === leitor.id) continue;
-    if (p.boasVindasRecebidas >= MAX_BOAS_VINDAS_RECEBIDAS) continue;
-    if (bloqueios.has(`${leitor.id}|${p.id}`)) continue;
-    if (!combinaComOQueProcura(leitor.lookingFor, p.gender)) continue;
-    const r = naRegiao(leitor, p);
-    if (!r) continue;
-    lista.push({ ...p, mesmaCidade: r.mesmaCidade });
-  }
-  return lista;
+/**
+ * O que o leitor deve ver: da região, combina com ele, sem bloqueio, sem lotar.
+ * A aba do Chat passa `incluirEstado` (12/11/2026: o estado todo, ordenado por
+ * cidade, depois até 50 km, depois o resto do estado, sempre do mais perto ao
+ * mais longe). O aviso no celular continua só cidade e 50 km.
+ */
+export function novosParaLeitor(leitor: Leitor, perfis: PerfilNovo[], bloqueios: Set<string>, incluirEstado = false) {
+  const lista: Array<PerfilNovo & { mesmaCidade: boolean; grupo: number; km: number | null; ordem: number }> = [];
+  perfis.forEach((p, ordem) => {
+    if (p.id === leitor.id) return;
+    if (p.boasVindasRecebidas >= MAX_BOAS_VINDAS_RECEBIDAS) return;
+    if (bloqueios.has(`${leitor.id}|${p.id}`)) return;
+    if (!combinaComOQueProcura(leitor.lookingFor, p.gender)) return;
+    const r = naRegiao(leitor, p, incluirEstado);
+    if (!r) return;
+    lista.push({ ...p, mesmaCidade: r.mesmaCidade, grupo: r.grupo, km: r.km, ordem });
+  });
+  // Grupo, depois distância (sem GPS vai por último no grupo), depois o mais novo.
+  return lista.sort((a, b) =>
+    a.grupo - b.grupo
+    || (a.km ?? Number.POSITIVE_INFINITY) - (b.km ?? Number.POSITIVE_INFINITY)
+    || a.ordem - b.ordem);
 }
 
 /** null = pode; senão, o motivo para mostrar a quem tentou. */

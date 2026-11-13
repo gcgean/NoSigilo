@@ -152,16 +152,24 @@ export default function Match() {
   const premiumAccess = hasPremiumAccess(user);
   const { requireFields } = useProfileGate();
 
-  // Banner "X perfis procuram alguém como você" — aparece ao entrar no Match para
-  // quem NÃO é assinante pagante (trial/expirado incluídos), 1x por sessão.
+  // Banner "X pessoas já estão de olho em você" — para quem NÃO é assinante
+  // pagante (trial/expirado incluídos), no máximo 1x por dia. Era 1x por sessão
+  // (sessionStorage), e no celular a sessão recomeça a cada vez que o app abre:
+  // aparecia quase toda vez que a pessoa entrava no Match (12/11/2026).
   const [showSeekingYou, setShowSeekingYou] = useState(false);
   const isPaidSubscriber = !!user?.isPremium && premiumAccess;
   useEffect(() => {
     if (!user?.id || isPaidSubscriber) return;
-    const key = 'nosigilo:seeking-you-session';
-    if (sessionStorage.getItem(key)) return;
+    const key = `nosigilo:seeking-you-dia:${user.id}`;
+    const hoje = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    try {
+      if (localStorage.getItem(key) === hoje) return;
+      localStorage.setItem(key, hoje);
+    } catch {
+      // Sem storage: não insiste (melhor não mostrar do que mostrar sempre).
+      return;
+    }
     setShowSeekingYou(true);
-    try { sessionStorage.setItem(key, '1'); } catch { /* ignora */ }
   }, [user?.id, isPaidSubscriber]);
   const { percent: profilePercent, missing: profileMissing } = useMemo(() => calcProfileCompletion({
     avatar: user?.avatar ?? null,

@@ -14815,19 +14815,24 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     const leitor = leitorDaLinha(eu);
     const perfis = await perfisNovosDesde(db, new Date(Date.now() - DIAS_NA_ABA * 24 * 60 * 60 * 1000).toISOString());
-    const lista = novosParaLeitor(leitor, perfis, await bloqueiosEntre(db, [userId])).slice(0, 60);
-    const ids = lista.map((p) => p.id);
+    // Estado inteiro, ordenado por cidade, até 50 km e resto do estado.
+    const candidatos = novosParaLeitor(leitor, perfis, await bloqueiosEntre(db, [userId]), true).slice(0, 400);
+    const candIds = candidatos.map((p) => p.id);
     const curtidos = new Set<string>();
     const enviados = new Set<string>();
-    if (ids.length > 0) {
-      const ph = ids.map(() => '?').join(',');
-      for (const r of (await queryAll(db, `SELECT target_id FROM likes WHERE user_id = ? AND target_type = 'user' AND target_id IN (${ph})`, [userId, ...ids])) as any[]) {
+    for (let i = 0; i < candIds.length; i += 200) {
+      const lote = candIds.slice(i, i + 200);
+      const ph = lote.map(() => '?').join(',');
+      for (const r of (await queryAll(db, `SELECT target_id FROM likes WHERE user_id = ? AND target_type = 'user' AND target_id IN (${ph})`, [userId, ...lote])) as any[]) {
         curtidos.add(String(r.target_id));
       }
-      for (const r of (await queryAll(db, `SELECT to_user_id FROM boas_vindas WHERE from_user_id = ? AND to_user_id IN (${ph})`, [userId, ...ids])) as any[]) {
+      for (const r of (await queryAll(db, `SELECT to_user_id FROM boas_vindas WHERE from_user_id = ? AND to_user_id IN (${ph})`, [userId, ...lote])) as any[]) {
         enviados.add(String(r.to_user_id));
       }
     }
+    // Só quem ainda não foi curtido nem recebeu boas-vindas (12/11/2026): a aba
+    // é para descobrir gente nova, não para rever quem já foi chamado.
+    const lista = candidatos.filter((p) => !curtidos.has(p.id) && !enviados.has(p.id)).slice(0, 60);
     res.json({
       cidade: eu.city ?? null,
       perfis: lista.map((p) => {

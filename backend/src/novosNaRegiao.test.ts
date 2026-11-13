@@ -35,6 +35,19 @@ describe('novosNaRegiao — regras', () => {
     expect(lista.map((p) => [p.id, p.mesmaCidade])).toEqual([['cidade', true], ['caucaia', false]]);
   });
 
+  it('aba inclui o estado todo: cidade, depois até 50 km, depois resto do estado, do mais perto ao mais longe', () => {
+    const SOBRAL = { lat: -3.6889, lon: -40.3497 }; // ~200 km, ainda CE
+    const lista = novosParaLeitor(leitor, [
+      perfil({ id: 'sobral', city: 'Sobral', ...SOBRAL }),
+      perfil({ id: 'caucaia', city: 'Caucaia', ...CAUCAIA }),
+      perfil({ id: 'cidade' }),
+      perfil({ id: 'recife', city: 'Recife', state: 'PE', ...RECIFE }),
+    ], new Set(), true);
+    expect(lista.map((p) => p.id)).toEqual(['cidade', 'caucaia', 'sobral']);
+    // Sem o estado (aviso no celular), Sobral fica de fora.
+    expect(novosParaLeitor(leitor, [perfil({ id: 'sobral', city: 'Sobral', ...SOBRAL })], new Set()).length).toBe(0);
+  });
+
   it('sem preferência marcada, combina com todos', () => {
     expect(combinaComOQueProcura([], 'Homem')).toBe(true);
     expect(combinaComOQueProcura(['Casal (Ele/Ele)'], 'Casal (Ele/Ela)')).toBe(true);
@@ -110,7 +123,8 @@ describe('novosNaRegiao — rotas', () => {
     expect(segunda.body.message).toMatch(/já deu boas-vindas/);
 
     const depois = await request(app).get('/api/regiao/novos').set('Authorization', `Bearer ${eu.token}`).expect(200);
-    expect(depois.body.perfis[0].boasVindasEnviada).toBe(true);
+    // Quem já recebeu boas-vindas sai da aba (12/11/2026).
+    expect(depois.body.perfis.map((p: any) => p.name)).not.toContain('Nova');
 
     // Sem limite diário (antes eram 5): a 8ª do dia também passa.
     for (let i = 0; i < 7; i++) {
