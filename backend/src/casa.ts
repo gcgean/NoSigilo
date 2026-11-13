@@ -1400,7 +1400,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       'hj eu vim pra gozar gostoso, sem vergonha nenhuma 💦',
     ],
   };
-  const falaPronta = (sala: Sala) => sortear(FALAS_PRONTAS_PROMOTOR[sala.nivel === 'muito_quente' ? 'muito_quente' : 'quente']);
+  const falaProntaDaSala = (sala: Sala) => sortear(FALAS_PRONTAS_PROMOTOR[sala.nivel === 'muito_quente' ? 'muito_quente' : 'quente']);
   // O nome do outro sai exatamente como no perfil, como @menção (igual entre as pessoas
   // da sala) e, no começo da fala, separado por vírgula ("@soumorenagata, a gente…").
   const ajustarNomeNaFala = (texto: string, nome: string) => {
@@ -1410,7 +1410,14 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     t = t.replace(new RegExp(`^${esc},\\s*`), `${nome}, `);
     return t.replace(new RegExp(`(^|[^@\\w])(${esc})(?![\\w])`, 'g'), '$1@$2');
   };
+  // Começo natural (13/11/2026, pedido do dono): a dupla se cumprimenta antes de
+  // provocar; abrir já com putaria soava robótico. d.falas já conta a fala atual.
+  const CUMPRIMENTOS_PRONTOS = ['oi, boa noite 😊 primeira vez de vcs aqui?', 'eita, boa noite! tudo bem com vcs?', 'oii, tudo bom? cheguei agora kkk'];
+  const RESPOSTAS_PRONTAS = ['boa noite! tudo ótimo e vc? tava esperando alguém interessante aparecer 😏', 'oi! tudo sim kkk e por aí? chegou bem na hora', 'tudo bem sim, e vc? gostei de ver vc por aqui 😏'];
   const falaDoPromotor = async (sala: Sala, quem: Promotor, outro: Promotor, d: Dupla): Promise<string> => {
+    const etapaInicial = d.falas <= 1 ? 'cumprimento' : d.falas === 2 ? 'resposta' : null;
+    const falaPronta = (sala: Sala) => etapaInicial === 'cumprimento' ? ajustarNomeNaFala(`${outro.nome}, ${sortear(CUMPRIMENTOS_PRONTOS)}`, outro.nome)
+      : etapaInicial === 'resposta' ? sortear(RESPOSTAS_PRONTAS) : falaProntaDaSala(sala);
     if (!deps.deepseekKey) return falaPronta(sala);
     const ids = new Set([`promotor:${quem.id}`, `promotor:${outro.id}`]);
     const conversa = sala.mensagens.filter((m) => m.tipo === 'promotor' && ids.has(m.autor?.id ?? '')).slice(-8)
@@ -1437,8 +1444,12 @@ Regras do diálogo:
 - Cada um age de acordo com o PRÓPRIO perfil (tipo, o que curte, a bio) e com o perfil do outro: um casal fala de trazer o outro pra eles, uma mulher fala do que quer com o casal ou com o homem, e assim por diante.
 - É uma conversa SÓ entre os dois, na frente da sala, para os casais que assistem se soltarem. Não fale com mais ninguém, não comente quem entrou ou saiu, não cite outros nomes.
 - Escreva o nome do outro EXATAMENTE assim: "${outro.nome}", seguido de vírgula quando chamar por ele.
-- ${primeira ? `É a primeira fala: comece chamando "${outro.nome}" pelo nome e abra a cena com uma provocação clara (sem pressupor nada que não foi dito).` : `Responda DIRETAMENTE à última fala de "${outro.nome}", retomando o que foi dito, e leve a cena um passo adiante.`}
-- Tom: conversa BEM safada${sala.nivel === 'muito_quente' ? ' e explícita (tesão, o que vão fazer na cabine, chupar, sentar, meter, gozar, de quatro), com exibicionismo e cuckold quando combinar' : ', cheia de tesão e putaria leve (o que fariam um com o outro, onde iam pegar, como iam provocar)'}. Suba o tom a cada fala, sem repetir frases.
+- ${etapaInicial === 'cumprimento' || primeira
+  ? `É a primeira fala: comece CUMPRIMENTANDO "${outro.nome}" pelo nome, como gente de verdade chegando no bar (oi, boa noite, tudo bem?), e puxe papo leve e curioso (primeira vez n'A Casa, de onde são, o que acharam da sala). Ainda SEM putaria nesta fala; no máximo um charme.`
+  : etapaInicial === 'resposta'
+  ? `Responda o cumprimento de "${outro.nome}" com naturalidade (retribua o oi/boa noite, responda o que perguntou) e solte uma primeira provocação LEVE, só um flerte.`
+  : `Responda DIRETAMENTE à última fala de "${outro.nome}", retomando o que foi dito, e leve a cena um passo adiante.`}
+- Tom (depois do cumprimento inicial): conversa BEM safada${sala.nivel === 'muito_quente' ? ' e explícita (tesão, o que vão fazer na cabine, chupar, sentar, meter, gozar, de quatro), com exibicionismo e cuckold quando combinar' : ', cheia de tesão e putaria leve (o que fariam um com o outro, onde iam pegar, como iam provocar)'}. Suba o tom a cada fala, sem repetir frases.
 - Jeito de falar: brasileiro de verdade conversando no chat de um app de swing, NÃO texto escrito. Mensagem curta (1 frase, às vezes 2), informal, com abreviações e gírias do dia a dia: vc, tá, tô, pra, né, mó, tipo, aí, kkkk, nossa, eita, delícia, gostosa, safado(a), tesão, putaria. Pode começar com letra minúscula e sem pontuação certinha. Nada de frase de efeito, nada de "Desafio aceito!", nada de palavras rebuscadas.
 - Exemplos do JEITO (não copie): "nossa vc sabe provocar né kkk", "tô aqui imaginando minha mulher sentando em vc 😈", "para que eu fico molhada aqui na frente de todo mundo", "vem pra cabine que a gente te mostra", "eita, assim a sala inteira vai ficar com tesão kkkk"
 - Proibido: menores ou idade jovem, incesto, animais, violência, falta de consentimento, drogas, dinheiro, pedir contato ou fotos, marcar encontro fora, links.
