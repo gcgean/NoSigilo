@@ -5646,7 +5646,7 @@ describe('nosigilo backend', () => {
         [`sp-${i}`, String(paulista.user.id), i === 0 ? 'Sextou!' : `post ${i}`, '[]', 0, new Date(agora - i * 60_000).toISOString()]);
     }
     await run(ctx.db, 'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      ['ce-antigo', String(cearense.user.id), 'Oi Fortaleza', '[]', 0, new Date(agora - 3 * 86_400_000).toISOString()]);
+      ['ce-antigo', String(cearense.user.id), 'Oi Fortaleza', '[]', 0, new Date(agora - 120 * 86_400_000).toISOString()]);
     await ctx.db.persist();
     const r = await request(ctx.app).get('/api/feed').query({ limit: 40 }).set('Authorization', `Bearer ${leitor.token}`).expect(200);
     const ids = (r.body.posts as any[]).map((p) => String(p.id));

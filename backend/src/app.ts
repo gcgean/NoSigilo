@@ -7854,19 +7854,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // recentes do Brasil (~1 dia), e os não-vistos da região de mais de 1 dia
       // nunca entravam na disputa — quem é de Fortaleza recebia SC e SP com 166
       // posts do Ceará da semana ainda por ver. Busca também os não-vistos do
-      // mesmo estado dos últimos 7 dias; a ordenação por proximidade abaixo os
-      // põe na frente.
+      // mesmo estado, de qualquer data (do mais novo ao mais antigo): a pessoa
+      // esgota a região antes de ver gente de longe. A ordenação por
+      // proximidade abaixo os põe na frente.
       if (!cityOnly && viewerStateRaw) {
         const idsJa = new Set(unseen.map((r: any) => String(r.id)));
         const regionais = (await queryAll(
           db,
           `${feedSelect}
            AND u.state IS NOT NULL AND UPPER(TRIM(u.state)) = ?
-           AND p.created_at >= ?
            AND NOT EXISTS (SELECT 1 FROM post_views pv WHERE pv.post_id = p.id AND pv.viewer_id = ?)
            ${justShownClause}
            ORDER BY p.created_at DESC LIMIT 200`,
-          [...baseParams, viewerStateRaw, isoHaDias(7), req.auth!.userId, ...seenIdsList]
+          [...baseParams, viewerStateRaw, req.auth!.userId, ...seenIdsList]
         )) as any[];
         for (const r of regionais) {
           if (!idsJa.has(String(r.id))) { unseen.push(r); idsJa.add(String(r.id)); }
