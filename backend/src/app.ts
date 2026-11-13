@@ -2750,7 +2750,7 @@ function rowToPublicUser(
           officialAmbassadorSince: row.embaixador_oficial_em ?? null,
           officialAmbassadorHidden: Number(row.embaixador_oficial_oculto || 0) === 1,
           // Só para a própria pessoa: o app pede para ativar o GPS se não tiver.
-          localizacaoGps: String(row.location_source || '') === 'gps',
+          localizacaoGps: ['gps', 'gps_manual'].includes(String(row.location_source || '')),
         }
       : {}),
     boosted: !!(row.boost_until && new Date(row.boost_until).getTime() > Date.now()),
@@ -17906,6 +17906,24 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const nearest = await nearestCity(db, parsed.data.lat, parsed.data.lng);
     const latGuardada = arredondarCoordenada(parsed.data.lat);
     const lonGuardada = arredondarCoordenada(parsed.data.lng);
+    // Cidade escolhida à mão (Configurações) vale enquanto a pessoa estiver na
+    // região dela (13/11/2026): o GPS automático trocava "Fortaleza" de volta
+    // para "Eusébio" a cada abertura do app. Só a distância passa a vir do GPS.
+    const atual = (await queryOne(db, 'SELECT city, state, location_source FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const cidadeManual = ['profile_city', 'gps_manual'].includes(String(atual?.location_source || '')) && atual?.city;
+    let manterCidade = false;
+    if (cidadeManual) {
+      const daCidade = (await queryOne(db, 'SELECT lat, lon FROM cities WHERE name = ? AND state = ? LIMIT 1', [String(atual.city), String(atual.state || '')])) as any;
+      if (daCidade) {
+        manterCidade = haversineKm({ lat: parsed.data.lat, lon: parsed.data.lng }, { lat: Number(daCidade.lat), lon: Number(daCidade.lon) }) <= 30;
+      }
+    }
+    if (manterCidade) {
+      await run(db, "UPDATE users SET lat = ?, lon = ?, location_source = 'gps_manual' WHERE id = ?", [latGuardada, lonGuardada, req.auth!.userId]);
+      await persist();
+      res.json({ ok: true, city: atual.city ?? null, state: atual.state ?? null });
+      return;
+    }
     if (nearest) {
       await run(
         db,

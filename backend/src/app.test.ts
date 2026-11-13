@@ -533,7 +533,9 @@ describe('nosigilo backend', () => {
       .set('Authorization', `Bearer ${viewer.token}`)
       .send({ lat: -3.7361, lng: -38.6531 })
       .expect(200);
-    expect(gpsUpdate.body.city).toBe('Caucaia');
+    // A cidade escolhida no cadastro (Fortaleza) vale enquanto a pessoa estiver
+    // na região (13/11/2026); o GPS passa a dar só a distância.
+    expect(gpsUpdate.body.city).toBe('Fortaleza');
     expect(gpsUpdate.body.state).toBe('CE');
 
     const gpsViewer = (await queryOne(
@@ -541,9 +543,9 @@ describe('nosigilo backend', () => {
       'SELECT city, state, lat, lon, location_source FROM users WHERE id = ?',
       [viewer.user.id]
     )) as any;
-    expect(gpsViewer.city).toBe('Caucaia');
+    expect(gpsViewer.city).toBe('Fortaleza');
     expect(gpsViewer.state).toBe('CE');
-    expect(gpsViewer.location_source).toBe('gps');
+    expect(gpsViewer.location_source).toBe('gps_manual');
     // GPS guardado arredondado (~1 km, LGPD).
     expect(Number(gpsViewer.lat)).toBe(-3.74);
     expect(Number(gpsViewer.lon)).toBe(-38.65);
@@ -810,6 +812,15 @@ describe('nosigilo backend', () => {
     expect(await nearestCity(ctx.db, 38.7538, -9.2308)).toMatchObject({ name: 'Amadora', state: 'PT' });
     expect(await nearestCity(ctx.db, 39.7436, -8.8071)).toMatchObject({ name: 'Leiria', state: 'PT' });
     expect(await nearestCity(ctx.db, -2.44, -54.70)).toMatchObject({ state: 'PA' });
+    for (const [nome, norm, uf, la, lo] of [['Fortaleza', 'fortaleza', 'CE', -3.71722, -38.54306], ['Eusébio', 'eusebio', 'CE', -3.8695, -38.45545], ['Recife', 'recife', 'PE', -8.05389, -34.88111]] as const) {
+      if (!(await queryOne(ctx.db, 'SELECT 1 AS x FROM cities WHERE name = ? AND state = ?', [nome, uf]))) {
+        await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', [nome, norm, uf, la, lo]);
+      }
+    }
+    // Periferia de cidade grande fica na cidade grande (13/11/2026): o sul de
+    // Fortaleza está mais perto do centro de Eusébio do que do de Fortaleza.
+    expect(await nearestCity(ctx.db, -3.82, -38.52)).toMatchObject({ name: 'Fortaleza', state: 'CE' });
+    expect(await nearestCity(ctx.db, -3.8695, -38.4555)).toMatchObject({ name: 'Eusébio', state: 'CE' });
   });
 
   it('admin remove publicação alheia e não aparece como visitante', async () => {
@@ -5600,6 +5611,25 @@ describe('nosigilo backend', () => {
     await comentar(dono.token).expect(200);
     await request(ctx.app).put(`/api/posts/${postId}/comentarios`).set('Authorization', `Bearer ${dono.token}`).send({ desligados: false }).expect(200);
     await comentar(chato.token).expect(200);
+  });
+
+  it('localização: cidade escolhida à mão não é trocada pelo GPS na mesma região; viagem troca', async () => {
+    for (const [nome, norm, uf, la, lo] of [['Fortaleza', 'fortaleza', 'CE', -3.71722, -38.54306], ['Eusébio', 'eusebio', 'CE', -3.8695, -38.45545], ['Recife', 'recife', 'PE', -8.05389, -34.88111]] as const) {
+      if (!(await queryOne(ctx.db, 'SELECT 1 AS x FROM cities WHERE name = ? AND state = ?', [nome, uf]))) {
+        await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', [nome, norm, uf, la, lo]);
+      }
+    }
+    const pessoa = await registerInvitedUser(ctx, sponsorToken, { name: 'Pereira Teste Gps', email: 'pereira-teste-gps@example.com', password: 'senha123', gender: 'Homem', city: 'Eusébio', state: 'CE' });
+    const auth = { Authorization: `Bearer ${pessoa.token}` };
+    const cidade = async () => (await ctx.db.queryOne('SELECT city, state FROM users WHERE id = ?', [String(pessoa.user.id)])) as any;
+    // Escolhe Fortaleza nas Configurações.
+    await request(ctx.app).put('/api/profile').set(auth).send({ city: 'Fortaleza', state: 'CE' }).expect(200);
+    // GPS em Eusébio (perto): a cidade continua Fortaleza.
+    await request(ctx.app).put('/api/location').set(auth).send({ lat: -3.8695, lng: -38.4555 }).expect(200);
+    expect(await cidade()).toMatchObject({ city: 'Fortaleza', state: 'CE' });
+    // Viagem para Recife (longe): passa a ser Recife.
+    await request(ctx.app).put('/api/location').set(auth).send({ lat: -8.0476, lng: -34.877 }).expect(200);
+    expect(await cidade()).toMatchObject({ city: 'Recife', state: 'PE' });
   });
 
   it('busca por nome ignora maiúsculas, espaços e @ (sugestões e lista)', async () => {
