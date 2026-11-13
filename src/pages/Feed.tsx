@@ -481,6 +481,9 @@ export default function Feed() {
   const [initialProximityPreference] = useState(readFeedProximityPreference);
   const [nearbyRadius, setNearbyRadius] = useState<NearbyOption | null>(initialProximityPreference.nearbyRadius);
   const [cityOnly, setCityOnly] = useState(initialProximityPreference.cityOnly);
+  // "Minha região": posts de outros estados só depois de tocar em "Ver outras regiões".
+  const [verOutrasRegioes, setVerOutrasRegioes] = useState(false);
+  useEffect(() => { setVerOutrasRegioes(false); }, [cityOnly]);
 
   useEffect(() => {
     const preference: FeedProximityPreference = cityOnly
@@ -589,10 +592,15 @@ export default function Feed() {
     if (cityOnly && nearbyRadius === null && meuEstado) {
       const itens: Array<
         | { type: 'post'; id: string; post: FeedPost }
-        | { type: 'section'; id: string; title: string; description: string }
+        | { type: 'section'; id: string; title: string; description: string; acao?: 'outras-regioes' }
       > = [];
+      // "Minha região" para no estado (13/11/2026): quem já viu tudo da cidade
+      // recebia Mossoró a 330 km sem pedir. Os de outros estados só aparecem
+      // depois de tocar em "Ver outras regiões". Post já visto nunca volta.
+      const minhaCidade = String((user as any)?.city || '').trim();
       let avisou = false;
-      visiblePosts.forEach((post, i) => {
+      for (let i = 0; i < visiblePosts.length; i++) {
+        const post = visiblePosts[i];
         const estadoDoPost = String((post.author as any)?.state || '').trim().toUpperCase();
         if (!avisou && estadoDoPost && estadoDoPost !== meuEstado) {
           avisou = true;
@@ -600,18 +608,21 @@ export default function Feed() {
             ? {
               type: 'section',
               id: 'feed-section-fim-regiao',
-              title: '📍 Sem novidades da sua região agora',
-              description: 'Você já viu as publicações recentes de quem está perto. Abaixo, dos estados mais próximos para os mais longe.',
+              title: `📍 Você já viu tudo ${minhaCidade ? `de ${minhaCidade}` : 'da sua região'} por enquanto`,
+              description: 'Quando alguém daí postar, aparece aqui primeiro.',
+              acao: verOutrasRegioes ? undefined : 'outras-regioes',
             }
             : {
               type: 'section',
               id: 'feed-section-fim-regiao',
               title: '✅ Você já viu as novidades da sua região',
-              description: 'Abaixo, dos estados mais próximos para os mais longe.',
+              description: verOutrasRegioes ? 'Abaixo, dos estados mais próximos para os mais longe.' : 'Quando alguém daí postar, aparece aqui primeiro.',
+              acao: verOutrasRegioes ? undefined : 'outras-regioes',
             });
+          if (!verOutrasRegioes) break;
         }
         itens.push({ type: 'post', id: `post-${post.id}`, post });
-      });
+      }
       return itens;
     }
 
@@ -690,7 +701,10 @@ export default function Feed() {
     }
 
     return items;
-  }, [feedFilter, feedSessionBaseline, visiblePosts, cityOnly, nearbyRadius, (user as any)?.state, (user as any)?.city]);
+  }, [feedFilter, feedSessionBaseline, visiblePosts, cityOnly, nearbyRadius, (user as any)?.state, (user as any)?.city, verOutrasRegioes]);
+
+  // Em "Minha região", com os posts de outros estados escondidos, não carrega mais (só traria mais de longe).
+  const regiaoParou = feedDisplayItems.some((it) => it.type === 'section' && (it as any).acao === 'outras-regioes');
 
   // "Sugestões para você" (perfis do Match) entra depois do 4º item do feed principal.
   const feedItensComSugestoes = useMemo(() => {
@@ -3194,12 +3208,12 @@ export default function Feed() {
             <Card className="overflow-hidden p-8 glass text-center space-y-3">
               <div className="text-4xl">📍</div>
               <p className="font-semibold text-foreground">
-                {cityOnly ? 'Ninguém da sua região por enquanto' : 'Ninguém perto de você por enquanto'}
+                {cityOnly ? 'Ninguém da sua região por enquanto' : `Ninguém novo a até ${nearbyRadius} km agora`}
               </p>
               <p className="text-sm text-muted-foreground">
                 {cityOnly
                   ? 'Não encontramos publicações compatíveis na sua região ou nas regiões próximas. Volte mais tarde.'
-                  : `Não encontramos publicações de pessoas a até ${nearbyRadius} km. Tente ampliar o raio ou voltar mais tarde.`
+                  : `Nada que você ainda não tenha visto a até ${nearbyRadius} km. Quando alguém daí postar, aparece aqui primeiro — ou amplie o raio.`
                 }
               </p>
               <div className="flex justify-center gap-2 pt-1">
@@ -3242,6 +3256,11 @@ export default function Feed() {
                 <div className="flex flex-col items-center gap-0.5 text-center">
                   <span className="text-xs font-bold tracking-wide text-brand-pink uppercase">{item.title}</span>
                   <span className="text-sm text-muted-foreground max-w-[240px] leading-tight">{item.description}</span>
+                  {(item as any).acao === 'outras-regioes' ? (
+                    <Button type="button" size="sm" variant="outline" className="mt-2 min-h-11" onClick={() => setVerOutrasRegioes(true)}>
+                      Ver outras regiões
+                    </Button>
+                  ) : null}
                 </div>
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
               </div>
@@ -3737,14 +3756,14 @@ export default function Feed() {
               description="Assim que alguém postar no feed, você já vê por aqui."
             />
           ) : null}
-          {feedFilter !== 'experiences' && !isLoading && hasMore && allPosts.length > 0 ? (
+          {feedFilter !== 'experiences' && !isLoading && hasMore && allPosts.length > 0 && !regiaoParou ? (
             <Card className="p-4 glass flex items-center justify-center">
               <Button type="button" variant="secondary" disabled={isLoadingMore} onClick={() => void loadMore()}>
                 {isLoadingMore ? 'Carregando...' : 'Carregar mais'}
               </Button>
             </Card>
           ) : null}
-          {feedFilter !== 'experiences' ? <div ref={loadMoreRef} /> : null}
+          {feedFilter !== 'experiences' && !regiaoParou ? <div ref={loadMoreRef} /> : null}
         </div>
 
         {/* ── Sidebar — desktop only (col 3 of the grid) ────────────────── */}
