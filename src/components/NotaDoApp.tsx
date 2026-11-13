@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, Star, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { notaDoAppService, type MotivoNota } from '@/services/api';
@@ -9,7 +9,11 @@ const CHAVE_ADIADO = 'nosigilo:nota-adiada-em';
 const DIAS_ADIAMENTO = 14;
 
 /**
- * "De 0 a 10, quanto você indicaria o NoSigilo?" com campo de sugestão.
+ * "Quantas estrelas você dá para o NoSigilo?" (1 a 5) com campo de sugestão.
+ *
+ * Estrelas desde 13/11/2026: no celular eram 11 botões apertados de 0 a 10.
+ * Internamente a nota continua de 0 a 10 (estrelas × 2), então as faixas do
+ * painel seguem iguais: 1–3 estrelas = 2–6 (detrator), 4 = 8, 5 = 10.
  *
  * Aparece no rodapé, sem travar a tela. Só para contas com mais de 7 dias, no
  * máximo uma vez a cada 90 dias, e quem dispensa só é perguntado de novo daqui
@@ -78,40 +82,42 @@ export default function NotaDoApp() {
 
   return (
     <div className="fixed inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] z-[60] md:left-auto md:right-6 md:w-96">
-      <div className="rounded-2xl border border-primary/25 bg-background p-4 shadow-2xl">
+      <div className="max-h-[calc(100dvh-8rem)] overflow-y-auto overscroll-contain rounded-2xl border border-primary/25 bg-background p-4 shadow-2xl">
         <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-semibold">
+          <p className="text-base font-semibold">
             {pedidoDeMotivo
-              ? `Você deu nota ${pedidoDeMotivo.nota} para o NoSigilo. O que mais te incomodou?`
-              : 'De 0 a 10, quanto você indicaria o NoSigilo para um amigo?'}
+              ? `Você deu ${Math.max(1, Math.round(pedidoDeMotivo.nota / 2))} ${Math.max(1, Math.round(pedidoDeMotivo.nota / 2)) === 1 ? 'estrela' : 'estrelas'} para o NoSigilo. O que mais te incomodou?`
+              : 'Quantas estrelas você dá para o NoSigilo?'}
           </p>
-          <button type="button" onClick={adiar} aria-label="Agora não" className="text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
+          {/* 44 px de área de toque (antes eram 16 px). */}
+          <button type="button" onClick={adiar} aria-label="Agora não" className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         {!pedidoDeMotivo && (<>
-        <div className="mt-3 grid grid-cols-11 gap-1">
-          {Array.from({ length: 11 }, (_, n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => setNota(n)}
-              className={cn(
-                'rounded-md py-1.5 text-xs font-semibold transition-colors',
-                nota === n
-                  ? 'bg-primary text-primary-foreground'
-                  : 'border border-border text-muted-foreground hover:border-primary/50 hover:text-foreground'
-              )}
-            >
-              {n}
-            </button>
-          ))}
+        {/* 5 estrelas grandes; a nota enviada é estrelas × 2 (0 a 10). */}
+        <div className="mt-3 flex items-center justify-between gap-1" role="radiogroup" aria-label="Estrelas">
+          {[1, 2, 3, 4, 5].map((e) => {
+            const acesa = nota !== null && e * 2 <= nota;
+            return (
+              <button
+                key={e}
+                type="button"
+                role="radio"
+                aria-checked={nota === e * 2}
+                aria-label={`${e} ${e === 1 ? 'estrela' : 'estrelas'}`}
+                onClick={() => setNota(e * 2)}
+                className="flex h-14 w-14 items-center justify-center rounded-2xl transition-transform active:scale-95 hover:bg-muted/60"
+              >
+                <Star className={cn('h-10 w-10 transition-colors', acesa ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/50')} />
+              </button>
+            );
+          })}
         </div>
-        <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-          <span>Não indicaria</span>
-          <span>Indicaria com certeza</span>
-        </div>
+        <p className="mt-1 h-5 text-center text-sm font-medium text-muted-foreground">
+          {nota === null ? 'Toque numa estrela' : ['', 'Péssimo', 'Ruim', 'Mais ou menos', 'Bom', 'Ótimo!'][Math.max(1, Math.round(nota / 2))]}
+        </p>
         </>)}
 
         {nota !== null && nota <= 6 && opcoes.length > 0 && (
@@ -125,7 +131,7 @@ export default function NotaDoApp() {
                   onClick={() => alternarMotivo(m.id)}
                   aria-pressed={motivos.includes(m.id)}
                   className={cn(
-                    'rounded-full px-2.5 py-1 text-xs transition-colors',
+                    'min-h-10 rounded-full px-3.5 py-2 text-sm transition-colors',
                     motivos.includes(m.id)
                       ? 'bg-primary font-semibold text-primary-foreground'
                       : 'border border-border text-muted-foreground hover:border-primary/50 hover:text-foreground'
@@ -140,24 +146,29 @@ export default function NotaDoApp() {
 
         {nota !== null && (
           <>
+            {/* text-base (16 px): abaixo disso o iPhone dá zoom na tela ao tocar. */}
             <textarea
               value={sugestao}
               onChange={(e) => setSugestao(e.target.value.slice(0, 1000))}
-              rows={2}
+              onFocus={(e) => { const alvo = e.currentTarget; window.setTimeout(() => alvo.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300); }}
+              rows={3}
               placeholder={nota <= 6 ? 'Quer contar mais? (opcional) Queremos corrigir.' : 'Tem alguma sugestão para a plataforma?'}
-              className="mt-3 w-full rounded-xl border border-input bg-background p-2 text-sm"
+              className="mt-3 w-full rounded-xl border border-input bg-background p-3 text-base md:text-sm"
             />
             <button
               type="button"
               onClick={() => void enviar()}
               disabled={enviando || (!!pedidoDeMotivo && motivos.length === 0 && !sugestao.trim())}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-primary px-4 py-3 text-base font-semibold text-white disabled:opacity-60 md:min-h-10 md:text-sm"
             >
               {enviando && <Loader2 className="h-4 w-4 animate-spin" />}
               Enviar
             </button>
           </>
         )}
+        <button type="button" onClick={adiar} className="mt-2 flex min-h-11 w-full items-center justify-center text-sm text-muted-foreground hover:text-foreground">
+          Agora não
+        </button>
       </div>
     </div>
   );
