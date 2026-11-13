@@ -1408,7 +1408,14 @@ export default function Profile() {
               </NavLink>
               {/* Verificação em duas etapas e Excluir conta ficam em Configurações ›
                   Segurança (12/11/2026): no topo do perfil confundiam quem
-                  só queria ver as próprias fotos. */}
+                  só queria ver as próprias fotos. Desde 13/11/2026 volta um atalho
+                  discreto (pedido do dono: muita gente ia ao suporte para excluir). */}
+              <NavLink to="/settings#excluir-conta">
+                <Button variant="ghost" size="sm" className="w-full gap-2 text-muted-foreground">
+                  <Trash2 className="w-4 h-4" />
+                  Pausar ou excluir conta
+                </Button>
+              </NavLink>
               <Button
                 type="button"
                 variant="ghost"
