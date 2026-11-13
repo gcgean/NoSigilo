@@ -7646,7 +7646,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Build gender preference filter using exact matches + LIKE for casal variants
     let genderFilter = '';
     const genderParams: string[] = [];
-    if (viewerLookingFor.length > 0 && !viewerIsAdmin) {
+    // Vale também para admin (13/11/2026): o ranking abaixo já descarta quem
+    // está fora do interesse, então isentar o admin aqui só enchia a janela de
+    // 400 com posts que seriam jogados fora — e "Minha região" do admin
+    // esvaziava depois de ~25 posts.
+    if (viewerLookingFor.length > 0) {
       const subConds: string[] = [];
       let wantsCasal = false;
       const exactSet = new Set<string>();
