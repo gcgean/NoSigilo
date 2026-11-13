@@ -9,7 +9,7 @@ import SugestoesPerfis from '@/components/SugestoesPerfis';
 import StoriesNaoVistos from '@/components/StoriesNaoVistos';
 import { textoDistancia } from '@/utils/distancia';
 import { Link, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home, Check, Tag } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home, Check, Tag, Ban, MessageCircleOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
-import { authService, experienceService, adminContosService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
+import { authService, experienceService, adminContosService, feedService, interactionsService, profileService, radarService, storiesService, usersService } from '@/services/api';
 import StoriesBar from '@/components/StoriesBar';
 import FeedGreeting from '@/components/FeedGreeting';
 import { minutosDeLeitura } from '@/utils/tempoDeLeitura';
@@ -100,6 +100,8 @@ type FeedPost = {
   id: string;
   content: string;
   createdAt: string;
+  /** O dono desligou os comentários desta publicação. */
+  comentariosDesligados?: boolean;
   author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; birthDate?: string | null; partnerBirthDate?: string | null; isPremium?: boolean };
   mediaIds: string[];
   media: FeedMedia[];
@@ -1978,7 +1980,12 @@ export default function Feed() {
       if (!replyingTo) {
         setAllPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, commentsCount: p.commentsCount + 1 } : p)));
       }
-    } catch {
+    } catch (err: any) {
+      if (err?.response?.data?.error === 'comentarios_desligados') {
+        setAllPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, comentariosDesligados: true } : p)));
+        toast({ title: 'Comentários desligados', description: 'O autor desligou os comentários desta publicação.' });
+        return;
+      }
       toast({ title: 'Erro ao comentar', description: 'Tente novamente.', variant: 'destructive' });
       setCommentDraftByPostId((prev) => ({ ...prev, [postId]: draft }));
     }
@@ -2020,6 +2027,33 @@ export default function Feed() {
       });
     } catch {
       toast({ title: 'Erro ao editar comentário', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  // Dono do post liga/desliga os comentários (13/11/2026).
+  const alternarComentarios = async (post: FeedPost) => {
+    const desligar = !post.comentariosDesligados;
+    try {
+      await feedService.setComentariosDesligados(post.id, desligar);
+      setAllPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, comentariosDesligados: desligar } : p)));
+      toast({ title: desligar ? 'Comentários desligados' : 'Comentários ligados', description: desligar ? 'Ninguém mais consegue comentar nesta publicação. Os comentários que já existem continuam.' : undefined });
+    } catch {
+      toast({ title: 'Não foi possível mudar', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  // Bloquear quem comentou, direto do comentário (13/11/2026).
+  const bloquearQuemComentou = async (postId: string, pessoa: { id: string; name: string }) => {
+    if (!window.confirm(`Bloquear ${pessoa.name}? Vocês não vão mais se ver nem conseguir conversar.`)) return;
+    try {
+      await usersService.blockUser(String(pessoa.id));
+      setCommentsByPostId((prev) => ({
+        ...prev,
+        [postId]: (prev[postId] || []).filter((c) => String(c.user.id) !== String(pessoa.id)),
+      }));
+      toast({ title: `${pessoa.name} foi bloqueado(a)`, description: 'Dá para desbloquear em Configurações › Privacidade.' });
+    } catch {
+      toast({ title: 'Não foi possível bloquear', description: 'Tente novamente.', variant: 'destructive' });
     }
   };
 
@@ -3289,6 +3323,12 @@ export default function Feed() {
                         </DropdownMenuItem>
                       ) : null}
                       {item.post.author.id === user?.id ? (
+                        <DropdownMenuItem onClick={() => void alternarComentarios(item.post)}>
+                          {item.post.comentariosDesligados ? <MessageCircle className="w-4 h-4" /> : <MessageCircleOff className="w-4 h-4" />}
+                          {item.post.comentariosDesligados ? 'Ligar comentários' : 'Desligar comentários'}
+                        </DropdownMenuItem>
+                      ) : null}
+                      {item.post.author.id === user?.id ? (
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onClick={async () => {
@@ -3562,6 +3602,15 @@ export default function Feed() {
                                       <button type="button" className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`} onClick={() => void deleteComment(item.post.id, c.id)}>Excluir</button>
                                     </>
                                   )}
+                                  {/* No próprio post, o dono apaga comentário dos outros e bloqueia quem comentou. */}
+                                  {String(c.user.id) !== String(user?.id || '') && item.post.author.id === user?.id && (
+                                    <button type="button" className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`} onClick={() => { if (window.confirm('Apagar este comentário?')) void deleteComment(item.post.id, c.id); }}>Apagar</button>
+                                  )}
+                                  {String(c.user.id) !== String(user?.id || '') && (
+                                    <button type="button" aria-label={`Bloquear ${c.user.name}`} className={`${COMMENT_ACTION_BUTTON_BASE} text-muted-foreground hover:text-destructive`} onClick={() => void bloquearQuemComentou(item.post.id, c.user)}>
+                                      <Ban className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                               {getIdentityLine(c.user) ? <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}<BandeiraPortugal state={c.user?.state} /></div> : null}
@@ -3592,8 +3641,8 @@ export default function Feed() {
                                     <div className="flex items-center gap-2">
                                       <Link to={getUserProfileHref(r.user.id, user?.id, '/feed')} className="text-xs font-medium hover:underline">{r.user.name}</Link>
                                       <span className="text-[11px] text-muted-foreground">{formatWhen(r.createdAt)}</span>
-                                      {String(r.user.id) === String(user?.id || '') && (
-                                        <button type="button" className={`ml-auto ${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`} onClick={() => void deleteComment(item.post.id, r.id)}>Excluir</button>
+                                      {(String(r.user.id) === String(user?.id || '') || item.post.author.id === user?.id) && (
+                                        <button type="button" className={`ml-auto ${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`} onClick={() => void deleteComment(item.post.id, r.id)}>{String(r.user.id) === String(user?.id || '') ? 'Excluir' : 'Apagar'}</button>
                                       )}
                                     </div>
                                     <p className="text-xs text-muted-foreground">{r.content}</p>
@@ -3618,6 +3667,13 @@ export default function Feed() {
                     </div>
                   )}
 
+                  {item.post.comentariosDesligados && (
+                    <p className="flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+                      <MessageCircleOff className="h-4 w-4" />
+                      {item.post.author.id === user?.id ? 'Você desligou os comentários desta publicação.' : 'O autor desligou os comentários desta publicação.'}
+                    </p>
+                  )}
+                  {!(item.post.comentariosDesligados && item.post.author.id !== user?.id) && (
                   <div className="flex gap-2">
                     <Input
                       placeholder={
@@ -3633,6 +3689,7 @@ export default function Feed() {
                       Enviar
                     </Button>
                   </div>
+                  )}
                   <div className="flex flex-wrap items-center gap-1.5">
                     {COMMENT_QUICK_EMOJIS.map((emoji) => (
                       <button key={`${item.post.id}-emoji-${emoji}`} type="button" onClick={() => appendEmojiToCommentDraft(item.post.id, emoji)} className={COMMENT_EMOJI_CHIP_CLASS}>

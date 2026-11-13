@@ -281,6 +281,12 @@ export const feedService = {
     return response.data;
   },
 
+  /** Dono do post liga/desliga os comentários da publicação. */
+  setComentariosDesligados: async (postId: string, desligados: boolean) => {
+    const response = await apiClient.put(`/posts/${postId}/comentarios`, { desligados });
+    return response.data as { ok: boolean; comentariosDesligados: boolean };
+  },
+
   // Registra 1 visualização (dedup por usuário no servidor) — chamar quando o
   // post fica visível na tela (feed) ou o vídeo entra no viewport (reels).
   viewPost: async (postId: string): Promise<{ viewsCount: number }> => {

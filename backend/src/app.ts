@@ -7737,7 +7737,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          ${genderFilter}
          ${friendsAuthorFilter}
          ${reelsOnlyFilter}`;
-    const feedSelect = `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only, p.video_temas,
+    const feedSelect = `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only, p.video_temas, COALESCE(p.comentarios_desligados, 0) AS comentarios_desligados,
         u.id as author_id,
         CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
         CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
@@ -8386,6 +8386,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         content: r.content,
         createdAt: r.created_at,
         temas: r.video_temas ? String(r.video_temas).split(',') : [],
+        comentariosDesligados: Number(r.comentarios_desligados || 0) === 1,
         author: {
           id: r.author_id,
           name: r.author_name,
@@ -16884,6 +16885,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(400).json({ error: 'invalid_input' });
       return;
     }
+    // Comentários desligados pelo dono do post (13/11/2026).
+    if (parsed.data.targetType === 'post') {
+      const alvo = (await queryOne(db, 'SELECT user_id, comentarios_desligados FROM posts WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
+      if (alvo && Number(alvo.comentarios_desligados || 0) === 1 && String(alvo.user_id) !== req.auth!.userId) {
+        res.status(403).json({ error: 'comentarios_desligados', message: 'O autor desligou os comentários desta publicação.' });
+        return;
+      }
+    }
     // Validate parent comment exists and belongs to same target
     if (parsed.data.parentCommentId) {
       const parent = (await queryOne(db, 'SELECT id, target_id FROM comments WHERE id = ? AND parent_comment_id IS NULL LIMIT 1', [parsed.data.parentCommentId])) as any;
@@ -17090,18 +17099,39 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
+  // Dono do post liga/desliga os comentários da publicação (13/11/2026).
+  app.put('/api/posts/:postId/comentarios', requireAuth(env, db), async (req, res) => {
+    const parsed = z.object({ desligados: z.boolean() }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const post = (await queryOne(db, 'SELECT user_id FROM posts WHERE id = ? LIMIT 1', [String(req.params.postId)])) as any;
+    if (!post) { res.status(404).json({ error: 'not_found' }); return; }
+    if (String(post.user_id) !== req.auth!.userId) { res.status(403).json({ error: 'forbidden' }); return; }
+    await run(db, 'UPDATE posts SET comentarios_desligados = ? WHERE id = ?', [parsed.data.desligados ? 1 : 0, String(req.params.postId)]);
+    await persist();
+    res.json({ ok: true, comentariosDesligados: parsed.data.desligados });
+  });
+
   app.delete('/api/comments/:commentId', requireAuth(env, db), async (req, res) => {
     const commentId = String(req.params.commentId || '');
-    const comment = (await queryOne(db, 'SELECT id, user_id FROM comments WHERE id = ? LIMIT 1', [commentId])) as any;
+    const comment = (await queryOne(db, 'SELECT id, user_id, target_type, target_id FROM comments WHERE id = ? LIMIT 1', [commentId])) as any;
     if (!comment) {
       res.status(404).json({ error: 'not_found' });
       return;
     }
-    if (String(comment.user_id) !== req.auth!.userId) {
+    // Quem escreveu OU o dono do que foi comentado pode apagar (13/11/2026):
+    // antes o dono do post não tinha como tirar um comentário indesejado.
+    const ehAutor = String(comment.user_id) === req.auth!.userId;
+    const tabelaDoAlvo: Record<string, string> = { post: 'posts', photo: 'media', experience: 'experiences' };
+    const tabela = tabelaDoAlvo[String(comment.target_type)];
+    const dono = tabela ? ((await queryOne(db, `SELECT user_id FROM ${tabela} WHERE id = ? LIMIT 1`, [String(comment.target_id)])) as any) : null;
+    const ehDonoDoConteudo = !!dono && String(dono.user_id) === req.auth!.userId;
+    if (!ehAutor && !ehDonoDoConteudo) {
       res.status(403).json({ error: 'forbidden' });
       return;
     }
 
+    // As respostas do comentário saem junto (ficariam soltas, sem o original).
+    await run(db, 'DELETE FROM comments WHERE parent_comment_id = ?', [commentId]);
     await run(db, 'DELETE FROM comments WHERE id = ?', [commentId]);
     await persist();
     res.json({ ok: true });

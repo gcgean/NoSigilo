@@ -5578,6 +5578,30 @@ describe('nosigilo backend', () => {
     expect(String(ela.user.id)).toBeTruthy();
   });
 
+  it('comentários: dono do post apaga comentário dos outros e pode desligar os comentários', async () => {
+    const dono = await registerInvitedUser(ctx, sponsorToken, { name: 'Dono Do Post', email: 'dono-do-post@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    const chato = await registerInvitedUser(ctx, sponsorToken, { name: 'Comentarista Chato', email: 'comentarista-chato@example.com', password: 'senha123', gender: 'Mulher' });
+    const terceiro = await registerInvitedUser(ctx, sponsorToken, { name: 'Terceiro Curioso', email: 'terceiro-curioso@example.com', password: 'senha123', gender: 'Mulher' });
+    const post = (await request(ctx.app).post('/api/posts').set('Authorization', `Bearer ${dono.token}`).send({ content: 'Meu post' }).expect(200)).body;
+    const postId = String(post.id || post.post?.id);
+    const comentar = (token: string, content = 'oi') => request(ctx.app).post('/api/comments').set('Authorization', `Bearer ${token}`).send({ targetType: 'post', targetId: postId, content });
+
+    const c1 = (await comentar(chato.token, 'comentário indesejado').expect(200)).body;
+    const c1Id = String(c1.id || c1.comment?.id);
+    // Terceiro não apaga comentário alheio; o dono do post apaga.
+    await request(ctx.app).delete(`/api/comments/${c1Id}`).set('Authorization', `Bearer ${terceiro.token}`).expect(403);
+    await request(ctx.app).delete(`/api/comments/${c1Id}`).set('Authorization', `Bearer ${dono.token}`).expect(200);
+
+    // Só o dono liga/desliga; desligado, ninguém mais comenta (o dono ainda pode).
+    await request(ctx.app).put(`/api/posts/${postId}/comentarios`).set('Authorization', `Bearer ${chato.token}`).send({ desligados: true }).expect(403);
+    await request(ctx.app).put(`/api/posts/${postId}/comentarios`).set('Authorization', `Bearer ${dono.token}`).send({ desligados: true }).expect(200);
+    const recusado = await comentar(chato.token).expect(403);
+    expect(recusado.body.error).toBe('comentarios_desligados');
+    await comentar(dono.token).expect(200);
+    await request(ctx.app).put(`/api/posts/${postId}/comentarios`).set('Authorization', `Bearer ${dono.token}`).send({ desligados: false }).expect(200);
+    await comentar(chato.token).expect(200);
+  });
+
   it('busca por nome ignora maiúsculas, espaços e @ (sugestões e lista)', async () => {
     const alvo = await registerInvitedUser(ctx, sponsorToken, { name: 'Seu Amante22', email: 'seu-amante22@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
     const quem = await registerInvitedUser(ctx, sponsorToken, { name: 'Quem Busca Nome', email: 'quem-busca-nome@example.com', password: 'senha123', gender: 'Mulher' });

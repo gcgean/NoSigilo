@@ -112,12 +112,13 @@ Chat, grupos e eventos
 
 Segurança
 - Bloquear: no perfil da pessoa. Quem é bloqueado não consegue mais contato.
+- Comentários nas suas publicações: nos comentários do SEU post aparece "Apagar" ao lado do comentário de outra pessoa, e o ícone 🚫 ao lado de qualquer comentário de outra pessoa bloqueia quem comentou. Para ninguém mais comentar numa publicação: menu "⋯" do post › "Desligar comentários" (os que já existem continuam; dá para ligar de novo). Não existe opção de denunciar comentário: para denunciar, use o perfil de quem comentou (menu do perfil › Denunciar).
 - Denunciar: perfis, postagens, fotos e mensagens têm opção de denúncia; a moderação analisa.
 
 Conta
 - Configurações: dados do perfil, senha, notificações (inclusive ligar avisos pelo Telegram).
 - Desativar perfil (Configurações, fim da página): deixa o perfil oculto, guarda fotos e conversas; para voltar, basta entrar de novo. A assinatura no cartão continua; quem não quer mais ser cobrado precisa cancelar na tela de assinatura.
-- Excluir conta: no Perfil tem o botão "Excluir minha conta" (também em Configurações > Segurança > Zona de Perigo). Apaga de vez o perfil, fotos e vídeos, posts, stories, mensagens enviadas, comentários, curtidas e localização (ficam só registros de pagamento exigidos por lei), não tem volta e cancela a assinatura. Antes, a pessoa pode baixar uma cópia em Configurações > Segurança > "Baixar meus dados".
+- Excluir conta: em Configurações › Segurança › Zona de Perigo, botão "Excluir minha conta" (saiu do topo do Perfil em 12/11/2026). Apaga de vez o perfil, fotos e vídeos, posts, stories, mensagens enviadas, comentários, curtidas e localização (ficam só registros de pagamento exigidos por lei), não tem volta e cancela a assinatura. Antes, a pessoa pode baixar uma cópia em Configurações > Segurança > "Baixar meus dados".
 - Pausar a conta (em vez de excluir): ao escolher um motivo como "Só quero dar uma pausa", privacidade, medo de ser descoberto ou "meu parceiro(a) não quer mais", a tela de exclusão oferece "Pausar minha conta". O perfil some para todo mundo (busca, feed, chat) e NADA é apagado; para voltar é só entrar de novo. Se a pessoa quer sumir por um tempo ou tem medo de ser vista, ofereça isso antes de explicar como excluir.
 - Verificação em duas etapas (opcional): em Configurações › Segurança. Ligada, entrar com senha num aparelho novo pede também um código de 6 números enviado ao e-mail (vale 10 minutos; "Reenviar código" na própria tela). Marcando "Confiar neste aparelho", o código não é pedido de novo nele. Os aparelhos de confiança aparecem na mesma tela e podem ser esquecidos. Quem entra pelo Google não usa esse código. Código não chegou: conferir spam e tocar em "Reenviar código".
 - Esqueceu a senha: na tela de login, "Esqueceu a senha?", recebe um código por e-mail que vale 15 minutos.
