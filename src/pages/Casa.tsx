@@ -1205,11 +1205,13 @@ export default function Casa() {
         </div>
         <RadioDaCasa compacto />
         {/* Ícones: no celular descem para uma 2ª linha, para o nome da sala não sumir. */}
-        <div className="order-last flex w-full min-w-0 flex-wrap items-center justify-end gap-1.5 sm:order-none sm:w-auto">
+        {/* Uma linha só (13/11/2026): o convite por extenso jogava 🔔🏆⚪ para uma
+            3ª linha e roubava espaço do chat. Se não couber, rola para o lado. */}
+        <div className="order-last flex w-full min-w-0 flex-nowrap items-center justify-between gap-1.5 overflow-x-auto [scrollbar-width:none] [&>*]:shrink-0 sm:order-none sm:w-auto sm:justify-end">
         {estado.sala_anonima && estado.eu.podeFalar && !estado.eu.revelado && (
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
-        <button type="button" className="rounded-full border border-white/20 px-3 py-1.5 text-xs" onClick={async () => {
+        <button type="button" className="shrink-0 whitespace-nowrap rounded-full border border-white/20 px-3 py-1.5 text-xs" title="Convide alguém para entrar com você" onClick={async () => {
           const url = new URL('/casa', window.location.origin);
           url.searchParams.set('sala', estado.sala.id);
           const text = `Vem entrar comigo n’A Casa! Estou na sala ${estado.sala.nome}: ${url.href}`;
@@ -1219,7 +1221,7 @@ export default function Casa() {
           } catch (error) {
             if (!(error instanceof DOMException && error.name === 'AbortError')) toast({ title: 'Não foi possível compartilhar o convite', variant: 'destructive' });
           }
-        }}>Convide alguém para entrar com você</button>
+        }}>➕ Convidar</button>
         {minhasCabines.length > 0 && (
           <button type="button" onClick={() => setListaDeCabines(true)} className="relative rounded-full border border-rose-400/60 bg-rose-600/30 px-2 py-1.5 text-xs" aria-label="Minhas cabines" title="Minhas cabines">
             🚪
