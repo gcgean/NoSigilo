@@ -2101,7 +2101,6 @@ export default function Casa() {
             {mostraProximo && <Button variant="outline" onClick={() => setFeedbackAberto(true)}>O que faltou para sua noite ser melhor?</Button>}
           </div>
         )}
-        {info?.aberta && <p className="text-center text-sm">{info.pessoasAgora ?? 0} pessoas n’A Casa agora</p>}
         {info?.aberta && info.salas?.length > 0 && (
           <MapaDaCasa
             salas={info.salas}
