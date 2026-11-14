@@ -175,22 +175,41 @@ async function minhasComissoes(db: DbHandle, userId: string) {
 async function meusConvites(db: DbHandle, userId: string) {
   const linhas = (await queryAll(
     db,
-    `SELECT e.validation_status AS situacao, COUNT(*) AS total
+    `SELECT e.validation_status AS situacao, e.failed_reason AS motivo, COUNT(*) AS total
        FROM invite_link_entries e
        JOIN invite_links l ON l.id = e.invite_link_id
       WHERE l.inviter_user_id = ?
-      GROUP BY e.validation_status`,
+      GROUP BY e.validation_status, e.failed_reason`,
     [userId]
   )) as any[];
   const nomes: Record<string, string> = {
-    validated: 'validados', pending: 'aguardando', expired: 'expirados', failed: 'nao_validados',
+    validated: 'validados', pending: 'aguardando', expired: 'expirados', failed: 'recusados',
   };
-  const resumo: Record<string, number> = { validados: 0, aguardando: 0, expirados: 0, nao_validados: 0 };
+  // Recusado é definitivo (14/11/2026): a IA dizia "ainda não validado, faça
+  // tal coisa que valida" para convite recusado por mesma conexão — e nunca ia validar.
+  const motivos: Record<string, string> = {
+    same_ip_as_inviter: 'cadastro feito da mesma conexão (internet/aparelho) de quem convidou',
+    same_ip_as_other_invitee: 'cadastro feito da mesma conexão de outro convidado',
+    deadline_passed: 'o prazo de 7 dias acabou sem as ações',
+  };
+  const resumo: Record<string, number> = { validados: 0, aguardando: 0, expirados: 0, recusados: 0 };
+  const motivosDaRecusa: string[] = [];
   for (const l of linhas) {
     const chave = nomes[String(l.situacao)] || String(l.situacao);
     resumo[chave] = (resumo[chave] || 0) + Number(l.total || 0);
+    if (chave === 'recusados') {
+      const m = motivos[String(l.motivo || '')] || 'não passou na checagem contra fraude';
+      motivosDaRecusa.push(`${Number(l.total || 0)}: ${m}`);
+    }
   }
-  return { ...resumo, total_de_cadastros_pelo_convite: Object.values(resumo).reduce((a, b) => a + b, 0) };
+  return {
+    ...resumo,
+    total_de_cadastros_pelo_convite: Object.values(resumo).reduce((a, b) => a + b, 0),
+    ...(motivosDaRecusa.length ? {
+      motivos_da_recusa: motivosDaRecusa,
+      atencao: 'Convite RECUSADO é definitivo: nenhuma ação do convidado faz ele validar depois. Diga o motivo e não prometa que vai validar. Para ganhar os dias, precisa convidar outra pessoa, que se cadastre da conexão e do aparelho dela.',
+    } : {}),
+  };
 }
 
 /**
