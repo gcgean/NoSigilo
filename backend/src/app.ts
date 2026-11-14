@@ -11771,6 +11771,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         return;
       }
     }
+    // Perfil vitrine não tem cidade/estado (13/11/2026, pedido do dono): ignora
+    // o que vier na edição do perfil.
+    if ('city' in data || 'state' in data) {
+      const vit = (await queryOne(db, 'SELECT is_showcase FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+      if (Number(vit?.is_showcase || 0) === 1) { delete (data as any).city; delete (data as any).state; }
+    }
     const updatesProfileLocation = 'city' in data || 'state' in data;
     const currentLocation = updatesProfileLocation
       ? ((await queryOne(db, 'SELECT city, state, lat FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any)
@@ -17956,7 +17962,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Cidade escolhida à mão (Configurações) vale enquanto a pessoa estiver na
     // região dela (13/11/2026): o GPS automático trocava "Fortaleza" de volta
     // para "Eusébio" a cada abertura do app. Só a distância passa a vir do GPS.
-    const atual = (await queryOne(db, 'SELECT city, state, location_source FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const atual = (await queryOne(db, 'SELECT city, state, location_source, is_showcase FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    // Perfil vitrine não tem cidade/estado nem posição (13/11/2026).
+    if (Number(atual?.is_showcase || 0) === 1) { res.json({ ok: true, city: null, state: null }); return; }
     const cidadeManual = ['profile_city', 'gps_manual'].includes(String(atual?.location_source || '')) && atual?.city;
     let manterCidade = false;
     if (cidadeManual) {
@@ -19793,6 +19801,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       db,
       `SELECT id, name, email, city FROM users
        WHERE city IS NOT NULL AND TRIM(city) != '' AND (state IS NULL OR TRIM(state) = '')
+         AND COALESCE(is_showcase, 0) = 0
        ORDER BY city COLLATE NOCASE, name COLLATE NOCASE`
     )) as any[];
 
@@ -20143,6 +20152,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const target = (await queryOne(db, 'SELECT id FROM users WHERE id = ?', [userId])) as any;
       if (!target) { res.status(404).json({ error: 'not_found' }); return; }
       await run(db, 'UPDATE users SET is_showcase = ? WHERE id = ?', [enable ? 1 : 0, userId]);
+      // Perfil vitrine não tem cidade/estado (13/11/2026).
+      if (enable) await run(db, 'UPDATE users SET city = NULL, state = NULL, lat = NULL, lon = NULL, location_source = NULL WHERE id = ?', [userId]);
       await persist();
       res.json({ ok: true, userId, showcase: enable });
     } catch (err) {
