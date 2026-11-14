@@ -283,6 +283,18 @@ export const TEMAS_FOTO: Item[] = [
   mq('{nome}, vídeo de 10 segundos de uma sentada caprichada, sem rosto 🍑'),
   mq('{nome}, foto do casal de quatro, de costas, sem rosto 😈'),
   mq('{nome}, vídeo de 10 segundos de você se tocando, sem rosto 💦'),
+  q('{nome}, foto do seu ombro com a alça caindo 😏'),
+  q('{nome}, foto da sua tatuagem mais escondida (ou de onde você faria uma) 🖋️'),
+  q('{nome}, foto do seu pé na cama, do jeitinho mais charmoso 🦶'),
+  q('{nome}, foto do seu pescoço pedindo um beijo 💋'),
+  q('{nome}, foto do seu reflexo no espelho, sem rosto 🪞'),
+  q('{nome}, foto do que você está bebendo e de quem está segurando o copo 🍷'),
+  q('{nome}, foto da sua cama agora, do jeito que você deixaria alguém encontrar 🛏️'),
+  q('{nome}, foto da sua cintura com a mão do seu par (ou a sua) 🔥'),
+  mq('{nome}, foto da peça de roupa que você tiraria agora pra alguém da sala 🖤'),
+  mq('{nome}, foto da sua marca de biquíni ou de sunga ☀️'),
+  mq('{nome}, foto de você mordendo uma peça de roupa, sem rosto 😈'),
+  mq('{nome}, vídeo de 5 segundos abrindo o zíper ou o botão bem devagar 🔥'),
 ];
 
 /** Duelo: dois perfis mandam foto com o mesmo tema e a sala vota. */
@@ -311,6 +323,14 @@ export const TEMAS_DUELO: Item[] = [
   mq('Melhor sentada 🍑 (vídeo de 10s, sem rosto)'),
   mq('Melhor de quatro 😈'),
   mq('Strip mais provocante 🖤 (vídeo de 10s)'),
+  q('Melhor sorriso safado (só a boca) 💋'),
+  q('Melhor foto no espelho, sem rosto 🪞'),
+  q('Ombro mais beijável 😏'),
+  q('Cama mais convidativa 🛏️'),
+  q('Melhor costas 🔥'),
+  mq('Marquinha mais gostosa ☀️'),
+  mq('Melhor foto só de toalha 🚿'),
+  mq('Quem provoca melhor só com a alça caindo 🖤'),
 ];
 
 /** Relâmpago: a sala toda pode cumprir; o primeiro ganha os tokens. */
@@ -331,6 +351,13 @@ export const TEMAS_RELAMPAGO: Array<Item & { quem: 'todos' | 'casal' }> = [
   { ...mq('Primeiro casal que mandar um vídeo de oral de 10 segundos (sem rosto) ganha 10 tokens 💦'), quem: 'casal' },
   { ...mq('Primeiro casal que mandar um vídeo de 10 segundos metendo (sem rosto) ganha 10 tokens 😈'), quem: 'casal' },
   { ...mq('Primeiro vídeo tirando a lingerie ganha 10 tokens 🖤'), quem: 'todos' },
+  { ...q('Primeira foto no espelho (sem rosto) ganha 10 tokens 🪞'), quem: 'todos' },
+  { ...q('Primeira foto de salto alto ganha 10 tokens 👠'), quem: 'todos' },
+  { ...q('Primeira foto da boca mordendo o lábio ganha 10 tokens 💋'), quem: 'todos' },
+  { ...q('Primeiro casal que mandar foto de um beijo no pescoço ganha 10 tokens 😏'), quem: 'casal' },
+  { ...mq('Primeira foto só de toalha ganha 10 tokens 🚿'), quem: 'todos' },
+  { ...mq('Primeira foto de marquinha ganha 10 tokens ☀️'), quem: 'todos' },
+  { ...mq('Primeiro casal que mandar foto dele abrindo o sutiã dela ganha 10 tokens 🖤'), quem: 'casal' },
 ];
 
 /** Sugestões prontas para quem quer propor um desafio a outro perfil (valendo tokens). */
@@ -604,7 +631,14 @@ export const TEMAS_DE_FESTA: TemaDeFesta[] = [
     boasVindas: ['🔄 Hoje é Noite da Troca! Casais, olhem bem em volta: com quem vocês trocariam hoje? 😈', '🔄 Noite da Troca começou: quem chegou de par pode sair com outro (na imaginação… ou na cabine) 🔥'],
     euNunca: [mq('Eu nunca troquei de par numa festa.'), mq('Eu nunca combinei uma troca pelo chat antes de conhecer o casal.'), q('Eu nunca fiquei com ciúme numa troca e gostei disso.')],
     perguntas: [mq('Noite da Troca: qual o primeiro passo pra uma troca dar certo? Contem o segredo de vocês 🔄'), q('O que não pode faltar no combinado de uma troca?')],
-    foto: [so(['casal'], mq('{nome}, foto de vocês dois prontos pra trocar hoje (sem rosto) 🔄'))],
+    foto: [
+      so(['casal'], mq('{nome}, foto de vocês dois prontos pra trocar hoje (sem rosto) 🔄')),
+      so(['casal'], mq('{nome}, foto do seu par do jeito que vocês apresentariam pra outro casal 😈 (sem rosto)')),
+      so(['casal'], mq('{nome}, foto das duas mãos de vocês segurando a mão de um terceiro… imaginário 🔄')),
+      so(['casal'], q('{nome}, foto da cama de vocês arrumada pra receber visita hoje 🛏️')),
+      mq('{nome}, foto do que você tiraria primeiro numa troca (sem rosto) 🖤'),
+      q('{nome}, foto do seu sorriso safado de quem topa trocar (só a boca) 💋'),
+    ],
   },
   {
     id: 'voyeur',
@@ -614,7 +648,14 @@ export const TEMAS_DE_FESTA: TemaDeFesta[] = [
     boasVindas: ['👀 Hoje é Noite Voyeur: deixa a porta da cabine aberta que tem gente querendo espiar 😏', '👀 Noite Voyeur começou! Quem aqui gosta de olhar… e quem gosta de ser olhado?'],
     euNunca: [mq('Eu nunca transei sabendo que alguém estava espiando.'), mq('Eu nunca deixei a cortina aberta de propósito.'), q('Eu nunca fiquei olhando um casal se pegar numa festa.')],
     perguntas: [mq('Noite Voyeur: vocês preferem exibir ou espiar? Contem a melhor vez 👀'), mq('Onde foi o lugar mais arriscado em que vocês se exibiram?')],
-    foto: [mq('{nome}, uma foto de como você ficaria se soubesse que a sala inteira está olhando (sem rosto) 👀')],
+    foto: [
+      mq('{nome}, uma foto de como você ficaria se soubesse que a sala inteira está olhando (sem rosto) 👀'),
+      mq('{nome}, foto pela fresta da porta ou pelo reflexo do espelho, sem rosto 🪞'),
+      mq('{nome}, foto da janela ou da cortina meio aberta, com você na frente (sem rosto) 👀'),
+      q('{nome}, foto só da sua sombra, na pose mais provocante 😏'),
+      mq('{nome}, foto como se alguém tivesse te flagrado se trocando (sem rosto) 🙈'),
+      so(['casal'], mq('{nome}, foto de vocês dois de um ângulo que um voyeur adoraria ver (sem rosto) 👀')),
+    ],
   },
   {
     id: 'lingerie',
@@ -625,7 +666,14 @@ export const TEMAS_DE_FESTA: TemaDeFesta[] = [
     boasVindas: ['🔴 Hoje é Noite da Lingerie! Dress code: vermelho ou preto. Quem veio a caráter? 😈', '🖤 Noite da Lingerie começou: mostra (sem rosto) o que você escolheu pra hoje!'],
     euNunca: [mq('Eu nunca usei lingerie só pra ser vista por outro casal.'), q('Eu nunca comprei uma lingerie pensando em alguém daqui.'), mq('Eu nunca tirei a lingerie de alguém com os dentes.')],
     perguntas: [mq('Noite da Lingerie: renda, transparência ou couro? Qual deixa vocês loucos? 🔴'), q('Vermelho ou preto: qual é a cor do pecado pra vocês?')],
-    foto: [mq('{nome}, mostra a lingerie de hoje, vermelha ou preta (sem rosto) 🔴🖤'), so(['casal'], mq('{nome}, foto dele tirando a lingerie dela (sem rosto) 😈'))],
+    foto: [
+      mq('{nome}, mostra a lingerie de hoje, vermelha ou preta (sem rosto) 🔴🖤'),
+      so(['casal'], mq('{nome}, foto dele tirando a lingerie dela (sem rosto) 😈')),
+      q('{nome}, foto só da alcinha caindo do ombro 🔴'),
+      q('{nome}, foto da renda de perto, sem mostrar mais nada 🖤'),
+      mq('{nome}, foto da lingerie jogada no chão… e você fora do quadro 😈'),
+      q('{nome}, foto da meia-calça ou da cinta-liga (ou da cueca, se for ele) 🦵'),
+    ],
   },
   {
     id: 'esposas',
@@ -635,7 +683,14 @@ export const TEMAS_DE_FESTA: TemaDeFesta[] = [
     boasVindas: ['👑 Hoje é Noite das Esposas: maridos, exibam com orgulho. Homens, caprichem no elogio. Quem escolhe é ela 😈', '👑 Noite das Esposas começou! Esposas, a noite é de vocês.'],
     euNunca: [mq('Eu nunca fui exibida pelo meu marido pra outros homens.'), mq('Eu nunca escolhi um homem com meu marido do lado.'), q('Eu nunca contei pro meu marido que outro homem me olhou.')],
     perguntas: [mq('Noite das Esposas: maridos, o que mais orgulha vocês nela? Esposas, o que mais excita em ser exibida? 👑'), mq('Homens: que elogio conquistaria uma esposa com o marido olhando?')],
-    foto: [so(['casal'], mq('{nome}, o marido escolhe uma foto dela pra exibir pra sala (sem rosto) 👑'))],
+    foto: [
+      so(['casal'], mq('{nome}, o marido escolhe uma foto dela pra exibir pra sala (sem rosto) 👑')),
+      so(['casal'], mq('{nome}, foto da mão dele na cintura dela, mostrando quem é a rainha 👑')),
+      so(['casal'], q('{nome}, foto do salto alto dela (com ou sem ela dentro) 👠')),
+      so(['casal'], mq('{nome}, foto da roupa que ela usaria pra sair sozinha hoje 😈 (sem rosto)')),
+      so(['mulher'], mq('{nome}, foto que você mandaria pro marido de outra pra provocar 👑 (sem rosto)')),
+      so(['casal'], mq('{nome}, foto dela do jeito que o marido mais gosta de exibir (sem rosto) 🔥')),
+    ],
   },
   {
     id: 'mascaras',
@@ -645,7 +700,14 @@ export const TEMAS_DE_FESTA: TemaDeFesta[] = [
     boasVindas: ['🎭 Hoje é Baile de Máscaras: aqui ninguém sabe quem é quem… então pode confessar 😏', '🎭 O Baile de Máscaras começou! Qual segredo você conta hoje que não contaria de cara limpa?'],
     euNunca: [mq('Eu nunca fiquei com alguém sem saber o nome.'), q('Eu nunca usei máscara ou venda na cama.'), mq('Eu nunca realizei uma fantasia que ninguém do meu círculo imagina.')],
     perguntas: [mq('Baile de Máscaras: confessem uma fantasia que vocês nunca contaram pra ninguém 🎭'), q('Venda nos olhos: vocês preferem usar ou colocar em alguém?')],
-    foto: [mq('{nome}, foto com algo cobrindo o rosto (máscara, mão, lençol) e o resto à mostra 🎭')],
+    foto: [
+      mq('{nome}, foto com algo cobrindo o rosto (máscara, mão, lençol) e o resto à mostra 🎭'),
+      q('{nome}, foto de um detalhe seu que ninguém aqui adivinharia de quem é 🎭'),
+      q('{nome}, foto na penumbra, só um pedaço iluminado 🕯️'),
+      mq('{nome}, foto com uma peça de roupa servindo de máscara 😈'),
+      q('{nome}, foto de uma pista sobre você (sem rosto) pra sala tentar adivinhar 🎭'),
+      mq('{nome}, foto sua de costas, com um segredo escrito na pele ou num papel 🖋️'),
+    ],
   },
   {
     id: 'elas',
@@ -655,7 +717,14 @@ export const TEMAS_DE_FESTA: TemaDeFesta[] = [
     boasVindas: ['💋 Hoje é Elas no Comando: mulheres e esposas escolhem, convidam e decidem. Homens, caprichem 😈', '💋 Elas no Comando começou! Meninas, quem vocês vão chamar pra cabine hoje?'],
     euNunca: [mq('Eu nunca mandei na cama a noite inteira.'), q('Eu nunca chamei alguém pra sair primeiro.'), mq('Eu nunca escolhi o casal com quem a gente ia trocar.')],
     perguntas: [mq('Elas no Comando: meninas, o que vocês mandariam um homem desta sala fazer agora? 💋'), q('Esposas: quem toma a iniciativa em casa, vocês ou eles?')],
-    foto: [so(['mulher', 'casal'], mq('{nome}, foto mostrando quem manda hoje (sem rosto) 💋'))],
+    foto: [
+      so(['mulher', 'casal'], mq('{nome}, foto mostrando quem manda hoje (sem rosto) 💋')),
+      so(['mulher', 'casal'], q('{nome}, foto do batom de hoje, só a boca 💄')),
+      so(['mulher', 'casal'], mq('{nome}, foto do seu pé em cima de alguém (ou da cama), no comando 👠')),
+      so(['mulher', 'casal'], q('{nome}, foto do seu olhar de quem escolhe, sem mostrar o rosto inteiro 👀')),
+      so(['mulher', 'casal'], mq('{nome}, foto da sua pose de rainha da noite (sem rosto) 👑')),
+      so(['mulher', 'casal'], mq('{nome}, foto que faria qualquer homem da sala pedir permissão 😈 (sem rosto)')),
+    ],
   },
   {
     id: 'novatos',
@@ -665,7 +734,14 @@ export const TEMAS_DE_FESTA: TemaDeFesta[] = [
     boasVindas: ['🥂 Hoje é Noite dos Novatos: chegou agora? Fica à vontade, aqui ninguém é obrigado a nada 😉', '🥂 Noite dos Novatos começou! Veteranos, recebam bem quem está chegando.'],
     euNunca: [q('Eu nunca fui numa casa de swing.'), q('Eu nunca contei pra alguém que curto o meio liberal.'), q('Eu nunca demorei mais de um mês pra criar coragem de entrar aqui.')],
     perguntas: [q('Noite dos Novatos: como foi a primeira vez de vocês no meio liberal? 🥂'), q('Qual conselho vocês dariam pra quem está chegando hoje?')],
-    foto: [q('{nome}, foto do seu drink de hoje pra brindar com os novatos 🥂')],
+    foto: [
+      q('{nome}, foto do seu drink de hoje pra brindar com os novatos 🥂'),
+      q('{nome}, foto do cantinho onde você está pra receber os novatos 🏠'),
+      q('{nome}, foto do look de hoje, do pescoço pra baixo 💃'),
+      q('{nome}, foto da sua mão acenando pros novatos, com um detalhe sensual 👋'),
+      q('{nome}, foto da música que está tocando aí agora 🎶'),
+      mq('{nome}, foto de boas-vindas mais provocante que você tiver coragem (sem rosto) 😈'),
+    ],
   },
   {
     id: 'suruba',
@@ -675,7 +751,14 @@ export const TEMAS_DE_FESTA: TemaDeFesta[] = [
     boasVindas: ['🫦 Hoje é Noite da Suruba: a sala da Suruba abre mais cedo. Quem vai primeiro? 😈', '🫦 Noite da Suruba começou! Hoje ninguém fica só olhando.'],
     euNunca: [mq('Eu nunca fiquei com mais de três pessoas na mesma noite.'), mq('Eu nunca entrei numa suruba sem conhecer ninguém.'), q('Eu nunca fiquei com vontade de participar de uma e não tive coragem.')],
     perguntas: [mq('Noite da Suruba: qual o tamanho ideal de uma suruba pra vocês? 🫦'), mq('Numa suruba, quem vocês puxariam primeiro desta sala?')],
-    foto: [mq('{nome}, foto chamando a sala pra Suruba (sem rosto) 🫦')],
+    foto: [
+      mq('{nome}, foto chamando a sala pra Suruba (sem rosto) 🫦'),
+      mq('{nome}, foto da cama que caberia a sala inteira 🛏️'),
+      mq('{nome}, foto de várias mãos (ou travesseiros) em volta de você 🫦'),
+      q('{nome}, foto do que você levaria pra suruba: drink, brinquedo, óleo… 🧴'),
+      mq('{nome}, foto de você esperando, de costas, a próxima pessoa chegar (sem rosto) 😈'),
+      so(['casal'], mq('{nome}, foto de vocês dois com espaço sobrando pra mais gente 🫦 (sem rosto)')),
+    ],
   },
 ];
 
