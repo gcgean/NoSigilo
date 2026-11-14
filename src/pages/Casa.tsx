@@ -847,7 +847,6 @@ export default function Casa() {
   }, [estado?.mensagens.length, estado?.eu.podeFalar]);
   const verMidia = async (m: Msg) => {
     if (!salaAtual) return;
-    if (m.midia?.preco && !window.confirm(`Abrir a revelação de ${m.autor?.nome} por ${m.midia.preco} tokens? Os tokens vão para ${m.autor?.nome}.`)) return;
     try {
       const { data } = await apiClient.post(`/casa/${salaAtual}/midia/${m.id}/ver`);
       setComentarioMidia('');
@@ -1402,7 +1401,7 @@ export default function Casa() {
                       minha || vista ? 'bg-white/5 text-white/50' : 'bg-gradient-to-r from-rose-600 to-fuchsia-600 font-semibold')}
                   >
                     {m.midia?.tipo === 'video' ? '🎥' : '📸'}
-                    {minha ? 'Você enviou · visualização única' : vista ? 'Aberta' : !estado.eu.podeFalar ? 'Assine para ver' : m.midia?.preco ? `Abrir por ${m.midia.preco} tokens` : 'Toque para ver (1 vez)'}
+                    {minha ? 'Você enviou · visualização única' : vista ? 'Aberta' : !estado.eu.podeFalar ? 'Assine para ver' : 'Toque para ver (1 vez)'}
                   </button>
                   )}
                   <AcoesDaMsg m={m} />

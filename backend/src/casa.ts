@@ -1092,7 +1092,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       liberadas.add(chave);
       const s = salas.get(id)!;
       for (const outra of salas.values()) {
-        if (outra.presentes.size > 0) lolaExtra(outra, `🔓 O ${s.emoji} ${s.nome} ABRIU! A Casa encheu (${n} pessoas)… quem tem coragem entra primeiro 😈`);
+        if (outra.presentes.size > 0) lolaExtra(outra, `🔓 O ${s.emoji} ${s.nome} ABRIU! A Casa encheu… quem tem coragem entra primeiro 😈`);
       }
     }
   };
@@ -1901,11 +1901,9 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     avisarPresentes(sala);
   };
 
-  // Quem cumpriu um desafio pode mandar uma foto extra paga ("revelação") por 5 minutos.
-  const liberarRevelacao = (sala: Sala, p: Presente) => {
-    p.revelarAte = Date.now() + 5 * 60_000;
-    emitirPara(p.id, 'casa.revelacao', { sala: sala.id, ate: new Date(p.revelarAte).toISOString(), preco: PRECO_REVELACAO });
-  };
+  // Revelação (foto extra paga com tokens) DESLIGADA em 14/11/2026, pedido do
+  // dono: ninguém mais é liberado a mandar, e as antigas abrem sem cobrar.
+  const liberarRevelacao = (_sala: Sala, _p: Presente) => {};
 
   // ─── Cabine: conversa a dois, já aceita (sem passar por Pedidos) ──────────
   const abrirCabine = async (a: string, b: string): Promise<string | null> => {
@@ -2154,7 +2152,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       [noite.chave],
     )) as any[];
     const corpo = pessoas >= 5
-      ? `Já tem ${pessoas} pessoas${nCabines > 0 ? ` e ${nCabines} cabine(s) rolando` : ''} 🔥 Seu lugar está te esperando, entra!`
+      ? `Várias pessoas lá dentro${nCabines > 0 ? ' e cabines rolando' : ''} 🔥 Seu lugar está te esperando, entra!`
       : 'A Lola já está puxando as brincadeiras 🔥 Seu lugar está te esperando, entra!';
     // A maioria de quem reserva não tem notificação no celular ligada (31/10: 34 de 190):
     // o recado no chat e no sino alcança quem abrir o site.
@@ -2639,8 +2637,7 @@ Sala: ${salaId}`).catch(() => {});
       return;
     }
     if (trancada(sala, noite) && !perfil.admin && !sala.presentes.has(userId)) {
-      const n = naCasaAgora();
-      res.status(403).json({ error: 'trancada', message: `O ${sala.nome} abre quando a Casa tiver ${minimoParaDestravar()} pessoas (agora ${n}). Chama mais gente! 😈` });
+      res.status(403).json({ error: 'trancada', message: `O ${sala.nome} abre quando a Casa encher mais. Chama mais gente! 😈` });
       return;
     }
     if (sala.semHomens && perfil.cat === 'homem') {
@@ -2928,12 +2925,6 @@ Sala: ${salaId}`).catch(() => {});
     if (String(row.autor_id) === userId) { res.status(400).json({ error: 'propria', message: 'É de visualização única: nem quem enviou abre de novo.' }); return; }
     const ja = await db.queryOne('SELECT 1 AS x FROM casa_midia_vistas WHERE mensagem_id = ? AND user_id = ?', [String(row.id), userId]);
     if (ja) { res.status(410).json({ error: 'ja_vista', message: 'Você já abriu esta mídia.' }); return; }
-    const naSala = sala.mensagens.find((x) => x.id === String(row.id));
-    const preco = Number(naSala?.midia?.preco || 0);
-    if (preco > 0) {
-      const pagou = await deps.transferirTokens(userId, String(row.autor_id), preco, `casa-revelacao-${row.id}`);
-      if (!pagou) { res.status(402).json({ error: 'insufficient_tokens', message: `A revelação custa ${preco} tokens. Ganhe tokens usando o site ou compre em Tokens.` }); return; }
-    }
     await db.run('INSERT INTO casa_midia_vistas (mensagem_id, user_id, viewed_at) VALUES (?, ?, ?)', [String(row.id), userId, new Date().toISOString()]);
     await db.persist();
     res.json({ url: `/uploads/${String(row.filename)}`, mime: row.mime_type ? String(row.mime_type) : null });
