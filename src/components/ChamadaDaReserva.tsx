@@ -37,7 +37,7 @@ export default function ChamadaDaReserva({ casaAberta, pathname }: { casaAberta:
     <div className="fixed inset-x-3 bottom-24 z-[60] mx-auto max-w-md rounded-2xl border border-rose-500/40 bg-gradient-to-br from-rose-950 via-neutral-950 to-fuchsia-950 p-4 text-white shadow-[0_0_30px_rgba(225,29,72,0.45)] md:bottom-6" role="dialog" aria-label="A Casa abriu">
       <p className="text-base font-bold">🔥 A Casa abriu e seu lugar está guardado!</p>
       <p className="mt-1 text-sm text-white/75">
-        {chamado.pessoas >= 5 ? `Já tem ${chamado.pessoas} pessoas lá dentro. ` : 'A Lola já está puxando as brincadeiras. '}
+        {chamado.pessoas >= 5 ? 'Várias pessoas lá dentro. ' : 'A Lola já está puxando as brincadeiras. '}
         Você reservou: é só entrar.
       </p>
       <div className="mt-3 grid grid-cols-2 gap-2">

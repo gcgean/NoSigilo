@@ -596,11 +596,8 @@ export default function Casa() {
       toast({ title: `🔥 Abriu vaga no ${d.nome}!`, description: 'Você tem 3 minutos: entrando agora…' });
       void entrar(d.sala);
     };
-    const aoRevelacao = (d: { ate: string; preco: number }) => {
-      setRevelarAte(Date.parse(d.ate));
-      void tocarSomDaCasa('nivel');
-      toast({ title: '👀 Revelação liberada!', description: `Por 5 minutos, mande uma foto extra: quem quiser abrir paga ${d.preco} tokens para você.` });
-    };
+    // Revelação paga desligada (14/11/2026): o aviso é ignorado se ainda chegar.
+    const aoRevelacao = () => {};
     const aoOlhar = (d: { de: { id: string; nome: string; pulseira?: Pulseira | null } }) => {
       tocarAviso(false, 'olhar');
       registrarAviso({ emoji: '👀', texto: `${d.de.nome} te deu uma olhada`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver', de: d.de });
