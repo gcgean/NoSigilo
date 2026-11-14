@@ -247,7 +247,7 @@ export type DependenciasDaCasa = {
   recadoDaLola?: (userId: string, recado: { texto: string; titulo: string; descricao: string; url: string }) => Promise<boolean>;
 };
 
-type Faixa = { id: string; arquivo: string; titulo: string; artista: string; fonte: string; duracao: number; tipo?: 'musica' | 'vinheta' | 'abertura' | 'fechamento' };
+type Faixa = { id: string; arquivo: string; titulo: string; artista: string; fonte: string; duracao: number; tipo?: 'musica' | 'vinheta' | 'abertura' | 'fechamento'; abreNoite?: number };
 
 /**
  * Foto de fundo de sala: regrava em JPEG de até 1600 px sem metadados (tira EXIF,
@@ -3854,7 +3854,11 @@ Sala: ${salaId}`).catch(() => {});
     // Cada noite tem a sua ordem (embaralhada pela data da noite): sexta e sábado
     // não repetem a mesma sequência, e todo mundo da mesma noite ouve igual.
     const semente = noiteAgora?.chave ?? new Date(agoraMs - 3 * 3_600_000).toISOString().slice(0, 10);
-    const musicas = embaralharComSemente(todas.filter((f) => !f.tipo || f.tipo === 'musica'), semente);
+    // Músicas marcadas com abreNoite (1, 2, 3…) abrem a noite nessa ordem, logo
+    // depois da vinheta das 22h; o resto segue embaralhado (pedido do dono, 14/11/2026).
+    const soMusicas = todas.filter((f) => !f.tipo || f.tipo === 'musica');
+    const fixas = soMusicas.filter((f) => Number(f.abreNoite) > 0).sort((a, b) => Number(a.abreNoite) - Number(b.abreNoite));
+    const musicas = [...fixas, ...embaralharComSemente(soMusicas.filter((f) => !(Number(f.abreNoite) > 0)), semente)];
     const vinhetas = embaralharComSemente(todas.filter((f) => f.tipo === 'vinheta'), `${semente}:lola`);
     let lista: Faixa[] = musicas;
     if (vinhetas.length > 0) {
