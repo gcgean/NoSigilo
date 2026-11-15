@@ -22,7 +22,6 @@ import MobileState from '@/components/MobileState';
 import SemTokensDialog from '@/components/SemTokensDialog';
 import AvisoLocalizacao from '@/components/AvisoLocalizacao';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
-import SeekingYouModal from '@/components/SeekingYouModal';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { enablePushNotifications, getPushActivationState } from '@/utils/pushNotifications';
 import { calcProfileCompletion } from '@/utils/profileCompletion';
@@ -152,25 +151,8 @@ export default function Match() {
   const premiumAccess = hasPremiumAccess(user);
   const { requireFields } = useProfileGate();
 
-  // Banner "X pessoas já estão de olho em você" — para quem NÃO é assinante
-  // pagante (trial/expirado incluídos), no máximo 1x por dia. Era 1x por sessão
-  // (sessionStorage), e no celular a sessão recomeça a cada vez que o app abre:
-  // aparecia quase toda vez que a pessoa entrava no Match (12/11/2026).
-  const [showSeekingYou, setShowSeekingYou] = useState(false);
-  const isPaidSubscriber = !!user?.isPremium && premiumAccess;
-  useEffect(() => {
-    if (!user?.id || isPaidSubscriber) return;
-    const key = `nosigilo:seeking-you-dia:${user.id}`;
-    const hoje = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    try {
-      if (localStorage.getItem(key) === hoje) return;
-      localStorage.setItem(key, hoje);
-    } catch {
-      // Sem storage: não insiste (melhor não mostrar do que mostrar sempre).
-      return;
-    }
-    setShowSeekingYou(true);
-  }, [user?.id, isPaidSubscriber]);
+  // O pop-up "X pessoas já estão de olho em você" (SeekingYouModal) abria sozinho no
+  // Match 1x por dia para quem não assina; removido a pedido do dono (15/11/2026).
   const { percent: profilePercent, missing: profileMissing } = useMemo(() => calcProfileCompletion({
     avatar: user?.avatar ?? null,
     bio: user?.bio ?? null,
@@ -930,7 +912,6 @@ export default function Match() {
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
       <SemTokensDialog open={semTokensSuper} onOpenChange={setSemTokensSuper} custo={5} recurso="A Super Curtida" />
-      <SeekingYouModal open={showSeekingYou} onClose={() => setShowSeekingYou(false)} />
     </div>
   );
 }
