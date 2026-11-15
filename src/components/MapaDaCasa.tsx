@@ -40,9 +40,15 @@ const posicao = (salaId: string, i: number) => {
 };
 
 const MapaDaCasa3D = lazy(() => import('@/components/MapaDaCasa3D'));
+// O Salão por dentro (WebGL) só baixa quando alguém escolhe essa visão.
+const SalaoPorDentro = lazy(() => import('@/components/SalaoPorDentro'));
 const CHAVE_MODO = 'nosigilo:casa-mapa';
 const aceita3D = () => { try { return !!window.CSS?.supports?.('transform-style', 'preserve-3d'); } catch { return false; } };
+const aceitaWebGL = () => {
+  try { const c = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))); } catch { return false; }
+};
 const modoGuardado = () => { try { return localStorage.getItem(CHAVE_MODO); } catch { return null; } };
+type Modo = '3d' | 'planta' | 'dentro';
 
 type PropsDoMapa = {
   salas: SalaDoMapa[];
@@ -54,24 +60,48 @@ type PropsDoMapa = {
   onPedir?: (cabineId: string) => void;
 };
 
-/** 3D por padrão; a planta continua disponível em um toque (e é o que abre em aparelho sem 3D). */
+/**
+ * Três jeitos de ver: 3D aéreo (padrão), planta e o Salão por dentro (primeira
+ * pessoa). Cada um escolhe e fica guardado; aparelho sem 3D/WebGL só vê o que roda.
+ */
 export default function MapaDaCasa(props: PropsDoMapa) {
-  const pode3D = aceita3D();
-  const [em3D, setEm3D] = useState(() => pode3D && modoGuardado() !== 'planta');
-  const trocar = () => {
-    const novo = !em3D;
-    setEm3D(novo);
-    try { localStorage.setItem(CHAVE_MODO, novo ? '3d' : 'planta'); } catch { /* modo restrito */ }
+  const [pode3D] = useState(aceita3D);
+  const [podeDentro] = useState(() => !!props.salas.some((s) => s.id === 'salao') && aceitaWebGL());
+  const [modo, setModo] = useState<Modo>(() => {
+    const g = modoGuardado();
+    if (g === 'dentro' && podeDentro) return 'dentro';
+    if (g === 'planta' || !pode3D) return 'planta';
+    return '3d';
+  });
+  const escolher = (m: Modo) => {
+    setModo(m);
+    try { localStorage.setItem(CHAVE_MODO, m); } catch { /* modo restrito */ }
   };
+  const em3D = modo === '3d';
   const planta = <PlantaDaCasa {...props} />;
+  const opcoes: { m: Modo; rotulo: string }[] = [
+    ...(pode3D ? [{ m: '3d' as const, rotulo: '🏠 3D' }] : []),
+    { m: 'planta', rotulo: '🗺️ Planta' },
+    ...(podeDentro ? [{ m: 'dentro' as const, rotulo: '🎮 Por dentro' }] : []),
+  ];
   return (
     <div>
-      {pode3D && (
-        <div className="mb-2 flex justify-end">
-          <button type="button" onClick={trocar} className="rounded-full border border-white/20 px-3 py-1 text-[11px] text-white/80">{em3D ? '🗺️ Ver planta' : '🏠 Ver em 3D'}</button>
+      {opcoes.length > 1 && (
+        <div className="mb-2 flex justify-end gap-1" role="group" aria-label="Como ver A Casa">
+          {opcoes.map((o) => (
+            <button key={o.m} type="button" aria-pressed={modo === o.m} onClick={() => escolher(o.m)}
+              className={cn('rounded-full border px-3 py-1 text-[11px]', modo === o.m ? 'border-fuchsia-400 bg-fuchsia-500/25 text-white' : 'border-white/20 text-white/70')}>
+              {o.rotulo}
+            </button>
+          ))}
         </div>
       )}
-      {em3D ? (
+      {modo === 'dentro' ? (
+        <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-3">
+          <p className="mb-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-200">🎮 O Salão por dentro</p>
+          <Suspense fallback={planta}><SalaoPorDentro {...props} /></Suspense>
+        </div>
+      ) : em3D ? (
         <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-3">
           <p className="mb-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-200">🏠 A Casa · toque para entrar</p>
           <Suspense fallback={planta}><MapaDaCasa3D {...props} /></Suspense>
