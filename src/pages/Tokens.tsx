@@ -140,6 +140,32 @@ export default function Tokens() {
         </div>
       </Card>
 
+      {/* Como ganhar pontos (o que já fez hoje) */}
+      {summary?.comoGanhar && summary.comoGanhar.length > 0 && (
+        <Card className="p-4">
+          <h2 className="text-sm font-bold">Como ganhar pontos</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Todo dia recomeça. Cada {perDay} pontos vira 1 dia grátis.</p>
+          <ul className="mt-3 space-y-2">
+            {summary.comoGanhar.map((m) => {
+              const completo = m.hoje >= m.limite;
+              return (
+                <li key={m.acao} className="flex items-center justify-between gap-3 rounded-lg border bg-background/60 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className={cn('text-sm font-medium', completo && 'text-muted-foreground line-through')}>{m.texto}</p>
+                    <p className="text-xs text-muted-foreground">
+                      +{m.pontos} {m.pontos === 1 ? 'ponto' : 'pontos'}{m.limite > 1 ? ` cada · até ${m.limite} por dia` : ''}
+                    </p>
+                  </div>
+                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', completo ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-secondary text-muted-foreground')}>
+                    {completo ? '✓ feito' : `${m.hoje}/${m.limite}`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+
       {/* Comprar tokens (destaques e presentes; não viram dias grátis) */}
       <ComprarTokens aoCreditar={() => tokenService.me().then(setSummary).catch(() => {})} />
 

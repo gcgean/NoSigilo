@@ -2908,6 +2908,23 @@ describe('nosigilo backend', () => {
     expect(r1.body.id).toBeTruthy();
     expect(r1.body.id).toBe(r2.body.id);
   });
+  it('tokens: como ganhar pontos por tipo de perfil, com o que já fez hoje', async () => {
+    const homem = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Pontos Homem', email: 'pontos-homem@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const casal = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Pontos Casal', email: 'pontos-casal@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)',
+    });
+    const acoes = async (token: string) => (await request(ctx.app).get('/api/tokens/me').set('Authorization', `Bearer ${token}`).expect(200)).body.comoGanhar;
+    const doHomem = await acoes(homem.token);
+    expect(doHomem.map((m: any) => m.acao)).toEqual(['checkin', 'like', 'comment']);
+    const doCasal = await acoes(casal.token);
+    expect(doCasal.map((m: any) => m.acao)).toEqual(['checkin', 'like', 'comment', 'photo', 'story', 'post']);
+    await run(ctx.db, 'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      ['tk-hoje-1', casal.user.id, 'comment', 3, 'c1', new Date().toISOString()]);
+    const depois = await acoes(casal.token);
+    expect(depois.find((m: any) => m.acao === 'comment')).toMatchObject({ pontos: 3, limite: 10, hoje: 1 });
+  });
   it('conversa longa abre mostrando as mensagens mais novas, em ordem', async () => {
     const a = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Longa A', email: 'conversa-longa-a@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)',

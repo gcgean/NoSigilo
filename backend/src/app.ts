@@ -11195,9 +11195,31 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const row = (await queryOne(
       db,
-      'SELECT COALESCE(token_points,0) AS points, COALESCE(tokens_comprados,0) AS comprados, COALESCE(token_points_total,0) AS total, COALESCE(token_free_days,0) AS free_days, boost_until FROM users WHERE id = ?',
+      'SELECT COALESCE(token_points,0) AS points, COALESCE(tokens_comprados,0) AS comprados, COALESCE(token_points_total,0) AS total, COALESCE(token_free_days,0) AS free_days, boost_until, gender FROM users WHERE id = ?',
       [userId]
     )) as any;
+    // "Como ganhar pontos" com o que já fez hoje. O card "Missões do dia" saiu do
+    // feed em 17/10 e a página não dizia mais como ganhar (cliente perguntou se
+    // as missões tinham acabado, 15/11). Mesmo dia (UTC) e tetos do awardTokens.
+    const hojeUtc = nowIso().slice(0, 10);
+    const feitosHoje = new Map<string, number>(((await queryAll(
+      db,
+      'SELECT action_type, COUNT(*) AS c FROM token_transactions WHERE user_id = ? AND points > 0 AND created_at >= ? GROUP BY action_type',
+      [userId, hojeUtc]
+    )) as any[]).map((r) => [String(r.action_type), Number(r.c || 0)]));
+    const publicaPontua = genderEarnsPostTokens(row?.gender);
+    const comoGanhar = ([
+      // Vale na 1ª interação do dia (register-activity: curtir, comentar, postar, mensagem, ver perfis).
+      ['checkin', 'Primeira interação do dia (curtir, comentar ou mandar mensagem)', true],
+      ['like', 'Curtir perfis, posts e stories', true],
+      ['comment', 'Comentar nos posts', true],
+      ['photo', 'Enviar foto ou vídeo', publicaPontua],
+      ['story', 'Publicar um story', publicaPontua],
+      ['post', 'Publicar no feed', publicaPontua],
+    ] as const).filter(([, , vale]) => vale).map(([acao, texto]) => ({
+      acao, texto, pontos: TOKEN_RULES[acao].points, limite: TOKEN_RULES[acao].dailyCap,
+      hoje: Math.min(feitosHoje.get(acao) ?? 0, TOKEN_RULES[acao].dailyCap),
+    }));
     const history = (await queryAll(
       db,
       'SELECT action_type, points, created_at FROM token_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
@@ -11217,6 +11239,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       boostUntil: boostActive ? boostUntilRaw : null,
       boostCost: BOOST_COST,
       boostHours: BOOST_HOURS,
+      comoGanhar,
       history: history.map((h) => ({ action: String(h.action_type), points: Number(h.points), createdAt: String(h.created_at) })),
     });
   });

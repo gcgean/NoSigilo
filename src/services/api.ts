@@ -2441,6 +2441,8 @@ export interface TokenSummary {
   boostUntil?: string | null;
   boostCost?: number;
   boostHours?: number;
+  /** Ações que dão pontos para este perfil, com quantas já fez hoje. */
+  comoGanhar?: Array<{ acao: string; texto: string; pontos: number; limite: number; hoje: number }>;
   history: Array<{ action: string; points: number; createdAt: string }>;
 }
 
