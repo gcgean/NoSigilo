@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { resolveServerUrl } from '@/utils/serverUrl';
-import type { CabineFechadaDoMapa, PessoaDoMapa, SalaDoMapa } from '@/components/MapaDaCasa';
+import type { CabineDoMapa, CabineFechadaDoMapa, PessoaDoMapa, SalaDoMapa } from '@/components/MapaDaCasa';
 import type { FotoDeFundo } from '@/components/CenaDaSala';
 
 /**
@@ -29,7 +29,7 @@ type Props = {
 type Painel =
   | { tipo: 'pessoa'; pessoa: PessoaDoMapa }
   | { tipo: 'porta'; sala: SalaDoMapa }
-  | { tipo: 'cabines' }
+  | { tipo: 'cabine'; c: CabineDoMapa }
   | null;
 
 const ROSA = '#f472b6';
@@ -222,22 +222,52 @@ function velas(scene: THREE.Scene, pontos: [number, number, number][]) {
   });
 }
 
-/** Móveis de cada sala, de acordo com o tema. Devolve as cabines (só no Salão) e animações. */
+const NIVEL = ['💬', '🔥', '🔥🔥'];
+const VAGAS_DE_CABINE = 4;
+
+/**
+ * Cabine em 3D, encostada na parede do fundo. Porta fechada: porta de madeira,
+ * luz vermelha em cima e o "calor" da conversa (sem dizer quem está). Porta
+ * aberta: a porta abre para fora, luz quente dentro e os bonecos de quem está lá.
+ */
+function cabine3D(c: CabineDoMapa, pele: THREE.Material) {
+  const g = new THREE.Group();
+  const madeira = 0x2a0b0f;
+  g.add(caixa(1.4, 2.8, 0.08, madeira, 0, 1.4, -0.95));
+  g.add(caixa(0.08, 2.8, 1, madeira, -0.7, 1.4, -0.5));
+  g.add(caixa(0.08, 2.8, 1, madeira, 0.7, 1.4, -0.5));
+  g.add(caixa(1.48, 0.1, 1.05, 0x1a0608, 0, 2.85, -0.5));
+  const luz = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 10), new THREE.MeshBasicMaterial({ color: c.aberta ? 0xffb040 : 0xff2030 }));
+  luz.position.set(0, 2.62, 0.05); g.add(luz);
+  if (c.aberta) {
+    const porta = caixa(1.25, 2.5, 0.06, 0x4a1a10, 0.62, 1.25, 0, { roughness: 0.5 });
+    const dobradica = new THREE.Group(); dobradica.position.set(-0.62, 0, 0); dobradica.add(porta); dobradica.rotation.y = -1.25; g.add(dobradica);
+    const dentro = new THREE.PointLight(0xffa040, 6, 3, 1.8); dentro.position.set(0, 2, -0.4); g.add(dentro);
+    const chao = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.9), new THREE.MeshBasicMaterial({ color: 0x5a1a10 })); chao.rotation.x = -Math.PI / 2; chao.position.set(0, 0.02, -0.5); g.add(chao);
+    const tipos = (c.tipos.length ? c.tipos : Array.from({ length: Math.min(3, c.pessoas) }, () => 'outros' as const)).slice(0, 3);
+    const corpos: boolean[] = tipos.flatMap((t) => (t === 'casal' ? [true, false] : [t === 'mulher']));
+    corpos.slice(0, 4).forEach((mulher, k, arr) => {
+      const b = boneco(mulher, pele); b.scale.setScalar(0.62);
+      b.position.set((k - (arr.length - 1) / 2) * 0.32, 0, -0.5); g.add(b);
+    });
+  } else {
+    g.add(caixa(1.3, 2.55, 0.08, 0x3a120c, 0, 1.28, 0, { roughness: 0.45 }));
+    const macaneta = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), new THREE.MeshStandardMaterial({ color: 0xe8b45a, metalness: 1, roughness: 0.3 }));
+    macaneta.position.set(0.45, 1.2, 0.07); g.add(macaneta);
+    const fresta = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.05), new THREE.MeshBasicMaterial({ color: 0xff2040 })); fresta.position.set(0, 0.03, 0.05); fresta.rotation.x = -Math.PI / 2; g.add(fresta);
+  }
+  const rotulo = c.aberta
+    ? `🚪 Aberta · ${c.pessoas}${c.espiando > 0 ? ` · 👀${c.espiando}` : ''}`
+    : `🔒 ${c.pessoas} · ${NIVEL[Math.max(0, Math.min(2, c.nivel ?? 0))]}`;
+  const t = placa(rotulo, 1.5, 0.34, c.aberta ? '#ffc061' : '#ff7a8a'); t.position.set(0, 3.15, 0.02); g.add(t);
+  g.userData = { tipo: 'cabine', id: c.id };
+  return g;
+}
+
+/** Móveis de cada sala, de acordo com o tema. Devolve as animações. */
 function mobiliar(scene: THREE.Scene, id: string, tema: Tema) {
   const anima: ((t: number) => void)[] = [];
-  let cabines: THREE.Group | null = null;
   if (id === 'salao') {
-    cabines = new THREE.Group();
-    const cortina = texturaDeCanvas(128, 256, (g, w, h) => {
-      for (let x = 0; x < w; x += 16) { const gr = g.createLinearGradient(x, 0, x + 16, 0); gr.addColorStop(0, '#3a0612'); gr.addColorStop(0.5, '#9a1030'); gr.addColorStop(1, '#3a0612'); g.fillStyle = gr; g.fillRect(x, 0, 16, h); }
-    });
-    for (let i = 0; i < 3; i++) {
-      const x = (i - 1) * 1.45;
-      cabines.add(caixa(1.35, 2.7, 0.1, 0x2a0b0f, x, 1.35, -0.05));
-      const cu = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 2.45), new THREE.MeshStandardMaterial({ map: cortina, emissive: 0x400010 })); cu.position.set(x, 1.25, 0.02); cabines.add(cu);
-    }
-    const pc = placa('Cabines', 2.2, 0.45, '#e8b45a'); pc.position.set(0, 3.05, 0); cabines.add(pc);
-    cabines.position.set(4.4, 0, -RD + 0.08); cabines.userData.tipo = 'cabines'; scene.add(cabines);
     // Bar na parede direita, entre as portas.
     const bar = new THREE.Group();
     bar.add(caixa(1, 1.1, 5, 0x2a0d0a, 0, 0.55, 0, { roughness: 0.4 }));
@@ -300,7 +330,7 @@ function mobiliar(scene: THREE.Scene, id: string, tema: Tema) {
     anima.push((t) => { (anel.material as THREE.MeshBasicMaterial).color.setHSL(0.98, 1, 0.4 + 0.12 * Math.sin(t * 2.4)); });
   }
   void tema;
-  return { cabines, anima };
+  return { anima };
 }
 
 type CenaApi = { focar: (id: string) => void };
@@ -309,22 +339,24 @@ type CenaProps = {
   outras: SalaDoMapa[];
   aoTocarPessoa: (p: PessoaDoMapa) => void;
   aoTocarPorta: (s: SalaDoMapa) => void;
-  aoTocarCabines: () => void;
+  aoTocarCabine: (c: CabineDoMapa) => void;
   aoUsar: () => void;
 };
 
-const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsar }, ref) {
+const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabine, aoUsar }, ref) {
   const palco = useRef<HTMLDivElement>(null);
   const [falhou, setFalhou] = useState(false);
   const presentes = (sala.presentes ?? []).slice(0, MAX_PESSOAS);
   const chavePessoas = presentes.map((p) => `${p.id}:${p.cat}:${p.avatar ?? ''}:${p.destaque ? 1 : 0}`).join('|');
   const chavePortas = outras.map((s) => `${s.id}:${s.nome}:${s.total}:${s.trancada || s.bloqueadaParaMim ? 1 : 0}`).join('|');
   const chaveFundo = sala.fundo ? `${sala.fundo.url}:${sala.fundo.intensidade}` : '';
+  const cabines = sala.cabines ?? [];
+  const chaveCabines = cabines.map((c) => `${c.id}:${c.aberta ? 1 : 0}:${c.pessoas}:${c.espiando}:${c.nivel ?? 0}:${c.tipos.join(',')}`).join('|');
 
   // Guardados em ref para o loop de toque sempre usar os dados e callbacks mais novos.
-  const atual = useRef({ presentes, outras, fundo: sala.fundo ?? null, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsar });
-  atual.current = { presentes, outras, fundo: sala.fundo ?? null, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsar };
-  const cena = useRef<{ pessoas: () => void; portas: () => void; fundo: () => void; focar: (id: string) => void } | null>(null);
+  const atual = useRef({ presentes, outras, cabines, fundo: sala.fundo ?? null, aoTocarPessoa, aoTocarPorta, aoTocarCabine, aoUsar });
+  atual.current = { presentes, outras, cabines, fundo: sala.fundo ?? null, aoTocarPessoa, aoTocarPorta, aoTocarCabine, aoUsar };
+  const cena = useRef<{ pessoas: () => void; portas: () => void; cabines: () => void; fundo: () => void; focar: (id: string) => void } | null>(null);
   useImperativeHandle(ref, () => ({ focar: (id: string) => cena.current?.focar(id) }), []);
 
   useEffect(() => {
@@ -380,16 +412,15 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
     const f3 = f2.clone(); f3.position.x = RW - 0.1; scene.add(f3);
     scene.add(new THREE.HemisphereLight(0xffb0c8, 0x1a0508, tema.ambiente));
     tema.luzes.forEach(([x, y, z, c, i]) => { const l = new THREE.PointLight(c, i, 14, 1.6); l.position.set(x, y, z); scene.add(l); });
-    const titulo = placa(sala.nome, 3, 0.6, '#e8b45a'); titulo.position.set(sala.id === 'salao' ? 1 : 2.2, 3.35, -RD + 0.03); scene.add(titulo);
+    // Nome da sala no fundo, à esquerda (a direita do fundo é das cabines).
+    const titulo = placa(sala.nome, 3, 0.6, '#e8b45a'); titulo.position.set(-6.2, 3.35, -RD + 0.03); scene.add(titulo);
 
-    const { cabines, anima } = mobiliar(scene, sala.id, tema);
-    const tocaveis: THREE.Object3D[] = [];
+    const { anima } = mobiliar(scene, sala.id, tema);
 
     // Portas para as outras salas.
     const portas = new THREE.Group(); scene.add(portas);
     const montarPortas = () => {
       portas.children.slice().forEach((c) => portas.remove(c));
-      tocaveis.splice(0, tocaveis.length, ...(cabines ? [cabines] : []));
       atual.current.outras.slice(0, VAGAS_DE_PORTA.length).forEach((s, i) => {
         const pos = VAGAS_DE_PORTA[i];
         const travada = !!(s.trancada || s.bloqueadaParaMim);
@@ -399,7 +430,7 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
         const moldura = new THREE.Mesh(new THREE.BoxGeometry(1.55, 2.75, 0.04), new THREE.MeshBasicMaterial({ color: travada ? 0x55474a : cor })); moldura.position.set(0, 1.37, -0.03); g.add(moldura);
         const t = placa(`${travada ? '🔒 ' : ''}${s.nome}${s.total > 0 ? ` · ${s.total}` : ''}`, 2.2, 0.45, travada ? '#9a8a8c' : '#e8b45a'); t.position.set(0, 3, 0); g.add(t);
         g.position.set(pos.x, 0, pos.z); g.rotation.y = pos.ry; g.userData = { tipo: 'porta', id: s.id };
-        portas.add(g); tocaveis.push(g);
+        portas.add(g);
       });
     };
 
@@ -435,7 +466,21 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
       if (!f) { pintarParede(null, 0); return; }
       void carregarImagem(f.url).then((img) => { if (minha === fundoGeracao) pintarParede(img, f.intensidade); });
     };
-    montarPortas(); montarPessoas(); montarFundo();
+    // Cabines desta sala (vêm do servidor): sobem quando abrem, somem quando fecham.
+    const grupoCabines = new THREE.Group(); scene.add(grupoCabines);
+    const montarCabines = () => {
+      grupoCabines.children.slice().forEach((c) => grupoCabines.remove(c));
+      const lista = atual.current.cabines;
+      lista.slice(0, VAGAS_DE_CABINE).forEach((c, i) => {
+        const g = cabine3D(c, pele);
+        g.position.set(3 + i * 1.6, 0, -RD + 1.02);
+        grupoCabines.add(g);
+      });
+      if (lista.length > VAGAS_DE_CABINE) {
+        const mais = placa(`+${lista.length - VAGAS_DE_CABINE} cabines`, 1.6, 0.36, '#e8b45a'); mais.position.set(5.1, 3.9, -RD + 0.03); grupoCabines.add(mais);
+      }
+    };
+    montarPortas(); montarPessoas(); montarCabines(); montarFundo();
 
     // Olhar, andar e tocar.
     const raio = new THREE.Raycaster();
@@ -456,7 +501,7 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
       destino = new THREE.Vector3(x, EYE, z);
       yaw = Math.atan2(alvo.x - x, -(alvo.z - z));
     };
-    cena.current = { pessoas: montarPessoas, portas: montarPortas, fundo: montarFundo, focar };
+    cena.current = { pessoas: montarPessoas, portas: montarPortas, cabines: montarCabines, fundo: montarFundo, focar };
     const canvas = renderer.domElement;
     const aoDescer = (e: PointerEvent) => { toque = { x: e.clientX, y: e.clientY, yaw, girando: false, id: e.pointerId }; };
     const aoMover = (e: PointerEvent) => {
@@ -471,7 +516,7 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
       const r = canvas.getBoundingClientRect();
       v2.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       raio.setFromCamera(v2, cam);
-      const acertos = raio.intersectObjects([...gente.children, ...tocaveis, chao], true);
+      const acertos = raio.intersectObjects([...gente.children, ...portas.children, ...grupoCabines.children, chao], true);
       if (!acertos.length) return;
       let o: THREE.Object3D | null = acertos[0].object;
       while (o && !o.userData.tipo && o.name !== 'chao') o = o.parent;
@@ -487,7 +532,7 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
       const a = atual.current;
       if (o.userData.tipo === 'pessoa') { const p = a.presentes.find((x) => x.id === o!.userData.id); if (p) a.aoTocarPessoa(p); }
       else if (o.userData.tipo === 'porta') { const s = a.outras.find((x) => x.id === o!.userData.id); if (s) a.aoTocarPorta(s); }
-      else if (o.userData.tipo === 'cabines') a.aoTocarCabines();
+      else if (o.userData.tipo === 'cabine') { const c = a.cabines.find((x) => x.id === o!.userData.id); if (c) a.aoTocarCabine(c); }
     };
     const aoCancelar = () => { toque = null; };
     canvas.addEventListener('pointerdown', aoDescer);
@@ -541,6 +586,7 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
 
   useEffect(() => { cena.current?.pessoas(); }, [chavePessoas]);
   useEffect(() => { cena.current?.portas(); }, [chavePortas]);
+  useEffect(() => { cena.current?.cabines(); }, [chaveCabines]);
   useEffect(() => { cena.current?.fundo(); }, [chaveFundo]);
 
   if (falhou) return <p className="py-10 text-center text-sm text-white/60">Seu aparelho não abriu a visão por dentro. Use a planta ou o 3D.</p>;
@@ -557,7 +603,6 @@ export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [
   const [dica, setDica] = useState(true);
   const sala = salas.find((s) => s.id === salaId) ?? salas[0];
   const outras = useMemo(() => salas.filter((s) => s.id !== sala?.id), [salas, sala?.id]);
-  const abertas = useMemo(() => salas.flatMap((s) => (s.cabines ?? []).filter((c) => c.aberta).map((c) => ({ sala: s, c }))), [salas]);
   if (!sala) return null;
   const travada = (s: SalaDoMapa) => !!(s.trancada || s.bloqueadaParaMim);
   const fechadaDe = (id: string) => fechadas.find((f) => f.id === id);
@@ -577,7 +622,7 @@ export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [
         <Cena ref={cenaRef} key={sala.id} sala={sala} outras={outras}
           aoTocarPessoa={(p) => setPainel({ tipo: 'pessoa', pessoa: p })}
           aoTocarPorta={(s) => setPainel({ tipo: 'porta', sala: s })}
-          aoTocarCabines={() => setPainel({ tipo: 'cabines' })}
+          aoTocarCabine={(c) => setPainel({ tipo: 'cabine', c })}
           aoUsar={() => setDica(false)} />
         {dica
           ? <span className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/15 bg-black/70 px-3 py-1 text-[11px] text-white/80">⇠ arraste para olhar · toque no chão para andar ⇢</span>
@@ -619,24 +664,25 @@ export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [
                   </div>
                 </>
               )}
-              {painel.tipo === 'cabines' && (
-                <>
-                  <p className="font-bold">Cabines</p>
-                  {abertas.length === 0 && fechadas.length === 0 && <p className="text-sm text-white/60">Nenhuma cabine montada agora.</p>}
-                  {abertas.map(({ sala: s, c }) => (
-                    <div key={c.id} className="flex items-center justify-between gap-2 rounded-xl border border-amber-400/40 bg-amber-500/10 p-2 text-sm">
-                      <span>🚪 Porta aberta · {s.nome}{c.espiando > 0 ? ` · 👀${c.espiando}` : ''}</span>
-                      <button type="button" onClick={() => { setPainel(null); onEspiar(s.id, c.id); }} className="shrink-0 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold text-black">Espiar</button>
-                    </div>
-                  ))}
-                  {fechadas.map((f) => (
-                    <div key={f.id} className="flex items-center justify-between gap-2 rounded-xl border border-white/10 p-2 text-sm">
-                      <span>🔒 Porta fechada</span>
-                      {onPedir && <button type="button" disabled={fechadaDe(f.id)?.pedi || pedindo === f.id} onClick={() => onPedir(f.id)} className="shrink-0 rounded-full bg-rose-600 px-3 py-1.5 text-xs font-bold disabled:opacity-60">{fechadaDe(f.id)?.pedi ? 'Pedido enviado' : 'Pedir pra entrar'}</button>}
-                    </div>
-                  ))}
-                </>
-              )}
+              {painel.tipo === 'cabine' && (() => {
+                const c = painel.c;
+                const f = fechadaDe(c.id);
+                const quem = c.tipos.length ? c.tipos.map((t) => ({ casal: 'casal', mulher: 'mulher', homem: 'homem', outros: 'perfil' } as const)[t]).join(' + ') : `${c.pessoas} pessoa${c.pessoas === 1 ? '' : 's'}`;
+                return (
+                  <>
+                    <p className="font-bold">{c.aberta ? '🚪 Cabine de porta aberta' : '🔒 Cabine de porta fechada'}</p>
+                    <p className="text-sm text-white/70">
+                      {c.aberta ? <>Lá dentro: {quem}{c.espiando > 0 ? ` · ${c.espiando} espiando` : ''}. Quem está na sala pode espiar; entrar e interagir só se eles deixarem.</>
+                        : <>{c.pessoas} lá dentro · {['conversando 💬', 'esquentando 🔥', 'pegando fogo 🔥🔥'][Math.max(0, Math.min(2, c.nivel ?? 0))]}. Porta fechada: só entra quem eles aceitarem.</>}
+                    </p>
+                    {c.aberta
+                      ? <button type="button" onClick={() => { setPainel(null); onEspiar(sala.id, c.id); }} className="w-full rounded-xl bg-amber-500 py-3 text-sm font-bold text-black">👀 Espiar</button>
+                      : f && onPedir
+                        ? <button type="button" disabled={f.pedi || pedindo === f.id} onClick={() => onPedir(f.id)} className="w-full rounded-xl bg-rose-600 py-3 text-sm font-bold disabled:opacity-60">{f.pedi ? 'Pedido enviado ✓' : 'Pedir pra entrar'}</button>
+                        : <p className="rounded-xl bg-white/5 p-2 text-center text-xs text-white/60">Essa cabine não está recebendo pedidos agora.</p>}
+                  </>
+                );
+              })()}
               <button type="button" onClick={() => setPainel(null)} className="w-full py-2 text-sm text-white/60">Fechar</button>
             </div>
           </div>
