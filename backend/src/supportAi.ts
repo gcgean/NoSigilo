@@ -210,8 +210,42 @@ ${String((err as Error)?.message || err).slice(0, 200)}`
   );
 }
 
+/** Pergunta de novo o motivo, uma vez, quando a resposta ao pedido foi só um cumprimento. */
+const PERGUNTA_DE_NOVO = 'Oi, tudo bem? 😊 A equipe já foi chamada. Me conta o que aconteceu ou o que você precisa, que ela já chega sabendo.';
+
+async function perguntarMotivoDeNovo(deps: Dependencias, userId: string): Promise<boolean> {
+  const ultimas = (await queryAll(
+    deps.db,
+    `SELECT sender_type, sender_id, message FROM promoter_support_messages
+      WHERE promoter_user_id = ? ORDER BY created_at DESC LIMIT 4`,
+    [userId]
+  )) as any[];
+  // Esperado (do mais novo ao mais antigo): cumprimentos do cliente, depois o pedido de motivo da Lola.
+  let i = 0;
+  while (i < ultimas.length && String(ultimas[i].sender_type) === 'promoter') {
+    if (!soCumprimento(String(ultimas[i].message ?? ''))) return false;
+    i++;
+  }
+  const lola = ultimas[i];
+  if (i === 0 || !lola || String(lola.sender_id) !== SENDER_ID_IA || !String(lola.message ?? '').includes('Pra adiantar')) return false;
+  await run(
+    deps.db,
+    'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [randomUUID(), userId, 'admin', SENDER_ID_IA, PERGUNTA_DE_NOVO, new Date().toISOString()]
+  );
+  await deps.persist();
+  deps.aoResponder?.(userId);
+  return true;
+}
+
 async function responder(deps: Dependencias, userId: string): Promise<void> {
   const { db } = deps;
+  // Já com a equipe e só respondeu "Olá boa noite" ao pedido de motivo (caso de
+  // 14/11/2026): pergunta de novo, sem depender da IA estar ligada.
+  if (await conversaComEquipe(deps, userId)) {
+    await perguntarMotivoDeNovo(deps, userId);
+    return;
+  }
   if (!deps.apiKey) return;
   if ((await deps.getSetting(CHAVE_ATIVA)) !== '1') return;
   // Conversa já transferida: quem responde agora é a equipe.

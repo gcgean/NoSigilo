@@ -2958,6 +2958,19 @@ describe('nosigilo backend', () => {
     const repetido = await request(ctx.app).post('/api/promoter/support/human').set(auth(cliente.token)).expect(200);
     expect(repetido.body.jaEstavaComEquipe).toBe(true);
 
+    // Respondeu só com cumprimento: a Lola pergunta o motivo de novo, uma vez só.
+    const mandar = (message: string) => request(ctx.app).post('/api/promoter/support').set(auth(cliente.token)).send({ message }).expect(200);
+    const espera = () => new Promise((ok) => setTimeout(ok, 3_200));
+    await mandar('Olá boa Noite');
+    await espera();
+    const deNovo = await request(ctx.app).get('/api/promoter/support').set(auth(cliente.token)).expect(200);
+    expect(deNovo.body.messages.map((m: any) => m.senderType)).toEqual(['promoter', 'admin', 'promoter', 'admin']);
+    expect(deNovo.body.messages[3].message).toContain('Me conta o que aconteceu');
+    await mandar('oi');
+    await espera();
+    const umaVez = await request(ctx.app).get('/api/promoter/support').set(auth(cliente.token)).expect(200);
+    expect(umaVez.body.messages).toHaveLength(5);
+
     const lista = await request(ctx.app).get('/api/admin/promoter-support').set(auth(equipe.token)).expect(200);
     const chat = lista.body.chats.find((c: any) => c.userId === cliente.user.id);
     expect(chat.humanRequested).toBe(true);
@@ -2970,7 +2983,7 @@ describe('nosigilo backend', () => {
 
     const final = await request(ctx.app).get('/api/promoter/support').set(auth(cliente.token)).expect(200);
     expect(final.body.humanRequested).toBe(false);
-  });
+  }, 20_000);
   // ── Cidade: grava a oficial com coordenadas; bairro/endereço é recusado ─────
   it('cidade digitada vira a cidade oficial e endereço é recusado', async () => {
     const u = await registerInvitedUser(ctx, sponsorToken, {
