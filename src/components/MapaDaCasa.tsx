@@ -64,24 +64,30 @@ type PropsDoMapa = {
 };
 
 /**
- * Três jeitos de ver: 3D aéreo (padrão), planta e o Salão por dentro (primeira
- * pessoa). Cada um escolhe e fica guardado; aparelho sem 3D/WebGL só vê o que roda.
+ * Três jeitos de ver: 3D aéreo, planta e a Casa por dentro (primeira pessoa).
+ * Abre sempre no 3D aéreo (15/11/2026, pedido do dono). Tocar numa sala no 3D ou
+ * na planta pergunta: entrar no chat ou ver por dentro.
  */
 export default function MapaDaCasa(props: PropsDoMapa) {
   const [pode3D] = useState(aceita3D);
   const [podeDentro] = useState(() => !!props.salas.some((s) => s.id === 'salao') && aceitaWebGL());
-  const [modo, setModo] = useState<Modo>(() => {
-    const g = modoGuardado();
-    if (g === 'dentro' && podeDentro) return 'dentro';
-    if (g === 'planta' || !pode3D) return 'planta';
-    return '3d';
-  });
+  const [modo, setModo] = useState<Modo>(() => (pode3D ? '3d' : 'planta'));
+  const [salaDentro, setSalaDentro] = useState<string | undefined>(undefined);
+  const [escolhendo, setEscolhendo] = useState<SalaDoMapa | null>(null);
   const escolher = (m: Modo) => {
     setModo(m);
-    try { localStorage.setItem(CHAVE_MODO, m); } catch { /* modo restrito */ }
+    if (m !== 'dentro') { try { localStorage.setItem(CHAVE_MODO, m); } catch { /* modo restrito */ } }
   };
+  void modoGuardado;
   const em3D = modo === '3d';
-  const planta = <PlantaDaCasa {...props} />;
+  // No 3D e na planta, tocar na sala abre a escolha (sem WebGL, entra direto).
+  const tocarSala = (id: string) => {
+    const s = props.salas.find((x) => x.id === id);
+    if (!s || !podeDentro) { props.onEntrar(id); return; }
+    setEscolhendo(s);
+  };
+  const propsDoMapa = { ...props, onEntrar: tocarSala };
+  const planta = <PlantaDaCasa {...propsDoMapa} />;
   const opcoes: { m: Modo; rotulo: string }[] = [
     ...(pode3D ? [{ m: '3d' as const, rotulo: '🏠 3D' }] : []),
     { m: 'planta', rotulo: '🗺️ Planta' },
@@ -102,14 +108,31 @@ export default function MapaDaCasa(props: PropsDoMapa) {
       {modo === 'dentro' ? (
         <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-3">
           <p className="mb-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-200">🎮 A Casa por dentro</p>
-          <Suspense fallback={planta}><SalaoPorDentro {...props} /></Suspense>
+          <Suspense fallback={planta}><SalaoPorDentro key={salaDentro ?? ''} salaInicial={salaDentro} {...props} /></Suspense>
         </div>
       ) : em3D ? (
         <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-3">
           <p className="mb-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-200">🏠 A Casa · toque para entrar</p>
-          <Suspense fallback={planta}><MapaDaCasa3D {...props} /></Suspense>
+          <Suspense fallback={planta}><MapaDaCasa3D {...propsDoMapa} /></Suspense>
         </div>
       ) : planta}
+      {escolhendo && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]" onClick={(e) => { if (e.target === e.currentTarget) setEscolhendo(null); }}>
+          <div className="w-full max-w-md space-y-3 rounded-2xl border border-white/10 bg-[#26101a] p-4 text-white" role="dialog" aria-modal="true" aria-label={`${escolhendo.nome}: entrar ou ver por dentro`}>
+            <p className="text-center font-bold">{escolhendo.emoji} {escolhendo.nome}</p>
+            <p className="text-center text-xs text-white/60">{escolhendo.total} lá dentro{escolhendo.espiando > 0 ? ` · ${escolhendo.espiando} espiando` : ''}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => { const id = escolhendo.id; setEscolhendo(null); props.onEntrar(id); }} className="rounded-xl bg-gradient-to-r from-rose-600 to-fuchsia-600 py-3 text-sm font-bold">
+                💬 {escolhendo.lotadaParaMim ? 'Entrar na fila' : 'Entrar no chat'}
+              </button>
+              <button type="button" onClick={() => { setSalaDentro(escolhendo.id); setEscolhendo(null); setModo('dentro'); }} className="rounded-xl border border-white/20 py-3 text-sm font-bold">
+                🎮 Ver por dentro
+              </button>
+            </div>
+            <button type="button" onClick={() => setEscolhendo(null)} className="w-full py-1 text-sm text-white/60">Cancelar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

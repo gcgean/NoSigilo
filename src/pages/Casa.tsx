@@ -1,5 +1,5 @@
 import { useDigitando } from '@/utils/useDigitando';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Camera, Crown, Lock, Send, Users, X } from 'lucide-react';
@@ -34,7 +34,8 @@ import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
 import TemaDaProxima from '@/components/TemaDaProxima';
-import CabinesFechadas, { type CabineFechada } from '@/components/CabinesFechadas';
+import CabinesFechadas, { CabinesAbertas, type CabineFechada } from '@/components/CabinesFechadas';
+const SalaoPorDentro = lazy(() => import('@/components/SalaoPorDentro'));
 
 /**
  * A Casa — boate virtual de sexta (22h–1h) e sábado (22h–2h) (backend: casa.ts).
@@ -384,6 +385,8 @@ export default function Casa() {
     if (!visto) setTourPasso((t) => t ?? 0);
   }, [estado?.sala.id, estado?.eu.podeFalar]);
   const [cabineAberta, setCabineAberta] = useState<{ id: string; modo: 'membro' | 'espiar' } | null>(null);
+  // Dentro do chat: ver a sala (e as outras) em primeira pessoa, por cima do chat.
+  const [porDentro, setPorDentro] = useState(false);
   const cabineAbertaRef = useRef(cabineAberta);
   cabineAbertaRef.current = cabineAberta;
   const [minhasCabines, setMinhasCabines] = useState<string[]>([]);
@@ -1192,6 +1195,30 @@ export default function Casa() {
       className={cn('fixed inset-0 z-[9990] flex flex-col overflow-hidden text-white', temaDaSala(estado.sala.id).fundo)}
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
+      {porDentro && info?.salas?.length ? (
+        <div className="fixed inset-0 z-[9994] overflow-y-auto bg-zinc-950 px-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-[calc(0.75rem+env(safe-area-inset-top,0px))]" role="dialog" aria-modal="true" aria-label="A Casa por dentro">
+          <div className="mx-auto max-w-lg space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-200">🎮 A Casa por dentro</p>
+              <button type="button" onClick={() => setPorDentro(false)} className="rounded-full border border-white/20 px-3 py-1 text-xs">✕ Voltar ao chat</button>
+            </div>
+            <Suspense fallback={<p className="py-10 text-center text-sm text-white/60">Carregando…</p>}>
+              <SalaoPorDentro
+                salas={info.salas}
+                salaInicial={estado.sala.id}
+                salaAtual={estado.sala.id}
+                fechadas={info.cabinesFechadas ?? []}
+                pedindo={pedindoCabine}
+                onPedir={(id) => { const c = (info.cabinesFechadas ?? []).find((x) => x.id === id); if (c) void pedirCabineFechada(c); }}
+                onVerPerfil={(id) => { setPorDentro(false); setPerfilAberto(id); }}
+                onEntrarChamando={async (id, nome) => { setPorDentro(false); if (id !== estado.sala.id) await entrar(id); setTexto(`@${nome} `); }}
+                onEntrar={(id) => { setPorDentro(false); if (id !== estado.sala.id) void entrar(id); }}
+                onEspiar={async (salaId, cabineId) => { setPorDentro(false); if (salaId !== estado.sala.id) await entrar(salaId); setCabineAberta({ id: cabineId, modo: 'espiar' }); }}
+              />
+            </Suspense>
+          </div>
+        </div>
+      ) : null}
       {/* Luz de boate: dois focos neon que passeiam devagar pelo fundo. */}
       <style>{`
         @keyframes nsFoco1 { 0%,100% { transform: translate(-30%, -10%); } 50% { transform: translate(40%, 30%); } }
@@ -1212,6 +1239,9 @@ export default function Casa() {
           </p>
         </div>
         <RadioDaCasa compacto />
+        {info?.salas?.length ? (
+          <button type="button" onClick={() => { setPorDentro(true); void carregar(); }} className="shrink-0 rounded-full border border-white/20 px-2.5 py-1.5 text-xs" title="Ver a sala por dentro" aria-label="Ver a sala por dentro">🎮</button>
+        ) : null}
         {/* Ícones: no celular descem para uma 2ª linha, para o nome da sala não sumir. */}
         {/* Uma linha só (13/11/2026): o convite por extenso jogava 🔔🏆⚪ para uma
             3ª linha e roubava espaço do chat. Se não couber, rola para o lado. */}
@@ -2187,6 +2217,7 @@ export default function Casa() {
           })}
         </div>
 
+        {info?.aberta && <CabinesAbertas salas={info.salas ?? []} onEspiar={async (salaId, cabineId) => { await entrar(salaId); setCabineAberta({ id: cabineId, modo: 'espiar' }); }} />}
         {info?.aberta && <CabinesFechadas cabines={info.cabinesFechadas ?? []} pedindo={pedindoCabine} onPedir={(c) => void pedirCabineFechada(c)} />}
 
         <div className="rounded-3xl bg-gradient-to-br from-fuchsia-800/60 to-rose-800/60 p-5">

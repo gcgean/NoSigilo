@@ -23,6 +23,29 @@ const haQuanto = (iso: string) => {
   return min < 60 ? `${min} min` : `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`;
 };
 
+type SalaComCabines = { id: string; nome: string; emoji: string; trancada?: boolean; bloqueadaParaMim?: boolean; cabines?: { id: string; aberta: boolean; pessoas: number; espiando: number; tipos: string[] }[] };
+
+/** Cabines de porta aberta: qualquer um espia; entrar só com a aprovação de quem está dentro. */
+export function CabinesAbertas({ salas, onEspiar }: { salas: SalaComCabines[]; onEspiar: (salaId: string, cabineId: string) => void }) {
+  const abertas = salas.filter((s) => !s.trancada && !s.bloqueadaParaMim).flatMap((s) => (s.cabines ?? []).filter((c) => c.aberta).map((c) => ({ s, c })));
+  if (abertas.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-bold">👀 Cabines de porta aberta</p>
+      <p className="-mt-1 text-xs text-white/55">Dá para espiar à vontade. Entrar e interagir só se quem está dentro deixar.</p>
+      {abertas.map(({ s, c }) => (
+        <div key={c.id} className="flex items-center gap-3 rounded-2xl bg-amber-500/10 p-3 ring-1 ring-amber-400/30">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{c.tipos.length ? quemEstaDentro(c.tipos) : `${c.pessoas} pessoa${c.pessoas === 1 ? '' : 's'}`}</p>
+            <p className="truncate text-xs text-white/55">{s.emoji} {s.nome}{c.espiando > 0 ? ` · ${c.espiando} espiando` : ''}</p>
+          </div>
+          <button type="button" onClick={() => onEspiar(s.id, c.id)} className="shrink-0 rounded-full bg-amber-500 px-3 py-2 text-xs font-bold text-black">👀 Espiar</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function CabinesFechadas({ cabines, pedindo, onPedir }: {
   cabines: CabineFechada[];
   pedindo: string | null;

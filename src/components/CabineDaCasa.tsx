@@ -390,7 +390,7 @@ export default function CabineDaCasa({
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(ellipse_at_top,rgba(225,29,72,0.35),transparent_70%)]" />
       {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} onFim={fimDoEfeito} />}
       <div className="relative bg-gradient-to-r from-rose-700 via-red-600 to-rose-700 py-1 text-center text-[11px] font-black uppercase tracking-[0.3em] shadow-[0_0_20px_rgba(225,29,72,0.6)]">
-        🔒 Cabine privada {cab.aberta ? '· porta aberta 👀' : '· só vocês'}
+        {cab.aberta ? '👀 Cabine · porta aberta, a sala pode espiar' : '🔒 Cabine privada · só vocês'}
       </div>
       <div className="relative flex items-center gap-2 border-b border-rose-500/30 px-3 py-2">
         <button type="button" onClick={onVoltar} className="rounded-full p-2 hover:bg-white/10" aria-label="Voltar à sala"><ArrowLeft className="h-5 w-5" /></button>

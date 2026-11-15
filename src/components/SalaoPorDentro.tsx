@@ -24,6 +24,10 @@ type Props = {
   onVerPerfil?: (id: string) => void;
   /** Entra na sala e já deixa a pessoa marcada no chat. */
   onEntrarChamando?: (salaId: string, nome: string) => void;
+  /** Sala que abre primeiro. */
+  salaInicial?: string;
+  /** Sala onde a pessoa já está (dentro do chat): o botão vira "voltar ao chat". */
+  salaAtual?: string;
 };
 
 type Painel =
@@ -596,9 +600,9 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
 // Nome curto cabe inteiro ("T&T", "Casal 65"); nome longo fica no primeiro pedaço.
 const primeiroNome = (n: string) => ((n || '').length <= 12 ? n : (n || '').split(/\s*&\s*|\s+/)[0] || n);
 
-export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [], pedindo = null, onPedir, onVerPerfil, onEntrarChamando }: Props) {
+export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [], pedindo = null, onPedir, onVerPerfil, onEntrarChamando, salaInicial, salaAtual }: Props) {
   const cenaRef = useRef<CenaApi>(null);
-  const [salaId, setSalaId] = useState(() => (salas.some((s) => s.id === 'salao') ? 'salao' : salas[0]?.id ?? 'salao'));
+  const [salaId, setSalaId] = useState(() => (salaInicial && salas.some((s) => s.id === salaInicial) ? salaInicial : salas.some((s) => s.id === 'salao') ? 'salao' : salas[0]?.id ?? 'salao'));
   const [painel, setPainel] = useState<Painel>(null);
   const [dica, setDica] = useState(true);
   const sala = salas.find((s) => s.id === salaId) ?? salas[0];
@@ -629,7 +633,7 @@ export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [
           : <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-[11px] text-white/80">{sala.total} aqui{sala.espiando > 0 ? ` · 👀${sala.espiando}` : ''}</span>}
         {presentes.length === 0 && <span className="pointer-events-none absolute inset-x-0 bottom-20 text-center text-xs text-white/60">{sala.nome} vazio… seja o primeiro 😏</span>}
         <button type="button" disabled={travada(sala)} onClick={() => onEntrar(sala.id)} className="absolute inset-x-3 bottom-3 rounded-xl bg-gradient-to-r from-rose-600 to-fuchsia-600 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50">
-          {sala.trancada ? `🔒 Abre com mais ${sala.faltamParaAbrir} na Casa` : sala.bloqueadaParaMim ? '🔒 Fechada para o seu perfil' : sala.lotadaParaMim ? `Entrar na fila · ${sala.nome}` : `Entrar · ${sala.nome}`}
+          {sala.id === salaAtual ? '💬 Voltar ao chat' : sala.trancada ? `🔒 Abre com mais ${sala.faltamParaAbrir} na Casa` : sala.bloqueadaParaMim ? '🔒 Fechada para o seu perfil' : sala.lotadaParaMim ? `Entrar na fila · ${sala.nome}` : `Entrar no chat · ${sala.nome}`}
         </button>
         {painel && (
           <div className="absolute inset-0 z-10 flex items-end bg-black/50" onClick={(e) => { if (e.target === e.currentTarget) setPainel(null); }}>
