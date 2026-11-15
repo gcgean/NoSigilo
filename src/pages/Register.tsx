@@ -33,8 +33,8 @@ const primaryOptions = [
 ] as const;
 
 const otherOptions = [
-  { value: 'Casal (Ele/Ele)',    label: 'Casal (ele/ele)', emoji: '👬', hint: '' },
-  { value: 'Casal (Ela/Ela)',    label: 'Casal (ela/ela)', emoji: '👭', hint: '' },
+  { value: 'Casal (Ele/Ele)',    label: 'Dois homens', emoji: '👬', hint: '' },
+  { value: 'Casal (Ela/Ela)',    label: 'Duas mulheres', emoji: '👭', hint: '' },
   { value: 'Transexual',         label: 'Pessoa trans',    emoji: '🏳️‍⚧️', hint: '' },
   { value: 'Crossdresser (CD)',  label: 'Crossdresser',    emoji: '✨', hint: '' },
   { value: 'Travesti',           label: 'Travesti',        emoji: '🌈', hint: '' },
@@ -715,6 +715,18 @@ export default function Register() {
                     );
                   })}
                 </div>
+
+                {/* Desde 07/11 os 8 perfis ficam à mostra e homens e casais hetero passaram a
+                    tocar em "Casal (ela/ela)" por engano (49 em meio mês, antes ~10/mês). */}
+                {(formData.gender === 'Casal (Ela/Ela)' || formData.gender === 'Casal (Ele/Ele)') && (
+                  <p className="rounded-lg bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
+                    Perfil de casal formado por {formData.gender === 'Casal (Ela/Ela)' ? 'duas mulheres' : 'dois homens'}.{' '}
+                    É homem e mulher?{' '}
+                    <button type="button" onClick={() => handleSelectGender('Casal (Ele/Ela)')} className="font-semibold text-primary underline underline-offset-2">
+                      Escolher "Somos um casal"
+                    </button>
+                  </p>
+                )}
 
                 {fieldErrors.gender ? (
                   <p id="erro-gender" role="alert" className="px-1 text-xs font-medium text-destructive">
