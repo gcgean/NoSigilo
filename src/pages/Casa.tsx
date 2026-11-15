@@ -1174,6 +1174,18 @@ export default function Casa() {
     );
   };
 
+  // Dentro de uma sala, a página d'A Casa atrás não rola nem aparece. No iPhone,
+  // abrir/fechar o teclado rolava a página de trás e o ranking surgia embaixo do
+  // chat (15/11/2026). Também para o mapa 3D de desenhar escondido.
+  const dentroDaSala = !!estado;
+  useEffect(() => {
+    if (!dentroDaSala) return;
+    const html = document.documentElement, body = document.body;
+    const antes = { html: html.style.overflow, body: body.style.overflow };
+    html.style.overflow = 'hidden'; body.style.overflow = 'hidden';
+    return () => { html.style.overflow = antes.html; body.style.overflow = antes.body; };
+  }, [dentroDaSala]);
+
   // ─── Sala ────────────────────────────────────────────────────────────────
   const sala = estado && createPortal(
     <div
@@ -2033,7 +2045,7 @@ export default function Casa() {
   const total = (info?.salas ?? []).reduce((s, x) => s + x.total + x.espiando, 0);
   return (
     <div className="dark -mx-3 -mt-3 -mb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] min-h-[calc(100vh-4rem)] bg-gradient-to-b from-zinc-950 via-fuchsia-950 to-zinc-950 px-4 pb-32 pt-8 text-white sm:-mx-4 sm:-mt-6 md:-mb-6 md:pb-16">
-      <div className="mx-auto max-w-lg space-y-6">
+      <div className={cn('mx-auto max-w-lg space-y-6', dentroDaSala && 'hidden')}>
         <div className="relative text-center">
           {info?.aberta && <div className="absolute right-0 top-0"><RadioDaCasa compacto /></div>}
           <div className="flex justify-center"><BrandLogo /></div>
