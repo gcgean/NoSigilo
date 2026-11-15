@@ -111,6 +111,14 @@ async function transferirParaEquipe(deps: Dependencias, userId: string, motivo: 
   );
 }
 
+/** "Oii", "boa noite!", "olá 😊": cumprimento sem assunto nenhum. */
+export function soCumprimento(texto: string): boolean {
+  const t = texto.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t) return true;
+  return /^((o+i+e*|ola+|oie|opa|ei|e ai|eae|hey|hello|hi|alo|bom dia|boa tarde|boa noite|tudo bem|td bem|tudo bom|blz|beleza|suporte|ajuda|atendente|pessoal|gente|lola)\s?)+$/.test(t);
+}
+
 /**
  * Cliente tocou em "Falar com um atendente". Registra o pedido na conversa, dá
  * um retorno imediato e avisa a equipe. Se já estava com a equipe, não repete.
@@ -126,13 +134,14 @@ export async function pedirAtendenteHumano(deps: Dependencias, userId: string): 
   // Sem nada escrito nas últimas 24h a equipe chegaria sem saber o assunto
   // (caso de 08/11/2026): a Lola já pede o motivo. A resposta do cliente vai
   // para a equipe pelo aviso normal de conversa transferida.
-  const recentes = (await queryOne(
+  // Só "Oii" ou "boa noite" também não diz o assunto (caso de 14/11/2026).
+  const recentes = (await queryAll(
     deps.db,
-    `SELECT COUNT(*) AS n FROM promoter_support_messages
+    `SELECT message FROM promoter_support_messages
       WHERE promoter_user_id = ? AND sender_type = 'promoter' AND created_at > ?`,
     [userId, new Date(agora - 24 * 3600_000).toISOString()]
-  )) as any;
-  const semContexto = Number(recentes?.n || 0) === 0;
+  )) as any[];
+  const semContexto = !recentes.some((r) => !soCumprimento(String(r.message ?? '')));
   await run(
     deps.db,
     'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
