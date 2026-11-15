@@ -17975,35 +17975,28 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.put('/api/location', requireAuth(env, db), async (req, res) => {
-    const schema = z.object({ lat: z.number(), lng: z.number() });
+    // atualizarCidade: só o botão de GPS da tela do próprio Perfil manda (a pessoa pediu).
+    const schema = z.object({ lat: z.number(), lng: z.number(), atualizarCidade: z.boolean().optional() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
       return;
     }
-    const nearest = await nearestCity(db, parsed.data.lat, parsed.data.lng);
     const latGuardada = arredondarCoordenada(parsed.data.lat);
     const lonGuardada = arredondarCoordenada(parsed.data.lng);
-    // Cidade escolhida à mão (Configurações) vale enquanto a pessoa estiver na
-    // região dela (13/11/2026): o GPS automático trocava "Fortaleza" de volta
-    // para "Eusébio" a cada abertura do app. Só a distância passa a vir do GPS.
-    const atual = (await queryOne(db, 'SELECT city, state, location_source, is_showcase FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const atual = (await queryOne(db, 'SELECT city, state, is_showcase FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
     // Perfil vitrine não tem cidade/estado nem posição (13/11/2026).
     if (Number(atual?.is_showcase || 0) === 1) { res.json({ ok: true, city: null, state: null }); return; }
-    const cidadeManual = ['profile_city', 'gps_manual'].includes(String(atual?.location_source || '')) && atual?.city;
-    let manterCidade = false;
-    if (cidadeManual) {
-      const daCidade = (await queryOne(db, 'SELECT lat, lon FROM cities WHERE name = ? AND state = ? LIMIT 1', [String(atual.city), String(atual.state || '')])) as any;
-      if (daCidade) {
-        manterCidade = haversineKm({ lat: parsed.data.lat, lon: parsed.data.lng }, { lat: Number(daCidade.lat), lon: Number(daCidade.lon) }) <= 30;
-      }
-    }
-    if (manterCidade) {
+    // Quem já tem cidade no cadastro nunca tem a cidade trocada pelo GPS pedido nas
+    // outras telas (15/11/2026, pedido do dono): muitos casais, por discrição, põem uma
+    // cidade grande mais longe de onde moram. O GPS passa a dar só a distância.
+    if (atual?.city && !parsed.data.atualizarCidade) {
       await run(db, "UPDATE users SET lat = ?, lon = ?, location_source = 'gps_manual' WHERE id = ?", [latGuardada, lonGuardada, req.auth!.userId]);
       await persist();
       res.json({ ok: true, city: atual.city ?? null, state: atual.state ?? null });
       return;
     }
+    const nearest = await nearestCity(db, parsed.data.lat, parsed.data.lng);
     if (nearest) {
       await run(
         db,

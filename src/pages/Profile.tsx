@@ -889,7 +889,8 @@ export default function Profile() {
       const lat = Number(position.coords.latitude);
       const lng = Number(position.coords.longitude);
 
-      await locationService.updateLocation(lat, lng);
+      // A pessoa tocou em atualizar pelo GPS no próprio perfil: aqui a cidade pode mudar.
+      await locationService.updateLocation(lat, lng, { atualizarCidade: true });
 
       let nextCity = user?.city || '';
       let nextState = user?.state || '';

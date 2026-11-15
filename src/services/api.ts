@@ -1694,8 +1694,9 @@ export const locationService = {
     return response.data;
   },
 
-  updateLocation: async (lat: number, lng: number) => {
-    const response = await apiClient.put('/location', { lat, lng });
+  /** atualizarCidade só no botão de GPS do próprio Perfil: nas outras telas a cidade do cadastro não muda. */
+  updateLocation: async (lat: number, lng: number, opcoes?: { atualizarCidade?: boolean }) => {
+    const response = await apiClient.put('/location', { lat, lng, ...(opcoes?.atualizarCidade ? { atualizarCidade: true } : {}) });
     return response.data;
   },
 

@@ -5704,7 +5704,7 @@ describe('nosigilo backend', () => {
     await comentar(chato.token).expect(200);
   });
 
-  it('localização: cidade escolhida à mão não é trocada pelo GPS na mesma região; viagem troca', async () => {
+  it('localização: GPS das outras telas nunca troca a cidade do cadastro; só o pedido no Perfil troca', async () => {
     for (const [nome, norm, uf, la, lo] of [['Fortaleza', 'fortaleza', 'CE', -3.71722, -38.54306], ['Eusébio', 'eusebio', 'CE', -3.8695, -38.45545], ['Recife', 'recife', 'PE', -8.05389, -34.88111]] as const) {
       if (!(await queryOne(ctx.db, 'SELECT 1 AS x FROM cities WHERE name = ? AND state = ?', [nome, uf]))) {
         await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', [nome, norm, uf, la, lo]);
@@ -5718,9 +5718,21 @@ describe('nosigilo backend', () => {
     // GPS em Eusébio (perto): a cidade continua Fortaleza.
     await request(ctx.app).put('/api/location').set(auth).send({ lat: -3.8695, lng: -38.4555 }).expect(200);
     expect(await cidade()).toMatchObject({ city: 'Fortaleza', state: 'CE' });
-    // Viagem para Recife (longe): passa a ser Recife.
-    await request(ctx.app).put('/api/location').set(auth).send({ lat: -8.0476, lng: -34.877 }).expect(200);
+    // Longe (Recife): continua Fortaleza; casal que pôs uma cidade maior por discrição não é exposto.
+    const longe = await request(ctx.app).put('/api/location').set(auth).send({ lat: -8.0476, lng: -34.877 }).expect(200);
+    expect(longe.body).toMatchObject({ city: 'Fortaleza', state: 'CE' });
+    expect(await cidade()).toMatchObject({ city: 'Fortaleza', state: 'CE' });
+    // A distância passa a vir do GPS.
+    const pos = (await ctx.db.queryOne('SELECT lat, lon, location_source FROM users WHERE id = ?', [String(pessoa.user.id)])) as any;
+    expect(Number(pos.lat)).toBe(-8.05);
+    expect(pos.location_source).toBe('gps_manual');
+    // Botão "atualizar pelo GPS" no próprio Perfil: aí sim troca.
+    await request(ctx.app).put('/api/location').set(auth).send({ lat: -8.0476, lng: -34.877, atualizarCidade: true }).expect(200);
     expect(await cidade()).toMatchObject({ city: 'Recife', state: 'PE' });
+    // Sem cidade no cadastro, o GPS preenche.
+    await run(ctx.db, 'UPDATE users SET city = NULL, state = NULL WHERE id = ?', [String(pessoa.user.id)]);
+    await request(ctx.app).put('/api/location').set(auth).send({ lat: -3.8695, lng: -38.4555 }).expect(200);
+    expect(await cidade()).toMatchObject({ city: 'Eusébio', state: 'CE' });
   });
 
   it('feed: post não visto do mesmo estado vem antes, mesmo fora da janela dos 400 mais recentes do país', async () => {
