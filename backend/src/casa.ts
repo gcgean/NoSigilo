@@ -176,6 +176,8 @@ type Msg = {
   jogoId?: string;
   /** Respostas prontas: tocar manda o texto na sala (quebra-gelo de quem chegou calado). */
   opcoes?: string[];
+  /** Quebra-gelo: pessoa ativa da sala para mandar um drink (um toque abre o cartão dela). */
+  sugerir?: { id: string; nome: string };
 };
 
 // Reações da sala (as "safadas").
@@ -401,6 +403,31 @@ export function ordenarParaResponder<T extends { id: string; cidade: string | nu
  */
 /** Fala que vira balão na visão "por dentro": a última mensagem de texto de cada um, se recente. */
 export const FALA_NO_MAPA_MS = 90_000;
+/**
+ * Quebra-gelo com um toque: 87 de 230 entraram em 14/11 e não escreveram nada.
+ * Sugere alguém que falou nos últimos 10 min (quem marcou "quero brincar" primeiro).
+ * Homem recebe sugestão de casal ou mulher; os outros, de qualquer um.
+ */
+export function quemSugerirParaDrink<P extends { id: string; cat: string; ultimaMsg: number; querBrincar?: boolean; podeFalar?: boolean; pulseira?: string | null }>(
+  eu: P, presentes: P[], agora: number,
+): P | null {
+  const ativos = presentes.filter((x) => x.id !== eu.id && x.podeFalar !== false && x.pulseira !== 'vermelha' && x.ultimaMsg > 0 && agora - x.ultimaMsg <= 10 * 60_000);
+  const quem = eu.cat === 'homem' ? ativos.filter((x) => x.cat === 'casal' || x.cat === 'mulher') : ativos;
+  if (quem.length === 0) return null;
+  return [...quem].sort((a, b) => Number(!!b.querBrincar) - Number(!!a.querBrincar) || b.ultimaMsg - a.ultimaMsg)[0];
+}
+/** Sorteio da Casa: horários (Brasília, sempre aos 30 min) e quantos ganham. */
+const HORAS_DO_SORTEIO = [23, 0] as const;
+const GANHADORES_DO_SORTEIO = 2;
+/** Sorteia até n pessoas diferentes (Fisher–Yates). */
+export function sortearGanhadores<T>(lista: T[], n: number, aleatorio = Math.random): T[] {
+  const copia = [...lista];
+  for (let i = copia.length - 1; i > 0; i--) {
+    const j = Math.floor(aleatorio() * (i + 1));
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+  }
+  return copia.slice(0, Math.max(0, n));
+}
 /** Avisos da Casa no sino por pessoa, por noite (o celular continua recebendo). */
 const MAX_AVISOS_NO_SINO = 25;
 const TAMANHO_DA_FALA = 70;
@@ -2038,6 +2065,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     if (noite && !noite.teste) destravarSeEncheu(noite);
     if (noite) equilibrarSalas(agora);
     void lembrarReservas(noite).catch((err) => console.error('[casa] lembrete de reserva falhou', err));
+    void sorteioDaCasa(noite).catch((err) => console.error('[casa] sorteio falhou', err));
     void convidarParaOTema().catch((err) => console.error('[casa] convite do tema falhou', err));
     void convidarMulheres().catch((err) => console.error('[casa] convite das mulheres falhou', err));
 
@@ -2154,6 +2182,57 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
   };
 
   // Quem reservou: lembrete 15 min antes de abrir e, 20 min depois, convite com a Casa já cheia.
+  // ─── Sorteio da Casa: 23h30 e 0h30 ──────────────────────────────────────────
+  // Em 14/11 o público caiu de 104 (22h) para 54 (1h). A Lola avisa 15 min antes e só
+  // concorre quem está numa sala e mandou mensagem/mídia nos últimos 15 min: segura
+  // quem ia embora e faz quem está calado falar. Valor por ganhador em
+  // system_settings.casa_sorteio_tokens (padrão 20; '0' desliga sem deploy).
+  const sorteioDaCasa = async (noite: Awaited<ReturnType<typeof noiteAtual>>) => {
+    if (!noite || noite.forcada || noite.teste) return;
+    const br = agoraBrasilia();
+    const minuto = new Date().getUTCMinutes();
+    for (const hora of HORAS_DO_SORTEIO) {
+      if (br.hora !== hora) continue;
+      const chave = `casa_sorteio:${noite.chave}:${hora}`;
+      const valor = await tokensDoSorteio();
+      if (!valor) return;
+      const rotulo = hora === 0 ? '0h30' : `${hora}h30`;
+      if (minuto >= 15 && minuto < 30 && (await umaVez(`${chave}:aviso`))) {
+        for (const sala of salas.values()) {
+          if (falantes(sala).length === 0) continue;
+          lola(sala, `🎁 Às ${rotulo} tem SORTEIO DA CASA: ${GANHADORES_DO_SORTEIO} pessoas levam ${valor} tokens cada! Concorre quem estiver numa sala e mandar mensagem nos 15 minutos antes. Fica e conversa 😈`);
+        }
+      }
+      if (minuto >= 30 && minuto < 40 && (await umaVez(chave))) {
+        const agora = Date.now();
+        const concorrentes = new Map<string, Presente>();
+        for (const sala of salas.values()) {
+          for (const pr of falantes(sala)) {
+            if (agora - Math.max(pr.ultimaMsg, pr.ultimaMidia) <= 15 * 60_000) concorrentes.set(pr.id, pr);
+          }
+        }
+        const ganhadores = sortearGanhadores([...concorrentes.values()], GANHADORES_DO_SORTEIO);
+        for (const g of ganhadores) {
+          await deps.creditar(g.id, valor, 'casa_sorteio', chave);
+          pontuar(g.id, 5, 'sorteio');
+          avisarSeFora(g.id, '🎁 Você ganhou o sorteio da Casa!', `+${valor} tokens pra você. Volta pra comemorar 😈`);
+        }
+        const proximo = hora === 23 ? ' Próximo sorteio à 0h30: fica e conversa 😉' : '';
+        const texto = ganhadores.length
+          ? `🎁🎉 SORTEIO DA CASA! ${ganhadores.map((g) => g.nome).join(' e ')} ${ganhadores.length > 1 ? 'levaram' : 'levou'} ${valor} tokens${ganhadores.length > 1 ? ' cada' : ''}! Parabéns 🔥${proximo}`
+          : `🎁 Sorteio da Casa: ninguém mandou mensagem nos últimos 15 minutos, então o prêmio ficou comigo 😏${proximo}`;
+        for (const sala of salas.values()) if (falantes(sala).length > 0) lola(sala, texto);
+        console.log(`[casa] sorteio ${rotulo}: ${concorrentes.size} concorrentes, ${ganhadores.length} ganhador(es)`);
+      }
+    }
+  };
+  const tokensDoSorteio = async () => {
+    const v = String(((await db.queryOne("SELECT value FROM system_settings WHERE key = 'casa_sorteio_tokens' LIMIT 1", [])) as any)?.value ?? '').trim();
+    if (v === '') return 20;
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 200) : 0;
+  };
+
   const umaVez = async (chave: string) => {
     if (avisosEnviados.has(chave)) return false;
     avisosEnviados.add(chave);
@@ -3789,7 +3868,8 @@ Sala: ${salaId}`).catch(() => {});
     const n = avisosNoSino.get(daNoite) ?? 0;
     if (n >= MAX_AVISOS_NO_SINO || !deps.notificar) return;
     avisosNoSino.set(daNoite, n + 1);
-    void deps.notificar(userId, { title, description: body, url }).catch(() => {});
+    // Na lista de notificações a descrição é a linha principal: tem que dizer quem fez o quê.
+    void deps.notificar(userId, { title, description: `${title} · ${body}`, url }).catch(() => {});
   };
   const ultimaSaudacao = new Map<string, number>();
   // A Lola anuncia cada casal/mulher só na primeira entrada da noite (não a cada troca de sala).
@@ -3833,7 +3913,11 @@ Sala: ${salaId}`).catch(() => {});
       if (quebraGeloEnviado.has(chave)) continue;
       quebraGeloEnviado.add(chave);
       const q = QUEBRA_GELO[p.cat] ?? QUEBRA_GELO.outros;
-      const msg: Msg = { id: randomUUID(), tipo: 'lola', texto: q.pergunta.replace('{nome}', p.nome), opcoes: q.opcoes, criadoEm: new Date().toISOString() };
+      const alvo = quemSugerirParaDrink(p, [...sala.presentes.values()], agora);
+      const msg: Msg = {
+        id: randomUUID(), tipo: 'lola', texto: q.pergunta.replace('{nome}', p.nome), opcoes: q.opcoes, criadoEm: new Date().toISOString(),
+        ...(alvo ? { sugerir: { id: alvo.idPublico, nome: alvo.nome } } : {}),
+      };
       emitirPara(p.id, 'casa.mensagem', { sala: sala.id, msg });
     }
   };

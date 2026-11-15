@@ -38,6 +38,7 @@ import CabinesFechadas, { CabinesAbertas, type CabineFechada } from '@/component
 const SalaoPorDentro = lazy(() => import('@/components/SalaoPorDentro'));
 const FundoDaSala3D = lazy(() => import('@/components/SalaoPorDentro').then((m) => ({ default: m.FundoDaSala3D })));
 const CHAVE_FUNDO_3D = 'nosigilo:casa-fundo3d';
+const CHAVE_OFERTA_AVISOS = 'nosigilo:casa-oferta-avisos';
 
 /**
  * A Casa — boate virtual de sexta (22h–1h) e sábado (22h–2h) (backend: casa.ts).
@@ -65,7 +66,7 @@ type Info = {
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao' | 'promotor'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria; cidade?: string | null }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; legenda?: string; opcoes?: string[] };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao' | 'promotor'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria; cidade?: string | null }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; legenda?: string; opcoes?: string[]; sugerir?: { id: string; nome: string } };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -530,17 +531,49 @@ export default function Casa() {
     return () => clearTimeout(t);
   }, [estado?.sala.id, estado?.eu.podeFalar]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Só 18% de quem entrou em 14/11 tinha notificação do celular ligada. A hora de pedir é
+  // quando alguém acabou de chamar (drink, cabine, desafio): uma vez por noite, só para
+  // quem nunca respondeu ao navegador, e o pedido sai do toque em "Ativar".
+  const oferecerAvisosNoCelular = () => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'default') return;
+    const noite = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
+    try {
+      if (localStorage.getItem(CHAVE_OFERTA_AVISOS) === noite) return;
+      localStorage.setItem(CHAVE_OFERTA_AVISOS, noite);
+    } catch { return; }
+    setTimeout(() => toast({
+      title: '🔔 Quer saber na hora quando te chamarem?',
+      description: 'Drinks, cabines e desafios chegam no seu celular mesmo quando você sai da tela d\'A Casa.',
+      action: (
+        <ToastAction altText="Ativar avisos no celular" onClick={() => {
+          void enablePushNotifications()
+            .then(() => toast({ title: '🔔 Avisos ligados!', description: 'Agora você fica sabendo na hora 😈' }))
+            .catch((e: any) => toast({ title: 'Não deu para ligar os avisos', description: e?.message ?? 'Tente de novo nas configurações do perfil.' }));
+        }}>Ativar</ToastAction>
+      ),
+    }), 2500);
+  };
+
   // Presença: ping a cada 25s; se o servidor esqueceu (reinício), entra de novo.
   useEffect(() => {
     if (!salaAtual) return;
-    const t = setInterval(async () => {
+    const pingar = async () => {
       try {
         const { data } = await apiClient.post(`/casa/${salaAtual}/ping`);
         if (!data?.dentro) void entrar(salaAtual, true);
       } catch { /* sem rede: tenta no próximo */ }
-    }, 25_000);
+    };
+    const t = setInterval(pingar, 25_000);
+    // Celular bloqueado ou outro app por cima: avisa que saiu da tela (os avisos de drink,
+    // resposta e cabine passam a chegar no sino e no celular na hora). Voltou: pinga já,
+    // sem esperar os 25 s, e entra de novo sem alarde se o servidor já tirou da sala.
+    const aoMudarVisibilidade = () => {
+      if (document.visibilityState === 'hidden') void apiClient.post(`/casa/${salaAtual}/sair`, { temporario: true }).catch(() => {});
+      else void pingar();
+    };
+    document.addEventListener('visibilitychange', aoMudarVisibilidade);
     // Fechou a aba sem sair: o servidor tira da sala sozinho em ~75s sem ping.
-    return () => clearInterval(t);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', aoMudarVisibilidade); };
   }, [salaAtual, entrar]);
 
   // Tempo real.
@@ -578,6 +611,7 @@ export default function Casa() {
       else toast({ title: `${nome} não está mais nesta sala` });
     };
     const aoConvite = (c: Convite) => {
+      oferecerAvisosNoCelular();
       tocarAviso(true, 'bater');
       setConvite(c);
       registrarAviso({ emoji: '🚪', texto: `${c.de.nome} te chamou pra cabine`, acao: () => setConvite(c), rotuloAcao: 'Responder', de: c.de });
@@ -621,6 +655,7 @@ export default function Casa() {
     const aoCruzados = (d: { com: { id: string; nome: string; avatar: string | null; cat: Categoria }; motivo?: 'brinde' }) => { void tocarSomDaCasa('match'); setMotivoCruzado(d.motivo ?? 'olhar'); setCruzados(d.com); };
     // Drink recebido: quem recebe vê o perfil, lê o recado e escolhe se brinda ou não.
     const aoDrink = (d: DrinkRecebido) => {
+      oferecerAvisosNoCelular();
       tocarAviso(false, 'gin');
       registrarAviso({ emoji: '🍸', texto: `${d.de.nome} te pagou ${d.drink} (+${d.tokens} tokens)`, acao: () => setDrinkRecebido(d), rotuloAcao: 'Ver', de: d.de });
       setDrinkRecebido(d);
@@ -634,7 +669,7 @@ export default function Casa() {
         action: <ToastAction altText="Chamar pra cabine" onClick={() => void convidarRef.current(d.de)}>Cabine 🚪</ToastAction>,
       });
     };
-    const aoProposta = (d: { id: string; texto: string; tokens: number; privado: boolean; de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => { tocarAviso(true, 'desafio'); registrarAviso({ emoji: '😈', texto: `${d.de.nome} te propôs um desafio (${d.tokens} tokens)`, acao: () => setPropostaRecebida(d), rotuloAcao: 'Ver desafio', de: d.de }); return setPropostaRecebida(d); }
+    const aoProposta = (d: { id: string; texto: string; tokens: number; privado: boolean; de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => { oferecerAvisosNoCelular(); tocarAviso(true, 'desafio'); registrarAviso({ emoji: '😈', texto: `${d.de.nome} te propôs um desafio (${d.tokens} tokens)`, acao: () => setPropostaRecebida(d), rotuloAcao: 'Ver desafio', de: d.de }); return setPropostaRecebida(d); }
     const aoPropostaAceita = (d: { nome: string }) => { void tocarSomDaCasa('fogo'); toast({ title: `🔥 ${d.nome} aceitou seu desafio!`, description: 'Tem 5 minutos para cumprir.' }); };
     const aoPropostaFim = (d: { id: string; cumprida: boolean; motivo?: string; nome: string; tokens: number }) => {
       void tocarSomDaCasa(d.cumprida ? 'moedas' : 'nao');
@@ -1549,6 +1584,15 @@ export default function Casa() {
                     {o}
                   </button>
                 ))}
+                {(() => {
+                  const alvo = m.sugerir ? estado.presentes.find((x) => x.id === m.sugerir!.id) : null;
+                  return alvo ? (
+                    <button type="button" onClick={() => { setRespondidas((r) => new Set(r).add(m.id)); setPessoaAberta(alvo); }}
+                      className="rounded-xl bg-fuchsia-500/30 px-3 py-2 text-left text-sm font-semibold text-white ring-1 ring-fuchsia-300/40 hover:bg-fuchsia-500/40 active:scale-[0.98]">
+                      🍸 Manda um drink pra {alvo.nome}
+                    </button>
+                  ) : null;
+                })()}
               </div>
             )}
             <AcoesDaMsg m={m} />
