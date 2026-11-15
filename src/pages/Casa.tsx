@@ -1357,7 +1357,7 @@ export default function Casa() {
           </button>
         )}
         <TokenBadge semLink />
-        <button type="button" onClick={() => setFeedbackAberto(true)} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" aria-label="Sugestões" title="Feedback e sugestões">💬</button>
+        <button type="button" onClick={() => setFeedbackAberto(true)} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" aria-label="Sugestões para a equipe" title="Sugestões para a equipe (ninguém da sala vê)">💡</button>
         <button
           type="button"
           onClick={() => { setAvisosAbertos(true); setNaoLidas(0); }}
@@ -2338,7 +2338,7 @@ export default function Casa() {
 
         <button type="button" onClick={() => setFeedbackAberto(true)}
           className="w-full rounded-2xl bg-white/5 px-4 py-3 text-sm font-semibold text-fuchsia-100 ring-1 ring-white/10 hover:bg-white/10">
-          💬 Dar feedback ou sugestão sobre A Casa
+          💡 Dar sugestão para a equipe d'A Casa
         </button>
 
         <p className="px-2 text-center text-[11px] text-white/50">

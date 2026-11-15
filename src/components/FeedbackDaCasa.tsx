@@ -42,7 +42,9 @@ export default function FeedbackDaCasa({ aberto, onFechar }: { aberto: boolean; 
   return (
     <Dialog open={aberto} onOpenChange={(v) => { if (!v) onFechar(); }}>
       <DialogContent className="z-[9996] max-w-sm">
-        <DialogHeader><DialogTitle>💬 Fale com a gente sobre A Casa</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>💡 Sugestões para a equipe</DialogTitle></DialogHeader>
+        {/* O botão era um 💬 no topo da sala e muita gente escrevia aqui achando que era o chat ("quem gosta de polaco", 15/11). */}
+        <p className="rounded-lg bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300">Isto vai só para a equipe do NoSigilo: ninguém da sala vê. Para falar com o pessoal, use o chat da sala.</p>
         <p className="text-sm text-muted-foreground">O que está achando? Sugestões de brincadeiras, salas, músicas ou qualquer coisa que não funcionou. A equipe lê tudo.</p>
         <div className="grid grid-cols-3 gap-2">
           {TIPOS.map((x) => (
