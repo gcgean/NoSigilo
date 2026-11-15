@@ -299,7 +299,11 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
   const prioridade = usuario?.embaixador_oficial_em
     ? ' Esta pessoa é Embaixador(a) Oficial do NoSigilo e tem suporte prioritário: trate com atenção especial e, se não resolver na primeira resposta, passe para a equipe.'
     : '';
-  const contexto = `Quem está no chat se chama ${String(usuario?.name || 'não informado')} no perfil.${prioridade} Para qualquer outro dado da conta, use as consultas.`;
+  // Sem data, a Lola dizia "A Casa volta na sexta" num sábado à tarde (14/11/2026).
+  const agoraBrasilia = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  }).format(new Date());
+  const contexto = `Agora é ${agoraBrasilia} (horário de Brasília); use isso para falar de "hoje", "amanhã" e se A Casa está aberta. Quem está no chat se chama ${String(usuario?.name || 'não informado')} no perfil.${prioridade} Para qualquer outro dado da conta, use as consultas.`;
   const instrucoesExtras = String((await deps.getSetting(CHAVE_INSTRUCOES)) || '').trim();
   const prompt = instrucoesExtras
     ? `${PROMPT_BASE}\n\nInstruções adicionais da equipe:\n${instrucoesExtras}`
