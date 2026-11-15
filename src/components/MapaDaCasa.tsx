@@ -98,7 +98,7 @@ export default function MapaDaCasa(props: PropsDoMapa) {
       )}
       {modo === 'dentro' ? (
         <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-3">
-          <p className="mb-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-200">🎮 O Salão por dentro</p>
+          <p className="mb-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-200">🎮 A Casa por dentro</p>
           <Suspense fallback={planta}><SalaoPorDentro {...props} /></Suspense>
         </div>
       ) : em3D ? (
