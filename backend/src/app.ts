@@ -16239,14 +16239,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
              smed.filename as story_media_filename, smed.mime_type as story_media_mime_type,
              s.text as story_text, s.background as story_background,
              rm.sender_id as reply_sender_id, rm.content as reply_content, rm.media_id as reply_media_id
-      FROM messages m
+      -- As MAIS RECENTES (em ordem): com ASC LIMIT 200, conversa de 245 mensagens
+      -- mostrava só as 200 primeiras e as novas "sumiam" ao abrir (15/11).
+      FROM (
+        SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 500
+      ) m
       LEFT JOIN media med ON med.id = m.media_id
       LEFT JOIN stories s ON s.id = m.story_id
       LEFT JOIN media smed ON smed.id = s.media_id
       LEFT JOIN messages rm ON rm.id = m.reply_to_message_id
-      WHERE m.conversation_id = ?
       ORDER BY m.created_at ASC
-      LIMIT 200
     `,
       [conversationId]
     );

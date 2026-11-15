@@ -2908,6 +2908,27 @@ describe('nosigilo backend', () => {
     expect(r1.body.id).toBeTruthy();
     expect(r1.body.id).toBe(r2.body.id);
   });
+  it('conversa longa abre mostrando as mensagens mais novas, em ordem', async () => {
+    const a = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Longa A', email: 'conversa-longa-a@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)',
+    });
+    const b = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Longa B', email: 'conversa-longa-b@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)',
+    });
+    const conv = await request(ctx.app).post('/api/conversations').set('Authorization', `Bearer ${a.token}`).send({ userId: b.user.id });
+    const cid = String(conv.body.id);
+    expect(conv.body.id).toBeTruthy();
+    const base = Date.parse('2026-11-01T00:00:00.000Z');
+    for (let i = 0; i < 520; i++) {
+      await run(ctx.db, 'INSERT INTO messages (id, conversation_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)',
+        [`longa-${i}`, cid, i % 2 ? a.user.id : b.user.id, `msg ${i}`, new Date(base + i * 1000).toISOString()]);
+    }
+    const r = await request(ctx.app).get(`/api/conversations/${cid}/messages`).set('Authorization', `Bearer ${a.token}`);
+    expect(r.status).toBe(200);
+    expect(r.body).toHaveLength(500);
+    expect(r.body[0].content).toBe('msg 20');
+    expect(r.body[r.body.length - 1].content).toBe('msg 519');
+  });
   // ── Suporte: pedir atendente humano ─────────────────────────────────────────
   it('cliente pede atendente: conversa fica com a equipe ate alguem responder', async () => {
     const cliente = await registerInvitedUser(ctx, sponsorToken, {
