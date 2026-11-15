@@ -58,6 +58,9 @@ type PropsDoMapa = {
   fechadas?: CabineFechadaDoMapa[];
   pedindo?: string | null;
   onPedir?: (cabineId: string) => void;
+  /** Só a visão por dentro usa: abrir perfil e entrar já chamando alguém. */
+  onVerPerfil?: (id: string) => void;
+  onEntrarChamando?: (salaId: string, nome: string) => void;
 };
 
 /**

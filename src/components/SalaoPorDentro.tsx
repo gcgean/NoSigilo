@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import type { CabineFechadaDoMapa, PessoaDoMapa, SalaDoMapa } from '@/components/MapaDaCasa';
@@ -20,6 +20,10 @@ type Props = {
   fechadas?: CabineFechadaDoMapa[];
   pedindo?: string | null;
   onPedir?: (cabineId: string) => void;
+  /** Abre o perfil da pessoa por cima d'A Casa. */
+  onVerPerfil?: (id: string) => void;
+  /** Entra na sala e já deixa a pessoa marcada no chat. */
+  onEntrarChamando?: (salaId: string, nome: string) => void;
 };
 
 type Painel =
@@ -165,14 +169,14 @@ function cracha(p: PessoaDoMapa, foto: HTMLImageElement | null) {
     }
     if (p.destaque) { g.beginPath(); g.arc(cx, cy, r + 9, 0, Math.PI * 2); g.lineWidth = 5; g.strokeStyle = '#fbbf24'; g.stroke(); }
     g.beginPath(); g.arc(cx + 48, cy + 46, 13, 0, Math.PI * 2); g.fillStyle = '#3ddc97'; g.fill(); g.lineWidth = 5; g.strokeStyle = '#14060a'; g.stroke();
-    const nome = (p.nome || '').length > 16 ? `${p.nome.slice(0, 15)}…` : p.nome || '';
-    g.font = '600 30px Inter, sans-serif';
-    const tw = g.measureText(nome).width + 36;
+    const nome = (p.nome || '').length > 13 ? `${p.nome.slice(0, 12)}…` : p.nome || '';
+    g.font = '700 40px Inter, sans-serif';
+    const tw = Math.min(W - 4, g.measureText(nome).width + 36);
     const x0 = (W - tw) / 2;
-    g.fillStyle = 'rgba(20,6,10,.9)';
-    g.beginPath(); g.roundRect(x0, 162, tw, 46, 23); g.fill();
-    g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 3; g.stroke();
-    g.fillStyle = '#f8ece9'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(nome, W / 2, 186);
+    g.fillStyle = 'rgba(20,6,10,.92)';
+    g.beginPath(); g.roundRect(x0, 160, tw, 58, 29); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.4)'; g.lineWidth = 3; g.stroke();
+    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(nome, W / 2, 190, W - 20);
   });
 }
 
@@ -299,6 +303,7 @@ function mobiliar(scene: THREE.Scene, id: string, tema: Tema) {
   return { cabines, anima };
 }
 
+type CenaApi = { focar: (id: string) => void };
 type CenaProps = {
   sala: SalaDoMapa;
   outras: SalaDoMapa[];
@@ -308,7 +313,7 @@ type CenaProps = {
   aoUsar: () => void;
 };
 
-function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsar }: CenaProps) {
+const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsar }, ref) {
   const palco = useRef<HTMLDivElement>(null);
   const [falhou, setFalhou] = useState(false);
   const presentes = (sala.presentes ?? []).slice(0, MAX_PESSOAS);
@@ -319,7 +324,8 @@ function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsa
   // Guardados em ref para o loop de toque sempre usar os dados e callbacks mais novos.
   const atual = useRef({ presentes, outras, fundo: sala.fundo ?? null, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsar });
   atual.current = { presentes, outras, fundo: sala.fundo ?? null, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsar };
-  const cena = useRef<{ pessoas: () => void; portas: () => void; fundo: () => void } | null>(null);
+  const cena = useRef<{ pessoas: () => void; portas: () => void; fundo: () => void; focar: (id: string) => void } | null>(null);
+  useImperativeHandle(ref, () => ({ focar: (id: string) => cena.current?.focar(id) }), []);
 
   useEffect(() => {
     const el = palco.current;
@@ -411,7 +417,8 @@ function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsa
         corpos.forEach((mulher, k) => { const f = boneco(mulher, pele); if (corpos.length > 1) { f.position.x = k ? 0.2 : -0.2; f.rotation.y = k ? -0.5 : 0.5; } g.add(f); });
         if (p.cat === 'outros') g.children.forEach((f) => f.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m.material !== pele) (m.material as THREE.MeshStandardMaterial).color.set(0x7c3aed); }));
         const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: cracha(p, null), depthTest: false, transparent: true }));
-        spr.scale.set(0.95, 1.11, 1); spr.position.y = 2.22; spr.renderOrder = 10; g.add(spr);
+        // Crachás maiores e em alturas alternadas, para não ficarem um em cima do outro.
+        spr.scale.set(1.25, 1.46, 1); spr.position.y = i % 2 ? 2.85 : 2.35; spr.renderOrder = 10; g.add(spr);
         g.position.set(x, y, z); g.userData = { tipo: 'pessoa', id: p.id, fase: i * 1.3 };
         gente.add(g);
         void carregarImagem(p.avatar).then((img) => {
@@ -429,7 +436,6 @@ function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsa
       void carregarImagem(f.url).then((img) => { if (minha === fundoGeracao) pintarParede(img, f.intensidade); });
     };
     montarPortas(); montarPessoas(); montarFundo();
-    cena.current = { pessoas: montarPessoas, portas: montarPortas, fundo: montarFundo };
 
     // Olhar, andar e tocar.
     const raio = new THREE.Raycaster();
@@ -438,6 +444,19 @@ function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsa
     let toque: { x: number; y: number; yaw: number; girando: boolean; id: number } | null = null;
     const olhar = () => cam.lookAt(cam.position.x + Math.sin(yaw) * Math.cos(pitch), cam.position.y + Math.sin(pitch), cam.position.z - Math.cos(yaw) * Math.cos(pitch));
     const virarPara = (x: number, z: number) => { yaw = Math.atan2(x - cam.position.x, -(z - cam.position.z)); };
+    // Anda até a pessoa (para 1,8 m antes) e vira de frente para ela.
+    const focar = (id: string) => {
+      const g = gente.children.find((c) => c.userData.id === id);
+      if (!g) return;
+      const alvo = g.position;
+      const dx = cam.position.x - alvo.x, dz = cam.position.z - alvo.z;
+      const l = Math.hypot(dx, dz) || 1;
+      const x = Math.max(-RW + 1, Math.min(RW - 1.2, alvo.x + (dx / l) * 1.8));
+      const z = Math.max(-RD + 1, Math.min(RD - 0.5, alvo.z + (dz / l) * 1.8));
+      destino = new THREE.Vector3(x, EYE, z);
+      yaw = Math.atan2(alvo.x - x, -(alvo.z - z));
+    };
+    cena.current = { pessoas: montarPessoas, portas: montarPortas, fundo: montarFundo, focar };
     const canvas = renderer.domElement;
     const aoDescer = (e: PointerEvent) => { toque = { x: e.clientX, y: e.clientY, yaw, girando: false, id: e.pointerId }; };
     const aoMover = (e: PointerEvent) => {
@@ -526,9 +545,13 @@ function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabines, aoUsa
 
   if (falhou) return <p className="py-10 text-center text-sm text-white/60">Seu aparelho não abriu a visão por dentro. Use a planta ou o 3D.</p>;
   return <div ref={palco} className="absolute inset-0" />;
-}
+});
 
-export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [], pedindo = null, onPedir }: Props) {
+// Nome curto cabe inteiro ("T&T", "Casal 65"); nome longo fica no primeiro pedaço.
+const primeiroNome = (n: string) => ((n || '').length <= 12 ? n : (n || '').split(/\s*&\s*|\s+/)[0] || n);
+
+export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [], pedindo = null, onPedir, onVerPerfil, onEntrarChamando }: Props) {
+  const cenaRef = useRef<CenaApi>(null);
   const [salaId, setSalaId] = useState(() => (salas.some((s) => s.id === 'salao') ? 'salao' : salas[0]?.id ?? 'salao'));
   const [painel, setPainel] = useState<Painel>(null);
   const [dica, setDica] = useState(true);
@@ -551,7 +574,7 @@ export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [
         ))}
       </div>
       <div className="relative h-[min(68vh,520px)] w-full overflow-hidden rounded-2xl bg-[#12060a] [touch-action:pan-y]" aria-label={`${sala.nome} por dentro: arraste para os lados para olhar, toque no chão para andar`}>
-        <Cena key={sala.id} sala={sala} outras={outras}
+        <Cena ref={cenaRef} key={sala.id} sala={sala} outras={outras}
           aoTocarPessoa={(p) => setPainel({ tipo: 'pessoa', pessoa: p })}
           aoTocarPorta={(s) => setPainel({ tipo: 'porta', sala: s })}
           aoTocarCabines={() => setPainel({ tipo: 'cabines' })}
@@ -577,7 +600,11 @@ export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [
                       <p className="text-xs text-white/60">{sala.emoji} {sala.nome} agora{painel.pessoa.destaque ? ' · o mais animado 🔥' : ''}</p>
                     </div>
                   </div>
-                  <button type="button" disabled={travada(sala)} onClick={() => { setPainel(null); onEntrar(sala.id); }} className="w-full rounded-xl bg-rose-600 py-3 text-sm font-bold disabled:opacity-50">Entrar para falar</button>
+                  <div className="grid grid-cols-2 gap-2">
+                    {onVerPerfil && <button type="button" onClick={() => { const id = painel.pessoa.id; setPainel(null); onVerPerfil(id); }} className="rounded-xl border border-white/20 py-3 text-sm font-bold">👤 Ver perfil</button>}
+                    <button type="button" disabled={travada(sala)} onClick={() => { const n = painel.pessoa.nome; setPainel(null); if (onEntrarChamando) onEntrarChamando(sala.id, n); else onEntrar(sala.id); }}
+                      className={`rounded-xl bg-rose-600 py-3 text-sm font-bold disabled:opacity-50 ${onVerPerfil ? '' : 'col-span-2'}`}>💬 Entrar e chamar {primeiroNome(painel.pessoa.nome)}</button>
+                  </div>
                 </>
               )}
               {painel.tipo === 'porta' && (
@@ -615,6 +642,28 @@ export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [
           </div>
         )}
       </div>
+      {(presentes.length > 0 || sala.total > 0) && (
+        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]" aria-label={`Quem está em ${sala.nome}`}>
+          {presentes.map((p) => (
+            <button key={p.id} type="button" onClick={() => { setDica(false); cenaRef.current?.focar(p.id); setPainel({ tipo: 'pessoa', pessoa: p }); }}
+              className="flex w-16 shrink-0 flex-col items-center gap-1" title={p.nome}>
+              <span className="relative block h-12 w-12 rounded-full p-[2px]" style={{ background: p.cat === 'casal' ? `linear-gradient(90deg, ${ROSA} 50%, ${AZUL} 50%)` : p.destaque ? '#fbbf24' : COR_DO_PERFIL[p.cat] }}>
+                {p.avatar
+                  ? <img src={resolveServerUrl(p.avatar)} alt="" loading="lazy" className="h-full w-full rounded-full object-cover" />
+                  : <span className="grid h-full w-full place-items-center rounded-full bg-zinc-900 text-sm font-bold text-white">{(p.nome || '?').charAt(0)}</span>}
+                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-zinc-950 bg-emerald-400" />
+              </span>
+              <span className="w-full truncate text-center text-[10px] text-white/80">{primeiroNome(p.nome)}</span>
+            </button>
+          ))}
+          {sala.total > presentes.length && (
+            <button type="button" disabled={travada(sala)} onClick={() => onEntrar(sala.id)} className="flex w-16 shrink-0 flex-col items-center gap-1 disabled:opacity-50" title="Entre para ver todo mundo">
+              <span className="grid h-12 w-12 place-items-center rounded-full border border-dashed border-white/40 text-sm font-bold text-white">+{sala.total - presentes.length}</span>
+              <span className="w-full truncate text-center text-[10px] text-white/60">entre p/ ver</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

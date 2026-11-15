@@ -2113,6 +2113,13 @@ export default function Casa() {
             fechadas={info.cabinesFechadas ?? []}
             pedindo={pedindoCabine}
             onPedir={(id) => { const c = (info.cabinesFechadas ?? []).find((x) => x.id === id); if (c) void pedirCabineFechada(c); }}
+            onVerPerfil={(id) => setPerfilAberto(id)}
+            onEntrarChamando={async (id, nome) => {
+              const s = info.salas.find((x) => x.id === id);
+              if (s?.lotadaParaMim) { void entrarNaFila(id); return; }
+              await entrar(id);
+              setTexto(`@${nome} `);
+            }}
           />
         )}
         {info?.aberta && <p className="text-center text-sm font-semibold text-fuchsia-200">Ou escolha pela lista 👇</p>}
