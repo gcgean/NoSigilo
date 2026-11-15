@@ -24910,6 +24910,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     temPremium: (userId) => userHasPremiumAccess(db, userId, env.BILLING_TEST_EMAILS),
     premiar: async (userId, acao, refId) => { await awardTokens(db, userId, acao, refId, app.get('io') as SocketIOServer | undefined); },
     push: (userId, payload) => sendPushToUser({ db, env }, { userId, payload }),
+    notificar: (userId, aviso) => createNotification({ db, io: app.get('io') as SocketIOServer | undefined }, {
+      userId, type: 'casa.interacao', title: aviso.title, description: aviso.description, dataJson: { url: aviso.url },
+    }),
     pastaMusicas: path.join(storageRootDir, 'casa-musicas'),
     onlineIds: () => (app.get('presence') as { onlineIds?: () => string[] } | undefined)?.onlineIds?.() ?? [],
     convidarParaSala: (userId, convite) => recadoDaLola(userId, {

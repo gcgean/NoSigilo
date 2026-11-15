@@ -230,6 +230,8 @@ export type DependenciasDaCasa = {
   /** Devolve/entrega tokens (desafio cumprido, recusado ou vencido). */
   creditar: (userId: string, valor: number, motivo: string, refId: string) => Promise<void>;
   push: (userId: string, payload: { title: string; body: string; url: string; tag: string }) => Promise<unknown>;
+  /** Aviso no sino do app (lista de notificações), para quem saiu da Casa e alguém interagiu. */
+  notificar?: (userId: string, aviso: { title: string; description: string; url: string }) => Promise<unknown>;
   /** Pagamentos de assinatura (extrato do Hub) já ligados ao usuário. */
   assinaturasPagas: () => Promise<Array<{ userId: string; valorCents: number; pagoEm: string }>>;
   /** E-mail "A Casa abriu" para quem reservou (respeita quem desligou e-mail). */
@@ -397,26 +399,42 @@ export function ordenarParaResponder<T extends { id: string; cidade: string | nu
  * e o primeiro leva o destaque se tiver movimento de verdade (3 pontos ou mais: cada
  * mensagem e cada reação recebida contam 1). Quem bloqueou ou foi bloqueado não aparece.
  */
-export function pessoasDoMapa<P extends { id: string; idPublico: string; nome: string; avatar: string | null; cat: string }>(
+/** Fala que vira balão na visão "por dentro": a última mensagem de texto de cada um, se recente. */
+export const FALA_NO_MAPA_MS = 90_000;
+/** Avisos da Casa no sino por pessoa, por noite (o celular continua recebendo). */
+const MAX_AVISOS_NO_SINO = 25;
+const TAMANHO_DA_FALA = 70;
+
+export function pessoasDoMapa<P extends { id: string; idPublico: string; nome: string; avatar: string | null; cat: string; querBrincar?: boolean; pulseira?: string | null }>(
   presentes: P[],
-  mensagens: { autor?: { id?: string } | null; criadoEm: string; reacoes?: Record<string, string[]> }[],
+  mensagens: { autor?: { id?: string } | null; criadoEm: string; reacoes?: Record<string, string[]>; tipo?: string; texto?: string }[],
   bloqueados: Set<string>,
   agora: number,
   maximo = 9,
 ) {
   const pontos = new Map<string, number>();
+  const falas = new Map<string, string>();
   for (const m of mensagens) {
     const autor = m.autor?.id;
-    if (!autor || agora - Date.parse(m.criadoEm) > 15 * 60_000) continue;
+    const idade = agora - Date.parse(m.criadoEm);
+    if (!autor || idade > 15 * 60_000) continue;
     const reacoes = Object.values(m.reacoes ?? {}).reduce((n, ids) => n + ids.length, 0);
     pontos.set(autor, (pontos.get(autor) ?? 0) + 1 + reacoes);
+    // As mensagens vêm em ordem: a última fala de texto recente de cada um fica.
+    const texto = (m.texto ?? '').trim();
+    if (m.tipo === 'pessoa' && texto && idade <= FALA_NO_MAPA_MS) {
+      falas.set(autor, texto.length > TAMANHO_DA_FALA ? `${texto.slice(0, TAMANHO_DA_FALA - 1)}…` : texto);
+    }
   }
   const ordem = presentes
     .filter((p) => !bloqueados.has(p.id))
     .map((p) => ({ p, n: pontos.get(p.idPublico) ?? 0 }))
     .sort((a, b) => b.n - a.n)
     .slice(0, maximo);
-  return ordem.map(({ p, n }, i) => ({ id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat, destaque: i === 0 && n >= 3 }));
+  return ordem.map(({ p, n }, i) => ({
+    id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat, destaque: i === 0 && n >= 3,
+    querBrincar: !!p.querBrincar, pulseira: p.pulseira ?? null, fala: falas.get(p.idPublico) ?? null,
+  }));
 }
 
 export type ResumoPermanencia = { pessoas: number; medianaMin: number; ate2Min: number; de2a10Min: number; de10a30Min: number; mais30Min: number; voltaram: number };
@@ -695,7 +713,10 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
 
   const criarCabine = (sala: Sala, a: Presente, b: Presente) => {
     const c: Cabine = {
-      id: randomUUID(), salaId: sala.id, membros: new Map([[a.id, membroDe(a)], [b.id, membroDe(b)]]), porta: new Set(), aberta: false,
+      // Porta aberta por padrão (15/11/2026, pedido do dono): quem está na sala pode
+      // espiar; entrar e interagir só com a aprovação de quem está dentro. Quem quiser
+      // privacidade fecha a porta (qualquer um fecha; para reabrir, todos concordam).
+      id: randomUUID(), salaId: sala.id, membros: new Map([[a.id, membroDe(a)], [b.id, membroDe(b)]]), porta: new Set([a.id, b.id]), aberta: true,
       espectadores: new Map(), entradas: new Map(), mensagens: [], criadaEm: Date.now(),
       topamEsquentar: new Set(), quente: false, quenteDesde: 0, ultimaProvocacao: 0, ultimaFala: Date.now(), usadas: new Set(), lembretesFrios: 0,
       calor: 0, liberouTransa: false, ultimaAcao: new Map(), ausentes: new Map(), nivelAnunciado: 0,
@@ -704,7 +725,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       semPedidos: false, pedidosEm: new Map(), fundo: null,
     };
     cabines.set(c.id, c);
-    msgCabine(c, { tipo: 'lola', texto: `🚪 Cabine de ${a.nome} e ${b.nome}. A porta está fechada: só vocês veem. Se todos quiserem plateia, abram a porta 👀` });
+    msgCabine(c, { tipo: 'lola', texto: `🚪 Cabine de ${a.nome} e ${b.nome}. A porta está aberta 👀: quem está na sala pode espiar, mas só entra quem vocês aprovarem. Querem privacidade? Fechem a porta 🔒` });
     registrarEvento(sala.id, 'cabine', a.id, b.id);
     emitirPara(a.id, 'casa.cabine', { cabineId: c.id, com: b.nome });
     emitirPara(b.id, 'casa.cabine', { cabineId: c.id, com: a.nome });
@@ -1928,6 +1949,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
   // ─── Relógio da Casa: presença, jogos, fechamento e aviso da abertura ─────────
   const avisosEnviados = new Set<string>();
   let noiteAnterior: string | null = null;
+  let sinoDaCasaPendente = true;
   let ultimaLimpeza = '';
   let noiteParaResumo: string | null = null;
   const resumoMeiaNoite = new Set<string>();
@@ -2037,6 +2059,16 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       }
     }
     if (!noite) noiteAnterior = null;
+    // Avisos de interação da Casa no sino valem só enquanto ela está aberta: fechou, somem
+    // (também depois de um reinício do servidor com a Casa já fechada).
+    if (noite) sinoDaCasaPendente = true;
+    else if (sinoDaCasaPendente) {
+      sinoDaCasaPendente = false;
+      ultimoAvisoNoSino.clear();
+      avisosNoSino.clear();
+      void db.run("DELETE FROM notifications WHERE type = 'casa.interacao'", []).then(() => db.persist())
+        .catch((err) => { sinoDaCasaPendente = true; console.error('[casa] limpar avisos do sino', err); });
+    }
 
     // Resumo da meia-noite e resumo final (quando a noite acaba).
     if (noite) {
@@ -2569,7 +2601,7 @@ Sala: ${salaId}`).catch(() => {});
           // Para o mapa da Casa: só o tipo de cada pessoa (sem nome) e as cabines da sala.
           pessoas: [...s.presentes.values()].map((x) => x.cat),
           // A sala anônima nunca mostra quem é quem.
-          ...(comFotos && !s.anonima ? { presentes: pessoasDoMapa([...s.presentes.values()], s.mensagens, bloqueadosNoMapa, Date.now()) } : {}),
+          ...(comFotos && !s.anonima ? { presentes: pessoasDoMapa([...s.presentes.values()], s.mensagens, bloqueadosNoMapa, Date.now(), 12) } : {}),
           cabines: [...cabines.values()].filter((c) => c.salaId === s.id).map((c) => ({
             id: c.id, aberta: c.aberta, pessoas: c.membros.size, espiando: c.espectadores.size,
             tipos: c.aberta ? [...c.membros.values()].map((m) => m.cat) : [],
@@ -3061,10 +3093,24 @@ Sala: ${salaId}`).catch(() => {});
         if (Date.now() - (ultimaMarcacao.get(chave) ?? 0) < 60_000) continue;
         if (await bloqueados(autor.id, alvo.id)) continue;
         ultimaMarcacao.set(chave, Date.now());
-        await deps.push(alvo.id, { title: `💬 ${autor.nome} marcou você na Casa`, body: 'Toque para responder.', url: `/casa?sala=${sala.id}`, tag: `casa-marcou-${sala.id}` });
+        avisarSeFora(alvo.id, `💬 ${autor.nome} marcou você no ${sala.nome}`, 'Toque para voltar e responder 😏', `/casa?sala=${sala.id}`);
       }
     } catch (e) {
       console.error('[casa] push de marcação:', e);
+    }
+  };
+
+  // Responderam sua mensagem na sala e você saiu da Casa: aviso no sino (e no celular).
+  // Fora do Glory Hole o id público é o id real, então funciona mesmo se a pessoa já saiu da sala.
+  const avisarRespondido = async (sala: Sala, autor: Presente, respondida: Msg) => {
+    try {
+      if ((respondida.tipo !== 'pessoa' && respondida.tipo !== 'midia') || !respondida.autor?.id) return;
+      const alvo = acharPublico(sala, respondida.autor.id)?.id ?? (sala.anonima ? null : respondida.autor.id);
+      if (!alvo || alvo === autor.id || (await bloqueados(autor.id, alvo))) return;
+      const oque = respondida.tipo === 'midia' ? 'comentou sua foto' : 'respondeu você';
+      avisarSeFora(alvo, `💬 ${autor.nome} ${oque} no ${sala.nome}`, 'A conversa está rolando. Toque para voltar 😈', `/casa?sala=${sala.id}`);
+    } catch (e) {
+      console.error('[casa] aviso de resposta:', e);
     }
   };
 
@@ -3099,6 +3145,7 @@ Sala: ${salaId}`).catch(() => {});
     const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
     moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id), contextoDe(sala.mensagens, publicada.id));
     void avisarMarcados(sala, p, texto);
+    if (respondida) void avisarRespondido(sala, p, respondida);
     if (respondida) oiFoiRespondido(sala, respondida.id, p.id);
     registrarFalaParaOi(sala, p, publicada.id, texto, !!respondida);
     if (respondida?.tipo === 'lola') void responderComoLola(sala, p, texto, respondida.texto, publicada.id);
@@ -3714,15 +3761,35 @@ Sala: ${salaId}`).catch(() => {});
 
   // Push quando a pessoa recebe algo da Casa mas não está com ela aberta (fora de todas as salas).
   // Só chega para quem ligou as notificações no perfil (inscrição de push).
-  const avisarSeFora = (userId: string, title: string, body: string) => {
+  // Também cai no sino do app: só 18% de quem entrou em 14/11 tinha notificação do celular
+  // ligada, e quem sai da Casa para o feed ou o chat não via que alguém respondeu.
+  // O mesmo aviso (mesmo título) repete no máximo 1 vez por minuto, e são no máximo
+  // MAX_AVISOS_NO_SINO por pessoa na noite, para o sino não virar spam.
+  const ultimoAvisoNoSino = new Map<string, number>();
+  const avisosNoSino = new Map<string, number>();
+  const estaComACasaAberta = (userId: string) => {
     const agora = Date.now();
     for (const sl of salas.values()) {
       const p = sl.presentes.get(userId);
-      if (p && agora - p.ultimoPing < 45_000) return;
+      // Saiu da tela (foi ver um perfil, o feed, o chat) conta como fora: é quem queremos trazer de volta.
+      if (p && !p.foraDaTela && agora - p.ultimoPing < 45_000) return true;
       const e = sl.espiando.get(userId);
-      if (e && agora - e < 45_000) return;
+      if (e && agora - e < 45_000) return true;
     }
-    void deps.push(userId, { title, body, url: '/casa', tag: `casa-${userId}` }).catch(() => {});
+    return false;
+  };
+  const avisarSeFora = (userId: string, title: string, body: string, url = '/casa') => {
+    if (estaComACasaAberta(userId)) return;
+    const agora = Date.now();
+    const chave = `${userId}|${title}`;
+    if (agora - (ultimoAvisoNoSino.get(chave) ?? 0) < 60_000) return;
+    ultimoAvisoNoSino.set(chave, agora);
+    void deps.push(userId, { title, body, url, tag: `casa-${userId}` }).catch(() => {});
+    const daNoite = `${chaveDaNoite}|${userId}`;
+    const n = avisosNoSino.get(daNoite) ?? 0;
+    if (n >= MAX_AVISOS_NO_SINO || !deps.notificar) return;
+    avisosNoSino.set(daNoite, n + 1);
+    void deps.notificar(userId, { title, description: body, url }).catch(() => {});
   };
   const ultimaSaudacao = new Map<string, number>();
   // A Lola anuncia cada casal/mulher só na primeira entrada da noite (não a cada troca de sala).
@@ -4273,6 +4340,7 @@ Sala: ${salaId}`).catch(() => {});
       : undefined;
     const publicada = msgCabine(c, { tipo: 'pessoa', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat }, texto, ...(resposta ? { resposta } : {}) });
     for (const id of c.membros.keys()) if (id !== userId) await registrarIniciativa(userId, id);
+    for (const id of c.membros.keys()) if (id !== userId) avisarSeFora(id, `💬 ${m.nome} falou com você na cabine`, 'Estão te esperando lá dentro. Toque para voltar 😏');
     // Conversa quente sobe o tesão da cabine (é o que a Lola usa para liberar os níveis).
     const antesDoCalor = c.calor;
     aquecer(c, PALAVRAS_QUENTES.test(texto) ? 5 : 1);
@@ -4300,6 +4368,7 @@ Sala: ${salaId}`).catch(() => {});
     if (legenda && LINK_PROIBIDO.test(legenda)) { res.status(400).json({ error: 'link', message: 'Links não são permitidos aqui.' }); return; }
     // Foto/vídeo de agora é o que mais esquenta a cabine (transa virtual).
     aquecer(c, tipo === 'video' ? 20 : 12);
+    for (const id of c.membros.keys()) if (id !== userId) avisarSeFora(id, `${tipo === 'video' ? '🎥' : '📸'} ${m.nome} mandou ${tipo === 'video' ? 'um vídeo' : 'uma foto'} na cabine`, 'Só quem está lá dentro vê. Toque para voltar 😈');
     msgCabine(c, {
       tipo: 'midia', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat },
       texto: livre
@@ -4405,7 +4474,8 @@ Sala: ${salaId}`).catch(() => {});
     c.espectadores.delete(idReal);
     c.membros.set(idReal, e.pessoa);
     c.vistoEm.set(idReal, Date.now());
-    c.porta.delete(idReal);
+    // Quem entra numa cabine de porta aberta entra concordando com ela aberta.
+    if (c.aberta) c.porta.add(idReal); else c.porta.delete(idReal);
     conferirQuente(c);
     c.aberta = c.aberta && [...c.membros.keys()].every((id) => c.porta.has(id));
     msgCabine(c, { tipo: 'lola', texto: `🔥 ${e.pessoa.nome} entrou na cabine! Agora são ${c.membros.size} 😈` });
@@ -4593,6 +4663,7 @@ Sala: ${salaId}`).catch(() => {});
       // Sem mensagem no chat: o pedido aparece só como foto junto da porta, no topo da cabine.
       for (const id of quemDecide(c)) {
         emitirPara(id, 'casa.cabine.pedido', { cabineId: c.id, nome: p.nome });
+        avisarSeFora(id, `🚪 ${p.nome} quer entrar na sua cabine`, 'Toque para voltar e decidir se deixa 😏');
         emitirPara(id, 'casa.cabine.decidir', { cabineId: c.id, tipo: 'pedido', nome: p.nome, alvoNome: p.nome, alvoPublico: membroDe(p).idPublico });
       }
       avisarCabine(c);

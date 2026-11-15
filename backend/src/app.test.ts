@@ -3987,6 +3987,8 @@ describe('nosigilo backend', () => {
       await request(ctx.app).post('/api/casa/salao/entrar').set(auth(mulher.token)).expect(200);
       const convite = (await request(ctx.app).post('/api/casa/salao/convidar').set(auth(casal.token)).send({ para: String(mulher.user.id) }).expect(200)).body;
       const { cabineId } = (await request(ctx.app).post(`/api/casa/convite/${convite.id}/responder`).set(auth(mulher.token)).send({ aceitar: true }).expect(200)).body;
+      // A cabine nasce de porta aberta: o casal fecha para virar cabine fechada.
+      await request(ctx.app).post(`/api/casa/cabine/${cabineId}/porta`).set(auth(casal.token)).send({ abrir: false }).expect(200);
 
       // Quem está fora (ainda na entrada) vê a cabine só com os tipos de perfil.
       const lista = (await request(ctx.app).get('/api/casa').set(auth(fora.token)).expect(200)).body.cabinesFechadas;
@@ -4166,6 +4168,22 @@ describe('nosigilo backend', () => {
     // Sem movimento recente, ninguém é destaque.
     expect(pessoasDoMapa(lista, [msg('ativo', 1)], new Set(), agora).some((x) => x.destaque)).toBe(false);
     expect(pessoasDoMapa(Array.from({ length: 12 }, (_, i) => p(`p${i}`)), [], new Set(), agora)).toHaveLength(9);
+  });
+
+  it('mapa por dentro: fala recente vira balão; status de brincar e pulseira vão junto', () => {
+    const agora = Date.now();
+    const lista = [
+      { id: 'a', idPublico: 'a', nome: 'A', avatar: null, cat: 'casal', querBrincar: true, pulseira: 'verde' },
+      { id: 'b', idPublico: 'b', nome: 'B', avatar: null, cat: 'homem', querBrincar: false, pulseira: null },
+    ];
+    const fala = (id: string, seg: number, texto: string, tipo = 'pessoa') => ({ autor: { id }, criadoEm: new Date(agora - seg * 1000).toISOString(), texto, tipo });
+    const r = pessoasDoMapa(lista, [fala('a', 200, 'velha'), fala('a', 30, 'oi gente'), fala('b', 120, 'passou do tempo'), fala('b', 10, 'foto', 'midia')], new Set(), agora);
+    const a = r.find((x) => x.id === 'a')!;
+    const b = r.find((x) => x.id === 'b')!;
+    expect(a).toMatchObject({ fala: 'oi gente', querBrincar: true, pulseira: 'verde' });
+    expect(b).toMatchObject({ fala: null, querBrincar: false, pulseira: null });
+    const longa = pessoasDoMapa([lista[0]], [fala('a', 5, 'x'.repeat(200))], new Set(), agora)[0].fala!;
+    expect(longa.length).toBeLessThanOrEqual(70);
   });
 
   it('permanência: soma as salas, junta queda rápida e separa quem saiu logo', () => {
@@ -4770,9 +4788,10 @@ describe('nosigilo backend', () => {
     expect(deFora.message).toMatch(/contato não é permitido/);
 
     const convite = (await request(ctx.app).post('/api/casa/salao/convidar').set(auth(casal.token)).send({ para: String(homens[0].user.id) }).expect(200)).body;
-    // Cabine da Casa: porta fecha por padrão; abre só quando os dois querem; quem espia pede para entrar.
+    // Cabine da Casa: nasce de porta aberta; qualquer um fecha; fechada ninguém espia.
     const cab = (await request(ctx.app).post(`/api/casa/convite/${convite.id}/responder`).set(auth(homens[0].token)).send({ aceitar: true }).expect(200)).body;
     expect(cab.cabineId).toBeTruthy();
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/porta`).set(auth(casal.token)).send({ abrir: false }).expect(200)).body.aberta).toBe(false);
     await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/espiar`).set(auth(homens[1].token)).expect(403); // porta fechada
     await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/porta`).set(auth(casal.token)).send({ abrir: true }).expect(200);
     expect((await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/porta`).set(auth(homens[0].token)).send({ abrir: true }).expect(200)).body.aberta).toBe(true);
@@ -4920,11 +4939,32 @@ describe('nosigilo backend', () => {
     const depois = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
     expect(depois.mensagens.find((m: any) => m.texto === 'eu topo')?.resposta).toMatchObject({ id: original.id, nome: 'Casal Casa' });
 
-    // Cabine: convite aceito; a porta só abre quando os dois concordam; o mapa mostra a cabine.
+    // Avisos no sino: quem está olhando a Casa não recebe; quem saiu da tela recebe
+    // resposta e marcação, e o mesmo aviso não repete dentro de 1 minuto.
+    const sinoDoCasal = async () => ((await queryAll(ctx.db, "SELECT title, data_json FROM notifications WHERE user_id = ? AND type = 'casa.interacao' ORDER BY created_at", [String(casal.user.id)])) as any[]);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await sinoDoCasal()).toHaveLength(0);
+    await request(ctx.app).post('/api/casa/salao/sair').set(auth(casal.token)).send({ temporario: true }).expect(200);
+    await new Promise((r) => setTimeout(r, 1300));
+    await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[0].token)).send({ texto: 'cadê vocês?', respostaA: original.id }).expect(200);
+    await new Promise((r) => setTimeout(r, 1300));
+    await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[0].token)).send({ texto: 'voltem!', respostaA: original.id }).expect(200);
+    await new Promise((r) => setTimeout(r, 100));
+    const sino = await sinoDoCasal();
+    expect(sino).toHaveLength(1);
+    expect(sino[0].title).toContain('respondeu você no Salão');
+    expect(JSON.parse(sino[0].data_json).url).toBe('/casa?sala=salao');
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200);
+
+    // Cabine: convite aceito; nasce de porta aberta; qualquer um fecha e só reabre
+    // quando todos concordam; o mapa mostra a cabine.
     const homemPublico = String(homens[0].user.id);
     const conviteMapa = (await request(ctx.app).post('/api/casa/salao/convidar').set(auth(casal.token)).send({ para: homemPublico }).expect(200)).body;
     const cabMapa = (await request(ctx.app).post(`/api/casa/convite/${conviteMapa.id}/responder`).set(auth(homens[0].token)).send({ aceitar: true }).expect(200)).body;
     expect(cabMapa.cabineId).toBeTruthy();
+    expect((await request(ctx.app).get('/api/casa').set(auth(homens[2].token)).expect(200)).body.salas.find((s: any) => s.id === 'salao').cabines.find((c: any) => c.id === cabMapa.cabineId)).toMatchObject({ aberta: true });
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/porta`).set(auth(casal.token)).send({ abrir: false }).expect(200)).body.aberta).toBe(false);
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/porta`).set(auth(homens[0].token)).send({ abrir: false }).expect(200);
     expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/porta`).set(auth(casal.token)).send({ abrir: true }).expect(200)).body.aberta).toBe(false);
     expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/porta`).set(auth(homens[0].token)).send({ abrir: true }).expect(200)).body.aberta).toBe(true);
     const mapa = (await request(ctx.app).get('/api/casa').set(auth(homens[2].token)).expect(200)).body;
