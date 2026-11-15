@@ -13,7 +13,13 @@ type Cat = 'casal' | 'mulher' | 'homem' | 'outros';
 /** nivel: 0 conversando, 1 preliminares, 2 pegando fogo (sem dizer quem está dentro). */
 export type CabineDoMapa = { id: string; aberta: boolean; pessoas: number; espiando: number; tipos: Cat[]; nivel?: number };
 /** Quem está na sala, com foto (só para quem pode falar na Casa). destaque = o mais ativo agora. */
-export type PessoaDoMapa = { id: string; nome: string; avatar: string | null; cat: Cat; destaque?: boolean };
+export type PessoaDoMapa = {
+  id: string; nome: string; avatar: string | null; cat: Cat; destaque?: boolean;
+  /** Marcou "quero brincar" e a pulseira da noite (visão por dentro). */
+  querBrincar?: boolean; pulseira?: string | null;
+  /** Última fala recente (vira balão na visão por dentro). */
+  fala?: string | null;
+};
 export type CabineFechadaDoMapa = { id: string; tipos: string[]; pedi: boolean };
 export type SalaDoMapa = {
   id: string; nome: string; emoji: string; total: number; espiando: number;
@@ -61,6 +67,8 @@ type PropsDoMapa = {
   /** Só a visão por dentro usa: abrir perfil e entrar já chamando alguém. */
   onVerPerfil?: (id: string) => void;
   onEntrarChamando?: (salaId: string, nome: string) => void;
+  /** Entra na sala e já abre o cartão da pessoa (drink, cabine, desafio…). */
+  onAgirCom?: (salaId: string, pessoaId: string) => void;
 };
 
 /**

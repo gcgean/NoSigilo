@@ -28,7 +28,12 @@ type Props = {
   salaInicial?: string;
   /** Sala onde a pessoa já está (dentro do chat): o botão vira "voltar ao chat". */
   salaAtual?: string;
+  /** Entra na sala e já abre o cartão da pessoa (drink, cabine, desafio…). */
+  onAgirCom?: (salaId: string, pessoaId: string) => void;
 };
+
+export const COR_DA_PULSEIRA: Record<string, string> = { verde: '#22c55e', amarela: '#facc15', roxa: '#a855f7', vermelha: '#ef4444' };
+export const NOME_DA_PULSEIRA: Record<string, string> = { verde: 'aberto(a) a tudo', amarela: 'só soft', roxa: 'single é bem-vindo', vermelha: 'só olhando hoje' };
 
 type Painel =
   | { tipo: 'pessoa'; pessoa: PessoaDoMapa }
@@ -171,7 +176,10 @@ function cracha(p: PessoaDoMapa, foto: HTMLImageElement | null) {
     } else {
       g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.strokeStyle = COR_DO_PERFIL[p.cat]; g.stroke();
     }
-    if (p.destaque) { g.beginPath(); g.arc(cx, cy, r + 9, 0, Math.PI * 2); g.lineWidth = 5; g.strokeStyle = '#fbbf24'; g.stroke(); }
+    if (p.querBrincar) { g.beginPath(); g.arc(cx, cy, r + 9, 0, Math.PI * 2); g.lineWidth = 7; g.strokeStyle = '#22c55e'; g.stroke(); }
+    if (p.destaque) { g.beginPath(); g.arc(cx, cy, r + (p.querBrincar ? 16 : 9), 0, Math.PI * 2); g.lineWidth = 5; g.strokeStyle = '#fbbf24'; g.stroke(); }
+    const corPulseira = p.pulseira ? COR_DA_PULSEIRA[p.pulseira] : null;
+    if (corPulseira) { g.fillStyle = corPulseira; g.beginPath(); g.roundRect(cx - 52, cy + 40, 30, 16, 8); g.fill(); g.lineWidth = 3; g.strokeStyle = '#14060a'; g.stroke(); }
     g.beginPath(); g.arc(cx + 48, cy + 46, 13, 0, Math.PI * 2); g.fillStyle = '#3ddc97'; g.fill(); g.lineWidth = 5; g.strokeStyle = '#14060a'; g.stroke();
     const nome = (p.nome || '').length > 13 ? `${p.nome.slice(0, 12)}…` : p.nome || '';
     g.font = '700 40px Inter, sans-serif';
@@ -345,13 +353,16 @@ type CenaProps = {
   aoTocarPorta: (s: SalaDoMapa) => void;
   aoTocarCabine: (c: CabineDoMapa) => void;
   aoUsar: () => void;
+  /** Fundo do chat: câmera girando devagar, sem toque, mais leve. */
+  ambiente?: boolean;
 };
 
-const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabine, aoUsar }, ref) {
+const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoTocarPessoa, aoTocarPorta, aoTocarCabine, aoUsar, ambiente = false }, ref) {
   const palco = useRef<HTMLDivElement>(null);
   const [falhou, setFalhou] = useState(false);
   const presentes = (sala.presentes ?? []).slice(0, MAX_PESSOAS);
-  const chavePessoas = presentes.map((p) => `${p.id}:${p.cat}:${p.avatar ?? ''}:${p.destaque ? 1 : 0}`).join('|');
+  const chavePessoas = presentes.map((p) => `${p.id}:${p.cat}:${p.avatar ?? ''}:${p.destaque ? 1 : 0}:${p.querBrincar ? 1 : 0}:${p.pulseira ?? ''}`).join('|');
+  const chaveFalas = presentes.map((p) => `${p.id}:${p.fala ?? ''}`).join('|');
   const chavePortas = outras.map((s) => `${s.id}:${s.nome}:${s.total}:${s.trancada || s.bloqueadaParaMim ? 1 : 0}`).join('|');
   const chaveFundo = sala.fundo ? `${sala.fundo.url}:${sala.fundo.intensidade}` : '';
   const cabines = sala.cabines ?? [];
@@ -360,7 +371,7 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
   // Guardados em ref para o loop de toque sempre usar os dados e callbacks mais novos.
   const atual = useRef({ presentes, outras, cabines, fundo: sala.fundo ?? null, aoTocarPessoa, aoTocarPorta, aoTocarCabine, aoUsar });
   atual.current = { presentes, outras, cabines, fundo: sala.fundo ?? null, aoTocarPessoa, aoTocarPorta, aoTocarCabine, aoUsar };
-  const cena = useRef<{ pessoas: () => void; portas: () => void; cabines: () => void; fundo: () => void; focar: (id: string) => void } | null>(null);
+  const cena = useRef<{ pessoas: () => void; portas: () => void; cabines: () => void; fundo: () => void; falas: () => void; focar: (id: string) => void } | null>(null);
   useImperativeHandle(ref, () => ({ focar: (id: string) => cena.current?.focar(id) }), []);
 
   useEffect(() => {
@@ -369,7 +380,7 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
     const tema = temaDe(sala.id);
     let renderer: THREE.WebGLRenderer;
     try { renderer = new THREE.WebGLRenderer({ antialias: true }); } catch { setFalhou(true); return; }
-    renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+    renderer.setPixelRatio(ambiente ? 1 : Math.min(1.5, window.devicePixelRatio || 1));
     Object.assign(renderer.domElement.style, { display: 'block', width: '100%', height: '100%' });
     el.prepend(renderer.domElement);
     const scene = new THREE.Scene();
@@ -505,7 +516,48 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
       destino = new THREE.Vector3(x, EYE, z);
       yaw = Math.atan2(alvo.x - x, -(alvo.z - z));
     };
-    cena.current = { pessoas: montarPessoas, portas: montarPortas, cabines: montarCabines, fundo: montarFundo, focar };
+    // Balões com a última fala de cada um, por cima do boneco (HTML projetado na cena).
+    const camadaBaloes = document.createElement('div');
+    Object.assign(camadaBaloes.style, { position: 'absolute', inset: '0', pointerEvents: 'none', overflow: 'hidden' });
+    el.appendChild(camadaBaloes);
+    const baloes = new Map<string, HTMLDivElement>();
+    const montarFalas = () => {
+      const ativas = new Set<string>();
+      for (const p of atual.current.presentes) {
+        if (!p.fala) continue;
+        ativas.add(p.id);
+        let b = baloes.get(p.id);
+        if (!b) {
+          b = document.createElement('div');
+          Object.assign(b.style, {
+            position: 'absolute', transform: 'translate(-50%, -100%)', maxWidth: '62%', padding: '5px 10px', borderRadius: '14px',
+            background: '#f6efe9', color: '#2b1216', font: '600 12px Inter, system-ui, sans-serif', lineHeight: '1.25',
+            boxShadow: '0 2px 0 rgba(0,0,0,.35)', whiteSpace: 'normal', textAlign: 'center', transition: 'opacity .3s',
+          });
+          camadaBaloes.appendChild(b); baloes.set(p.id, b);
+        }
+        if (b.textContent !== p.fala) b.textContent = p.fala;
+      }
+      for (const [id, b] of baloes) if (!ativas.has(id)) { b.remove(); baloes.delete(id); }
+    };
+    const vTmp = new THREE.Vector3();
+    const posicionarBaloes = () => {
+      if (baloes.size === 0) return;
+      const w = el.clientWidth, h = el.clientHeight;
+      for (const [id, b] of baloes) {
+        const g = gente.children.find((c) => c.userData.id === id);
+        if (!g) { b.style.display = 'none'; continue; }
+        const spr = g.children.find((c) => (c as THREE.Sprite).isSprite);
+        vTmp.copy(g.position); vTmp.y += (spr?.position.y ?? 2.4) + 0.85;
+        vTmp.project(cam);
+        if (vTmp.z > 1 || Math.abs(vTmp.x) > 1.1 || vTmp.y > 1.2) { b.style.display = 'none'; continue; }
+        b.style.display = '';
+        b.style.left = `${((vTmp.x + 1) / 2) * w}px`;
+        b.style.top = `${((1 - vTmp.y) / 2) * h}px`;
+      }
+    };
+    montarFalas();
+    cena.current = { pessoas: montarPessoas, portas: montarPortas, cabines: montarCabines, fundo: montarFundo, falas: montarFalas, focar };
     const canvas = renderer.domElement;
     const aoDescer = (e: PointerEvent) => { toque = { x: e.clientX, y: e.clientY, yaw, girando: false, id: e.pointerId }; };
     const aoMover = (e: PointerEvent) => {
@@ -550,10 +602,13 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
     let visivel = true;
     const io = new IntersectionObserver(([en]) => { visivel = !!en?.isIntersecting; }, { threshold: 0.05 });
     io.observe(el);
+    let ultimoQuadro = 0;
     const desenhar = () => {
       quadro = requestAnimationFrame(desenhar);
       if (!visivel || document.hidden) return;
+      if (ambiente) { const agora = performance.now(); if (agora - ultimoQuadro < 33) return; ultimoQuadro = agora; }
       const dt = Math.min(0.05, relogio.getDelta()), t = relogio.elapsedTime;
+      if (ambiente && !calma) yaw = Math.sin(t * 0.06) * 0.55;
       if (destino) { const d = destino.clone().sub(cam.position); if (d.length() < 0.05) destino = null; else cam.position.add(d.multiplyScalar(Math.min(1, dt * 2.2))); }
       olhar();
       if (!calma) {
@@ -564,6 +619,7 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
         anima.forEach((f) => f(t));
       }
       renderer.render(scene, cam);
+      posicionarBaloes();
     };
     olhar(); desenhar();
 
@@ -584,6 +640,7 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
       renderer.dispose();
       renderer.forceContextLoss();
       canvas.remove();
+      camadaBaloes.remove();
     };
   // A cena é montada uma vez por sala (o pai troca a key); o resto se atualiza abaixo.
   }, []);
@@ -592,15 +649,24 @@ const Cena = forwardRef<CenaApi, CenaProps>(function Cena({ sala, outras, aoToca
   useEffect(() => { cena.current?.portas(); }, [chavePortas]);
   useEffect(() => { cena.current?.cabines(); }, [chaveCabines]);
   useEffect(() => { cena.current?.fundo(); }, [chaveFundo]);
+  useEffect(() => { cena.current?.falas(); }, [chaveFalas]);
 
   if (falhou) return <p className="py-10 text-center text-sm text-white/60">Seu aparelho não abriu a visão por dentro. Use a planta ou o 3D.</p>;
   return <div ref={palco} className="absolute inset-0" />;
 });
 
+/** A sala em 3D atrás do chat: só ambiente, sem toque, mais leve. Sem balões:
+ *  as falas já estão no próprio chat, por cima. */
+export function FundoDaSala3D({ sala }: { sala: SalaDoMapa }) {
+  const nada = () => {};
+  const semFalas = { ...sala, presentes: (sala.presentes ?? []).map((p) => ({ ...p, fala: null })) };
+  return <Cena key={sala.id} sala={semFalas} outras={[]} aoTocarPessoa={nada} aoTocarPorta={nada} aoTocarCabine={nada} aoUsar={nada} ambiente />;
+}
+
 // Nome curto cabe inteiro ("T&T", "Casal 65"); nome longo fica no primeiro pedaço.
 const primeiroNome = (n: string) => ((n || '').length <= 12 ? n : (n || '').split(/\s*&\s*|\s+/)[0] || n);
 
-export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [], pedindo = null, onPedir, onVerPerfil, onEntrarChamando, salaInicial, salaAtual }: Props) {
+export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [], pedindo = null, onPedir, onVerPerfil, onEntrarChamando, salaInicial, salaAtual, onAgirCom }: Props) {
   const cenaRef = useRef<CenaApi>(null);
   const [salaId, setSalaId] = useState(() => (salaInicial && salas.some((s) => s.id === salaInicial) ? salaInicial : salas.some((s) => s.id === 'salao') ? 'salao' : salas[0]?.id ?? 'salao'));
   const [painel, setPainel] = useState<Painel>(null);
@@ -647,12 +713,23 @@ export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [
                     <div>
                       <p className="font-bold">{painel.pessoa.nome}</p>
                       <p className="text-xs text-white/60">{sala.emoji} {sala.nome} agora{painel.pessoa.destaque ? ' · o mais animado 🔥' : ''}</p>
+                      {(painel.pessoa.querBrincar || painel.pessoa.pulseira) && (
+                        <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          {painel.pessoa.querBrincar && <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-emerald-200">🎲 quer brincar</span>}
+                          {painel.pessoa.pulseira && <span className="rounded-full px-2 py-0.5 text-white/90" style={{ background: `${COR_DA_PULSEIRA[painel.pessoa.pulseira] ?? '#666'}33` }}>pulseira {NOME_DA_PULSEIRA[painel.pessoa.pulseira] ?? painel.pessoa.pulseira}</span>}
+                        </p>
+                      )}
+                      {painel.pessoa.fala && <p className="mt-1 rounded-lg bg-white/5 px-2 py-1 text-xs italic text-white/80">“{painel.pessoa.fala}”</p>}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {onVerPerfil && <button type="button" onClick={() => { const id = painel.pessoa.id; setPainel(null); onVerPerfil(id); }} className="rounded-xl border border-white/20 py-3 text-sm font-bold">👤 Ver perfil</button>}
                     <button type="button" disabled={travada(sala)} onClick={() => { const n = painel.pessoa.nome; setPainel(null); if (onEntrarChamando) onEntrarChamando(sala.id, n); else onEntrar(sala.id); }}
                       className={`rounded-xl bg-rose-600 py-3 text-sm font-bold disabled:opacity-50 ${onVerPerfil ? '' : 'col-span-2'}`}>💬 Entrar e chamar {primeiroNome(painel.pessoa.nome)}</button>
+                    {onAgirCom && (
+                      <button type="button" disabled={travada(sala) && sala.id !== salaAtual} onClick={() => { const id = painel.pessoa.id; setPainel(null); onAgirCom(sala.id, id); }}
+                        className="col-span-2 rounded-xl border border-amber-400/50 bg-amber-500/15 py-3 text-sm font-bold text-amber-100 disabled:opacity-50">🍸 Drink, cabine, desafio…</button>
+                    )}
                   </div>
                 </>
               )}
@@ -697,7 +774,8 @@ export default function SalaoPorDentro({ salas, onEntrar, onEspiar, fechadas = [
           {presentes.map((p) => (
             <button key={p.id} type="button" onClick={() => { setDica(false); cenaRef.current?.focar(p.id); setPainel({ tipo: 'pessoa', pessoa: p }); }}
               className="flex w-16 shrink-0 flex-col items-center gap-1" title={p.nome}>
-              <span className="relative block h-12 w-12 rounded-full p-[2px]" style={{ background: p.cat === 'casal' ? `linear-gradient(90deg, ${ROSA} 50%, ${AZUL} 50%)` : p.destaque ? '#fbbf24' : COR_DO_PERFIL[p.cat] }}>
+              <span className={`relative block h-12 w-12 rounded-full p-[2px] ${p.querBrincar ? 'ring-2 ring-emerald-400 ring-offset-1 ring-offset-zinc-950' : ''}`} style={{ background: p.cat === 'casal' ? `linear-gradient(90deg, ${ROSA} 50%, ${AZUL} 50%)` : p.destaque ? '#fbbf24' : COR_DO_PERFIL[p.cat] }}>
+                {p.pulseira && COR_DA_PULSEIRA[p.pulseira] && <span className="absolute -left-0.5 bottom-0 z-10 h-2.5 w-4 rounded-full border-2 border-zinc-950" style={{ background: COR_DA_PULSEIRA[p.pulseira] }} />}
                 {p.avatar
                   ? <img src={resolveServerUrl(p.avatar)} alt="" loading="lazy" className="h-full w-full rounded-full object-cover" />
                   : <span className="grid h-full w-full place-items-center rounded-full bg-zinc-900 text-sm font-bold text-white">{(p.nome || '?').charAt(0)}</span>}

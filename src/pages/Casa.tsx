@@ -36,6 +36,8 @@ import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
 import TemaDaProxima from '@/components/TemaDaProxima';
 import CabinesFechadas, { CabinesAbertas, type CabineFechada } from '@/components/CabinesFechadas';
 const SalaoPorDentro = lazy(() => import('@/components/SalaoPorDentro'));
+const FundoDaSala3D = lazy(() => import('@/components/SalaoPorDentro').then((m) => ({ default: m.FundoDaSala3D })));
+const CHAVE_FUNDO_3D = 'nosigilo:casa-fundo3d';
 
 /**
  * A Casa — boate virtual de sexta (22h–1h) e sábado (22h–2h) (backend: casa.ts).
@@ -50,6 +52,7 @@ type SalaResumo = {
   bloqueadaParaMim: boolean; lotadaParaMim: boolean; posicaoNaFila: number | null;
   trancada?: boolean; faltamParaAbrir?: number;
   pessoas?: Categoria[]; cabines?: CabineDoMapa[];
+  fundo?: FotoDeFundo | null;
 };
 type TemaDaNoite = { id: string; nome: string; descricao: string; dress: string | null };
 type Info = {
@@ -387,6 +390,11 @@ export default function Casa() {
   const [cabineAberta, setCabineAberta] = useState<{ id: string; modo: 'membro' | 'espiar' } | null>(null);
   // Dentro do chat: ver a sala (e as outras) em primeira pessoa, por cima do chat.
   const [porDentro, setPorDentro] = useState(false);
+  // A sala em 3D atrás das mensagens (liga/desliga; gasta mais bateria, então começa desligado).
+  const [fundo3D, setFundo3D] = useState(() => { try { return localStorage.getItem(CHAVE_FUNDO_3D) === '1'; } catch { return false; } });
+  const trocarFundo3D = () => setFundo3D((v) => { try { localStorage.setItem(CHAVE_FUNDO_3D, v ? '0' : '1'); } catch { /* modo restrito */ } return !v; });
+  // Ação pedida na visão por dentro: entra na sala e abre o cartão da pessoa quando ela aparecer.
+  const abrirPessoaDepois = useRef<string | null>(null);
   const cabineAbertaRef = useRef(cabineAberta);
   cabineAbertaRef.current = cabineAberta;
   const [minhasCabines, setMinhasCabines] = useState<string[]>([]);
@@ -1177,6 +1185,42 @@ export default function Casa() {
     );
   };
 
+  useEffect(() => {
+    const id = abrirPessoaDepois.current;
+    if (!id || !estado) return;
+    const p = estado.presentes.find((x) => x.id === id);
+    if (p) { abrirPessoaDepois.current = null; setPessoaAberta(p); }
+  }, [estado]);
+  const agirCom = async (salaId: string, pessoaId: string) => {
+    abrirPessoaDepois.current = pessoaId;
+    if (estado?.sala.id === salaId) {
+      const p = estado.presentes.find((x) => x.id === pessoaId);
+      if (p) { abrirPessoaDepois.current = null; setPessoaAberta(p); }
+      return;
+    }
+    const s = info?.salas?.find((x) => x.id === salaId);
+    if (s?.lotadaParaMim) { abrirPessoaDepois.current = null; void entrarNaFila(salaId); return; }
+    await entrar(salaId);
+  };
+  // Sala atual montada para o fundo 3D: gente e falas vêm do próprio chat (ao vivo).
+  const salaDoFundo = (() => {
+    if (!estado || !fundo3D) return null;
+    const base = info?.salas?.find((x) => x.id === estado.sala.id);
+    const agora = Date.now();
+    const falas = new Map<string, string>();
+    for (const m of estado.mensagens) {
+      if (m.tipo === 'pessoa' && m.autor?.id && m.texto?.trim() && agora - Date.parse(m.criadoEm) < 90_000) {
+        const t = m.texto.trim();
+        falas.set(m.autor.id, t.length > 70 ? `${t.slice(0, 69)}…` : t);
+      }
+    }
+    return {
+      id: estado.sala.id, nome: estado.sala.nome, emoji: estado.sala.emoji, total: estado.presentes.length, espiando: estado.espiando,
+      fundo: estado.sala.fundo ?? base?.fundo ?? null, cabines: base?.cabines ?? [],
+      presentes: estado.presentes.slice(0, 12).map((x) => ({ id: x.id, nome: x.nome, avatar: x.avatar, cat: x.cat, querBrincar: x.querBrincar, pulseira: x.pulseira ?? null, fala: falas.get(x.id) ?? null })),
+    };
+  })();
+
   // Dentro de uma sala, a página d'A Casa atrás não rola nem aparece. No iPhone,
   // abrir/fechar o teclado rolava a página de trás e o ranking surgia embaixo do
   // chat (15/11/2026). Também para o mapa 3D de desenhar escondido.
@@ -1195,6 +1239,11 @@ export default function Casa() {
       className={cn('fixed inset-0 z-[9990] flex flex-col overflow-hidden text-white', temaDaSala(estado.sala.id).fundo)}
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
+      {salaDoFundo && (
+        <div className="pointer-events-none absolute inset-0 opacity-45" style={{ zIndex: -5 }} aria-hidden="true">
+          <Suspense fallback={null}><FundoDaSala3D sala={salaDoFundo} /></Suspense>
+        </div>
+      )}
       {porDentro && info?.salas?.length ? (
         <div className="fixed inset-0 z-[9994] overflow-y-auto bg-zinc-950 px-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-[calc(0.75rem+env(safe-area-inset-top,0px))]" role="dialog" aria-modal="true" aria-label="A Casa por dentro">
           <div className="mx-auto max-w-lg space-y-2">
@@ -1211,6 +1260,7 @@ export default function Casa() {
                 pedindo={pedindoCabine}
                 onPedir={(id) => { const c = (info.cabinesFechadas ?? []).find((x) => x.id === id); if (c) void pedirCabineFechada(c); }}
                 onVerPerfil={(id) => { setPorDentro(false); setPerfilAberto(id); }}
+                onAgirCom={(salaId, pessoaId) => { setPorDentro(false); void agirCom(salaId, pessoaId); }}
                 onEntrarChamando={async (id, nome) => { setPorDentro(false); if (id !== estado.sala.id) await entrar(id); setTexto(`@${nome} `); }}
                 onEntrar={(id) => { setPorDentro(false); if (id !== estado.sala.id) void entrar(id); }}
                 onEspiar={async (salaId, cabineId) => { setPorDentro(false); if (salaId !== estado.sala.id) await entrar(salaId); setCabineAberta({ id: cabineId, modo: 'espiar' }); }}
@@ -1242,6 +1292,9 @@ export default function Casa() {
         {info?.salas?.length ? (
           <button type="button" onClick={() => { setPorDentro(true); void carregar(); }} className="shrink-0 rounded-full border border-white/20 px-2.5 py-1.5 text-xs" title="Ver a sala por dentro" aria-label="Ver a sala por dentro">🎮</button>
         ) : null}
+        <button type="button" onClick={trocarFundo3D} aria-pressed={fundo3D}
+          className={cn('shrink-0 rounded-full border px-2.5 py-1.5 text-xs', fundo3D ? 'border-fuchsia-400 bg-fuchsia-500/25' : 'border-white/20')}
+          title={fundo3D ? 'Desligar a sala em 3D atrás do chat' : 'Ver a sala em 3D atrás do chat'} aria-label="Fundo 3D">🎬</button>
         {/* Ícones: no celular descem para uma 2ª linha, para o nome da sala não sumir. */}
         {/* Uma linha só (13/11/2026): o convite por extenso jogava 🔔🏆⚪ para uma
             3ª linha e roubava espaço do chat. Se não couber, rola para o lado. */}
@@ -2156,6 +2209,7 @@ export default function Casa() {
             pedindo={pedindoCabine}
             onPedir={(id) => { const c = (info.cabinesFechadas ?? []).find((x) => x.id === id); if (c) void pedirCabineFechada(c); }}
             onVerPerfil={(id) => setPerfilAberto(id)}
+            onAgirCom={(salaId, pessoaId) => void agirCom(salaId, pessoaId)}
             onEntrarChamando={async (id, nome) => {
               const s = info.salas.find((x) => x.id === id);
               if (s?.lotadaParaMim) { void entrarNaFila(id); return; }
