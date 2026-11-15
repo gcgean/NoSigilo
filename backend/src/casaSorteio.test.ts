@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { quemSugerirParaDrink, sortearGanhadores } from './casa.js';
+import { fechamentoDaNoite, quemSugerirParaDrink, sortearGanhadores } from './casa.js';
 
 describe('sorteio da Casa', () => {
   it('sorteia pessoas diferentes, nunca mais que o pedido', () => {
@@ -38,5 +38,20 @@ describe('quebra-gelo: sugestão de drink', () => {
     const eu = p('eu', 'casal', null);
     const sala = [eu, p('h1', 'homem', 5), p('h2', 'homem', 1)];
     expect(quemSugerirParaDrink(eu, sala, agora)?.id).toBe('h2');
+  });
+});
+
+describe('fechamento da rádio', () => {
+  const uma = { titulo: 'Fechamento – uma da manhã' };
+  const duas = { titulo: 'Fechamento – duas da manhã' };
+  const neutro = { titulo: 'Fechamento – a Casa vai fechar' };
+  it('escolhe pela hora que a Lola fala', () => {
+    expect(fechamentoDaNoite([uma, duas], 1)).toBe(uma);
+    expect(fechamentoDaNoite([uma, duas], 2)).toBe(duas);
+  });
+  it('sem o da hora certa usa o neutro; só com o da outra hora, não toca', () => {
+    expect(fechamentoDaNoite([uma, neutro], 2)).toBe(neutro);
+    expect(fechamentoDaNoite([uma], 2)).toBeNull();
+    expect(fechamentoDaNoite([uma, neutro], null)).toBe(neutro);
   });
 });

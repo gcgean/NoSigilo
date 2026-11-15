@@ -416,6 +416,17 @@ export function quemSugerirParaDrink<P extends { id: string; cat: string; ultima
   if (quem.length === 0) return null;
   return [...quem].sort((a, b) => Number(!!b.querBrincar) - Number(!!a.querBrincar) || b.ultimaMsg - a.ultimaMsg)[0];
 }
+/**
+ * Fechamento da rádio: sexta fecha à 1h e sábado às 2h, e a Lola fala a hora. Escolhe pelo
+ * título ("uma da manhã" / "duas da manhã"); sem um da hora certa, usa um que não diga hora,
+ * e se só houver o da outra hora, não toca nada (melhor silêncio que a hora errada).
+ */
+export function fechamentoDaNoite<F extends { titulo: string }>(lista: F[], hora: number | null): F | null {
+  const diz = (f: F, h: number) => (h === 1 ? /\b(uma|1 ?h)\b/i : /\b(duas|2 ?h)\b/i).test(f.titulo);
+  const neutro = lista.find((f) => !diz(f, 1) && !diz(f, 2)) ?? null;
+  if (hora === null) return neutro;
+  return lista.find((f) => diz(f, hora)) ?? neutro;
+}
 /** Sorteio da Casa: horários (Brasília, sempre aos 30 min) e quantos ganham. */
 const HORAS_DO_SORTEIO = [23, 0] as const;
 const GANHADORES_DO_SORTEIO = 2;
@@ -3998,7 +4009,7 @@ Sala: ${salaId}`).catch(() => {});
       const inicioNoite = noiteAgora.forcada ? null : inicioDaNoite(noiteAgora.chave, noiteAgora.tema);
       const fimNoite = noiteAgora.forcada ? await abertaAte() : fimDaNoite(noiteAgora.chave, noiteAgora.tema);
       const abertura = todas.find((f) => f.tipo === 'abertura');
-      const fechamento = todas.find((f) => f.tipo === 'fechamento');
+      const fechamento = fechamentoDaNoite(todas.filter((f) => f.tipo === 'fechamento'), noiteAgora.forcada ? null : HORA_DE_FECHAR[noiteAgora.tema]);
       if (abertura && inicioNoite && agoraMs >= inicioNoite && agoraMs < inicioNoite + abertura.duracao * 1000) { vinhetaNaHora(abertura, inicioNoite); return; }
       if (fechamento && agoraMs >= fimNoite - fechamento.duracao * 1000 && agoraMs < fimNoite) { vinhetaNaHora(fechamento, fimNoite - fechamento.duracao * 1000); return; }
     }
