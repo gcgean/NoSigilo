@@ -2238,7 +2238,9 @@ export default function Casa() {
             {mostraProximo && <Button variant="outline" onClick={() => setFeedbackAberto(true)}>O que faltou para sua noite ser melhor?</Button>}
           </div>
         )}
-        {info?.aberta && info.salas?.length > 0 && (
+        {/* Fora da tela enquanto está numa sala (o saguão só fica escondido): ao sair, o mapa
+            volta no 3D em vez de continuar "por dentro", e a cena 3D não roda escondida (15/11). */}
+        {info?.aberta && info.salas?.length > 0 && !dentroDaSala && (
           <MapaDaCasa
             salas={info.salas}
             onEntrar={(id) => {
