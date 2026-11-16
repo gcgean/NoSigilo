@@ -2280,6 +2280,47 @@ async function isUserBlocked(options: { db: DbHandle }, data: { viewerId: string
   return !!row;
 }
 
+// Bloqueio vale para TUDO entre os dois (pedido do dono, 16/11/2026): quem
+// bloqueou ou foi bloqueado não vê nem faz nada com o outro: perfil, fotos,
+// posts, stories, curtidas, comentários, depoimentos, amizade, radar, visitas.
+async function bloqueioEntre(db: DbHandle, a: string, b: unknown): Promise<boolean> {
+  const outro = b == null ? '' : String(b);
+  if (!outro || outro === a) return false;
+  return isUserBlocked({ db }, { viewerId: a, targetId: outro });
+}
+
+/** Todos com quem `userId` tem bloqueio, nos dois sentidos. */
+async function idsComBloqueio(db: DbHandle, userId: string): Promise<Set<string>> {
+  const linhas = (await queryAll(
+    db,
+    `SELECT blocked_user_id AS id FROM blocks WHERE blocker_user_id = ?
+     UNION
+     SELECT blocker_user_id AS id FROM blocks WHERE blocked_user_id = ?`,
+    [userId, userId]
+  )) as any[];
+  return new Set(linhas.map((l) => String(l.id)));
+}
+
+/** Trecho SQL: `col` não tem bloqueio com o usuário dos dois `?` (passar o id duas vezes). */
+function sqlSemBloqueio(col: string): string {
+  return `NOT EXISTS (SELECT 1 FROM blocks bk WHERE (bk.blocker_user_id = ? AND bk.blocked_user_id = ${col}) OR (bk.blocked_user_id = ? AND bk.blocker_user_id = ${col}))`;
+}
+
+/** Dono do conteúdo curtido/comentado/denunciado. */
+async function autorDoAlvo(db: DbHandle, tipo: string, id: string): Promise<string | null> {
+  const sql: Record<string, string> = {
+    post: 'SELECT user_id AS id FROM posts WHERE id = ?',
+    photo: 'SELECT user_id AS id FROM media WHERE id = ?',
+    experience: 'SELECT user_id AS id FROM experiences WHERE id = ?',
+    story: 'SELECT user_id AS id FROM stories WHERE id = ?',
+    message: 'SELECT sender_id AS id FROM messages WHERE id = ?',
+  };
+  if (tipo === 'user') return id || null;
+  if (!sql[tipo]) return null;
+  const linha = (await queryOne(db, sql[tipo], [id])) as any;
+  return linha?.id ? String(linha.id) : null;
+}
+
 // Busca por nome sem diferenciar maiúsculas nem espaços: "seuamante" acha
 // "Seu Amante22". O LIKE do Postgres diferencia maiúsculas, e por isso a busca
 // não achava ninguém digitando em minúsculas (10/11/2026). Use com
@@ -8681,7 +8722,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     // Filtra pelo interesse do viewer: só mostra stories de autores cujo gênero
     // combina com a preferência do usuário (ou tudo, se ele não tiver preferência).
+    // Bloqueio nos dois sentidos: nem aparece na barra de stories (16/11/2026).
+    const bloqueadosStories = await idsComBloqueio(db, userId);
     const filtradosPorInteresse = rows.filter((r: any) => {
+      if (bloqueadosStories.has(String(r.user_id))) return false;
       if (myLookingFor.length === 0) return true;
       return matchesLookingFor(myLookingFor, r.gender);
     });
@@ -9510,8 +9554,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        ORDER BY sv.viewed_at DESC`,
       [storyId]
     )) as any[];
+    const bq = await idsComBloqueio(db, req.auth!.userId);
     res.json({
-      viewers: rows.map((r: any) => ({
+      viewers: rows.filter((r: any) => !bq.has(String(r.id))).map((r: any) => ({
         id: String(r.id),
         name: String(r.name),
         avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
@@ -9638,8 +9683,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        ORDER BY sc.created_at DESC`,
       [storyId]
     )) as any[];
+    const bq = await idsComBloqueio(db, req.auth!.userId);
     res.json({
-      comments: rows.map((r: any) => ({
+      comments: rows.filter((r: any) => !bq.has(String(r.commenter_id))).map((r: any) => ({
         id: String(r.id),
         text: String(r.text),
         createdAt: String(r.created_at),
@@ -10869,6 +10915,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/users/:userId/experiences', requireAuth(env, db), async (req, res) => {
+    if (await bloqueioEntre(db, req.auth!.userId, req.params.userId)) { res.status(404).json({ error: 'not_found' }); return; }
     const targetUserId = String(req.params.userId || '');
     const rows = await queryAll(
       db,
@@ -11045,8 +11092,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          JOIN users u ON u.id = pv.visitor_user_id
          WHERE pv.visited_user_id = ? AND pv.created_at >= ?
            AND (u.is_banned = 0 OR u.is_banned IS NULL)
+           AND ${sqlSemBloqueio('u.id')}
          ORDER BY pv.created_at DESC LIMIT 3`,
-        [userId, todayStr]
+        [userId, todayStr, userId, userId]
       );
       recentVisitors = (rows as any[]).map((r) => ({
         id: String(r.id),
@@ -11064,8 +11112,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          JOIN users u ON u.id = l.user_id
          WHERE l.target_type = 'user' AND l.target_id = ?
            AND (u.is_banned = 0 OR u.is_banned IS NULL)
+           AND ${sqlSemBloqueio('u.id')}
          ORDER BY l.created_at DESC LIMIT 3`,
-        [userId]
+        [userId, userId, userId]
       );
       recentLikers = (likerRows as any[]).map((r) => ({
         id: String(r.id),
@@ -12619,8 +12668,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     `,
       [req.auth!.userId]
     );
+    const bq = await idsComBloqueio(db, req.auth!.userId);
     res.json(
-      rows.map((r: any) => ({
+      rows.filter((r: any) => !bq.has(String(r.visitor_id))).map((r: any) => ({
         id: r.id,
         createdAt: r.created_at,
         visitsCount: Number(r.visits_count || 1),
@@ -12947,6 +12997,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/users/:userId/mural', requireAuth(env, db), async (req, res) => {
+    if (await bloqueioEntre(db, req.auth!.userId, req.params.userId)) { res.status(404).json({ error: 'not_found' }); return; }
     try {
       const donoId = String(req.params.userId || '');
       const ehDono = donoId === req.auth!.userId;
@@ -12964,7 +13015,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           LIMIT 60`,
         [donoId]
       )) as any[];
-      res.json({ recados: linhas.map(linhaDoMural), ehDono });
+    const bq = await idsComBloqueio(db, req.auth!.userId);
+      res.json({ recados: linhas.filter((r: any) => !bq.has(String(r.author_id))).map(linhaDoMural), ehDono });
     } catch (error) {
       console.error('[mural/listar]', error);
       res.status(500).json({ error: 'mural_indisponivel' });
@@ -13399,6 +13451,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/users/:userId/private-photos/access', requireAuth(env, db), async (req, res) => {
+    if (await bloqueioEntre(db, req.auth!.userId, req.params.userId)) { res.status(404).json({ error: 'not_found' }); return; }
     const ownerId = String(req.params.userId || '');
     const viewerId = req.auth!.userId;
     if (ownerId === viewerId) {
@@ -13418,6 +13471,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/users/:userId/testimonials', requireAuth(env, db), async (req, res) => {
+    if (await bloqueioEntre(db, req.auth!.userId, req.params.userId)) { res.status(404).json({ error: 'not_found' }); return; }
     const profileUserId = String(req.params.userId || '');
     const viewerId = req.auth!.userId;
     const status = viewerId === profileUserId ? String(req.query.status || 'all') : 'approved';
@@ -13463,8 +13517,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         mediaByTestimonialId.get(tid)!.push({ id: String(m.id), url: `/uploads/${m.filename}`, mimeType: String(m.mime_type || '') });
       }
     }
+    const bq = await idsComBloqueio(db, req.auth!.userId);
     res.json(
-      rows.map((r: any) => ({
+      rows.filter((r: any) => !bq.has(String(r.author_id))).map((r: any) => ({
         id: r.id,
         content: r.content,
         status: r.status,
@@ -13484,6 +13539,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/users/:userId/badges', requireAuth(env, db), async (req, res) => {
+    if (await bloqueioEntre(db, req.auth!.userId, req.params.userId)) { res.status(404).json({ error: 'not_found' }); return; }
     const userId = String(req.params.userId || '');
     const row = (await queryOne(
       db,
@@ -13499,6 +13555,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/users/:userId/photos', requireAuth(env, db), async (req, res) => {
+    if (await bloqueioEntre(db, req.auth!.userId, req.params.userId)) { res.status(404).json({ error: 'not_found' }); return; }
     const ownerId = String(req.params.userId || '');
     const viewerId = req.auth!.userId;
     const visibility = String(req.query.visibility || 'public');
@@ -13554,6 +13611,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/users/:userId/posts', requireAuth(env, db), async (req, res) => {
+    if (await bloqueioEntre(db, req.auth!.userId, req.params.userId)) { res.status(404).json({ error: 'not_found' }); return; }
     const ownerId = String(req.params.userId || '');
     if (!ownerId) { res.status(400).json({ error: 'invalid_input' }); return; }
 
@@ -13712,6 +13770,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     const ownerId = parsed.data.userId;
     const requesterId = req.auth!.userId;
+    if (await bloqueioEntre(db, req.auth!.userId, ownerId)) { res.status(403).json({ error: 'blocked', message: 'Não é possível interagir com este perfil.' }); return; }
     if (ownerId === requesterId) {
       res.status(400).json({ error: 'invalid_target' });
       return;
@@ -13843,8 +13902,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       params
     );
 
+    const bq = await idsComBloqueio(db, req.auth!.userId);
     res.json(
-      rows.map((r: any) => ({
+      rows.filter((r: any) => !bq.has(String(r.requester_id))).map((r: any) => ({
         id: String(r.id),
         status: String(r.status),
         createdAt: r.created_at,
@@ -14659,6 +14719,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const targetUserId = parsed.data.userId;
     const myId = req.auth!.userId;
     const querSuper = parsed.data.superCurtida === true;
+    if (await bloqueioEntre(db, myId, targetUserId)) { res.status(403).json({ error: 'blocked', message: 'Não é possível interagir com este perfil.' }); return; }
 
     if (targetUserId === myId) {
       res.status(400).json({ error: 'cannot_like_self' });
@@ -15041,8 +15102,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
 
     const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
+    const bq = await idsComBloqueio(db, req.auth!.userId);
     res.json(
-      rows.map((r: any) => {
+      rows.filter((r: any) => !bq.has(String(r.id))).map((r: any) => {
         const distanceKm =
           viewerLat !== null && viewerLon !== null && r.lat != null && r.lon != null
             ? roundDistanceKm(
@@ -15516,11 +15578,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         FROM radar_broadcasts rb
        JOIN users u ON u.id = rb.user_id
        WHERE rb.user_id != ?
+         AND ${sqlSemBloqueio('rb.user_id')}
          AND rb.deactivated_at IS NULL
          AND rb.expires_at > ?
        ORDER BY rb.created_at DESC
        LIMIT 100`,
-      [req.auth!.userId, nowIso()]
+      [req.auth!.userId, req.auth!.userId, req.auth!.userId, nowIso()]
     );
 
     const activeBroadcastIds = activeRows.map((row: any) => String(row.id));
@@ -15732,11 +15795,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        FROM radar_broadcasts rb
        JOIN users u ON u.id = rb.user_id
        WHERE rb.user_id != ?
+         AND ${sqlSemBloqueio('rb.user_id')}
          AND rb.deactivated_at IS NULL
          AND rb.expires_at > ?
        ORDER BY rb.created_at DESC
        LIMIT 40`,
-      [req.auth!.userId, nowIso()]
+      [req.auth!.userId, req.auth!.userId, req.auth!.userId, nowIso()]
     );
 
     const highlights: any[] = [];
@@ -15806,6 +15870,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(404).json({ error: 'not_found' });
       return;
     }
+    if (await bloqueioEntre(db, req.auth!.userId, radar.user_id)) { res.status(404).json({ error: 'not_found' }); return; }
     if (radar.deactivated_at || new Date(String(radar.expires_at)).getTime() <= Date.now()) {
       res.status(410).json({ error: 'expired' });
       return;
@@ -16664,6 +16729,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(400).json({ error: 'invalid_input' });
       return;
     }
+    if (await bloqueioEntre(db, req.auth!.userId, await autorDoAlvo(db, parsed.data.targetType, parsed.data.targetId))) { res.status(403).json({ error: 'blocked', message: 'Não é possível interagir com este perfil.' }); return; }
     const existing = (await queryOne(db, 'SELECT id, reaction FROM likes WHERE user_id = ? AND target_type = ? AND target_id = ?', [
       req.auth!.userId,
       parsed.data.targetType,
@@ -16829,8 +16895,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     `,
       [parsed.data.targetType, parsed.data.targetId, limit]
     );
+    const bq = await idsComBloqueio(db, req.auth!.userId);
     res.json(
-      rows.map((r: any) => ({
+      rows.filter((r: any) => !bq.has(String(r.user_id))).map((r: any) => ({
         id: r.id,
         createdAt: r.created_at,
         reaction: r.reaction || null,
@@ -16966,6 +17033,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(400).json({ error: 'invalid_input' });
       return;
     }
+    if (await bloqueioEntre(db, req.auth!.userId, await autorDoAlvo(db, parsed.data.targetType, parsed.data.targetId))) { res.status(403).json({ error: 'blocked', message: 'Não é possível interagir com este perfil.' }); return; }
     // Comentários desligados pelo dono do post (13/11/2026).
     if (parsed.data.targetType === 'post') {
       const alvo = (await queryOne(db, 'SELECT user_id, comentarios_desligados FROM posts WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
@@ -17259,7 +17327,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
 
     // Build nested structure: top-level comments with replies array
-    const allComments = (rows as any[]).map(toComment);
+    const bq = await idsComBloqueio(db, req.auth!.userId);
+    const allComments = (rows as any[]).filter((r: any) => !bq.has(String(r.user_id))).map(toComment);
     const topLevel = allComments.filter((c) => !c.parentCommentId);
     const repliesMap: Record<string, typeof allComments> = {};
     allComments.filter((c) => c.parentCommentId).forEach((c) => {
@@ -17291,6 +17360,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(404).json({ error: 'not_found' });
       return;
     }
+    if (await bloqueioEntre(db, req.auth!.userId, parsed.data.profileUserId)) { res.status(403).json({ error: 'blocked', message: 'Não é possível interagir com este perfil.' }); return; }
     const id = randomUUID();
     const now = nowIso();
     await run(
@@ -17411,8 +17481,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
 
     const nowMs = Date.now();
+    const bq = await idsComBloqueio(db, req.auth!.userId);
     res.json({
-      incoming: incoming.map((r: any) => ({
+      incoming: incoming.filter((r: any) => !bq.has(String(r.from_id))).map((r: any) => ({
         id: r.id,
         status: r.status,
         createdAt: r.created_at,
@@ -17425,7 +17496,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           state: r.from_state ?? null,
         },
       })),
-      outgoing: outgoing.map((r: any) => ({
+      outgoing: outgoing.filter((r: any) => !bq.has(String(r.to_id))).map((r: any) => ({
         id: r.id,
         status: r.status,
         createdAt: r.created_at,
@@ -17438,7 +17509,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           state: r.to_state ?? null,
         },
       })),
-      friends: friends.map((r: any) => {
+      friends: friends.filter((r: any) => !bq.has(String(r.friend_id))).map((r: any) => {
         const lastSeen = r.friend_last_seen_at ? new Date(r.friend_last_seen_at).getTime() : null;
         const isOnline = lastSeen ? nowMs - lastSeen < 5 * 60 * 1000 : false;
         return {
@@ -17485,6 +17556,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
 
     // Check for existing request in either direction
+    if (await bloqueioEntre(db, fromUserId, toUserId)) { res.status(403).json({ error: 'blocked', message: 'Não é possível interagir com este perfil.' }); return; }
     const existing = (await queryOne(
       db,
       `SELECT id, status FROM friend_requests
@@ -17825,8 +17897,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         LIMIT 500`,
       [req.params.postId]
     )) as any[];
+    const bq = await idsComBloqueio(db, req.auth!.userId);
     res.json({
-      likes: rows.map((r) => ({
+      likes: rows.filter((r: any) => !bq.has(String(r.id))).map((r) => ({
         id: String(r.id),
         name: String(r.name || ''),
         avatar: r.avatar ?? null,
@@ -18023,6 +18096,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.post('/api/users/:targetUserId/visit', requireAuth(env, db), async (req, res) => {
+    if (await bloqueioEntre(db, req.auth!.userId, req.params.targetUserId)) { res.json({ ok: true }); return; }
     const io = req.app.get('io') as SocketIOServer | undefined;
     const targetUserId = String(req.params.targetUserId || '');
     // Não registra a própria visita nem a do admin (moderando, não visitando).
@@ -18957,7 +19031,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
     const eu = (await queryOne(db, 'SELECT gender, is_admin FROM users WHERE id = ?', [viewerId])) as any;
     const souAdmin = Number(eu?.is_admin) === 1;
+    const bq = await idsComBloqueio(db, viewerId);
     const lista = rows.flatMap((r: any) => {
+      if (bq.has(String(r.user_id))) return [];
       const payload = safeJsonParse(r.payload_json) ?? {};
       const isGoing = Number(r.is_going) === 1 || r.is_going === true;
       const souCriador = String(r.user_id) === viewerId;
@@ -19088,7 +19164,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         ORDER BY ea.created_at ASC LIMIT 300`,
       [eventId]
     )) as any[];
-    res.json(rows.map((r) => ({ id: String(r.id), name: String(r.name || ''), avatar: r.avatar ?? null, isVerified: Number(r.is_verified || 0) === 1 })));
+    const bq = await idsComBloqueio(db, req.auth!.userId);
+    res.json(rows.filter((r: any) => !bq.has(String(r.id))).map((r) => ({ id: String(r.id), name: String(r.name || ''), avatar: r.avatar ?? null, isVerified: Number(r.is_verified || 0) === 1 })));
   });
 
   // Meus grupos (um por evento em que confirmei presença), mais recente primeiro.
@@ -19534,8 +19611,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        JOIN users u ON u.id = rb.user_id
        WHERE v.viewer_user_id = ? AND rb.deactivated_at IS NULL AND rb.expires_at > ?
          AND (u.is_banned = 0 OR u.is_banned IS NULL) AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND ${sqlSemBloqueio('rb.user_id')}
        ORDER BY rb.created_at DESC LIMIT 20`,
-      [myId, now]
+      [myId, now, myId, myId]
     )) as any[];
 
     const radars = radarRows.map((r: any) => {
@@ -19566,8 +19644,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        FROM events e JOIN users u ON u.id = e.user_id
        WHERE e.user_id != ? AND e.created_at >= ?
          AND (u.is_banned = 0 OR u.is_banned IS NULL) AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND ${sqlSemBloqueio('e.user_id')}
        ORDER BY e.created_at DESC LIMIT 150`,
-      [myId, sinceIso]
+      [myId, sinceIso, myId, myId]
     )) as any[];
 
     // "Hoje" em Brasília: em UTC, depois das 21h o evento do dia sumia antes da hora.
@@ -23221,14 +23300,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // Conta oficial e admins ficam de fora (avisos e suporte).
       let bloqueado = false;
       try {
-        const t = parsed.data.targetType;
-        const alvoId = parsed.data.targetId;
-        const autor = t === 'user' ? { id: alvoId }
-          : t === 'post' ? await queryOne(db, 'SELECT user_id AS id FROM posts WHERE id = ?', [alvoId])
-          : t === 'story' ? await queryOne(db, 'SELECT user_id AS id FROM stories WHERE id = ?', [alvoId])
-          : t === 'photo' ? await queryOne(db, 'SELECT user_id AS id FROM media WHERE id = ?', [alvoId])
-          : await queryOne(db, 'SELECT sender_id AS id FROM messages WHERE id = ?', [alvoId]);
-        const autorId = (autor as any)?.id ? String((autor as any).id) : '';
+        const autorId = (await autorDoAlvo(db, parsed.data.targetType, parsed.data.targetId)) || '';
         if (autorId && autorId !== reporterId) {
           const u = (await queryOne(db, 'SELECT is_admin, conta_oficial FROM users WHERE id = ?', [autorId])) as any;
           if (u && Number(u.is_admin || 0) !== 1 && Number(u.conta_oficial || 0) !== 1) {

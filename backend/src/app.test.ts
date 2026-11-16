@@ -5652,6 +5652,53 @@ describe('nosigilo backend', () => {
     expect(Number(depois?.c || 0)).toBe(0);
   });
 
+  it('bloqueio vale para tudo: perfil, fotos, posts, curtir, comentar, amizade, depoimento, fotos privadas, visita e stories', async () => {
+    const ana = await registerInvitedUser(ctx, sponsorToken, { name: 'Ana Bloqueio Geral', email: 'ana-bloq-geral@example.com', password: 'senha123', gender: 'Mulher' });
+    const beto = await registerInvitedUser(ctx, sponsorToken, { name: 'Beto Bloqueio Geral', email: 'beto-bloq-geral@example.com', password: 'senha123', gender: 'Homem' });
+    await grantPremium(ctx, String(beto.user.id));
+    const anaId = String(ana.user.id);
+    const betoId = String(beto.user.id);
+    const A = { Authorization: `Bearer ${ana.token}` };
+    const B = { Authorization: `Bearer ${beto.token}` };
+    const postId = `post-bloq-geral-${Date.now()}`;
+    await run(ctx.db, "INSERT INTO posts (id, user_id, content, created_at) VALUES (?, ?, 'oi', ?)", [postId, anaId, new Date().toISOString()]);
+    const storyId = `story-bloq-geral-${Date.now()}`;
+    await run(ctx.db, "INSERT INTO stories (id, user_id, media_id, text, background, audience, created_at, expires_at) VALUES (?, ?, '', 'oi', 'sunset', 'all', ?, ?)",
+      [storyId, anaId, new Date().toISOString(), new Date(Date.now() + 86_400_000).toISOString()]);
+    await ctx.db.persist();
+
+    // Antes do bloqueio: Beto curte, comenta e visita.
+    await request(ctx.app).post('/api/likes').set(B).send({ targetType: 'post', targetId: postId }).expect(200);
+    await request(ctx.app).post('/api/comments').set(B).send({ targetType: 'post', targetId: postId, content: 'antes do bloqueio' }).expect((r) => { expect(r.status).toBeLessThan(300); });
+
+    await request(ctx.app).post(`/api/users/${betoId}/block`).set(A).expect(200);
+
+    // Beto não acessa mais nada da Ana.
+    for (const rota of ['photos', 'posts', 'testimonials', 'mural', 'experiences', 'badges', 'private-photos/access']) {
+      await request(ctx.app).get(`/api/users/${anaId}/${rota}`).set(B).expect(404);
+    }
+    await request(ctx.app).post('/api/likes').set(B).send({ targetType: 'user', targetId: anaId }).expect(403);
+    await request(ctx.app).post('/api/comments').set(B).send({ targetType: 'post', targetId: postId, content: 'depois do bloqueio' }).expect(403);
+    await request(ctx.app).post('/api/friends').set(B).send({ userId: anaId }).expect(403);
+    await request(ctx.app).post('/api/testimonials').set(B).send({ profileUserId: anaId, content: 'depoimento depois do bloqueio' }).expect(403);
+    await request(ctx.app).post('/api/private-photos/requests').set(B).send({ userId: anaId }).expect(403);
+    await request(ctx.app).post('/api/match/like').set(B).send({ userId: anaId }).expect(403);
+    // Visita de bloqueado não fica registrada.
+    await request(ctx.app).post(`/api/users/${anaId}/visit`).set(B).expect(200);
+    const visita = await ctx.db.queryOne('SELECT 1 AS x FROM profile_visits WHERE visitor_user_id = ? AND visited_user_id = ?', [betoId, anaId]);
+    expect(visita).toBeFalsy();
+    // Nem os stories dela aparecem para ele.
+    const stories = (await request(ctx.app).get('/api/stories').set(B).expect(200)).body;
+    expect(JSON.stringify(stories)).not.toContain(storyId);
+    // E a Ana não vê mais o comentário antigo dele no post dela.
+    const comentarios = (await request(ctx.app).get('/api/comments').query({ targetType: 'post', targetId: postId }).set(A).expect(200)).body;
+    expect(JSON.stringify(comentarios)).not.toContain('antes do bloqueio');
+
+    // Desbloqueou: volta tudo.
+    await request(ctx.app).delete(`/api/users/${betoId}/block`).set(A).expect(200);
+    await request(ctx.app).get(`/api/users/${anaId}/photos`).set(B).expect(200);
+  });
+
   it('denúncia já bloqueia o denunciado para quem denunciou (perfil e story), menos conta oficial', async () => {
     const quem = await registerInvitedUser(ctx, sponsorToken, { name: 'Quem Denuncia', email: 'quem-denuncia@example.com', password: 'senha123', gender: 'Mulher' });
     const alvo = await registerInvitedUser(ctx, sponsorToken, { name: 'Alvo Denuncia', email: 'alvo-denuncia@example.com', password: 'senha123', gender: 'Homem' });
