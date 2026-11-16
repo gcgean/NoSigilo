@@ -125,7 +125,9 @@ async function getAdminToken(config: HubConfig) {
     buildUrl(config, '/auth/login'),
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // A chave de integração vai junto: no Hub ela vale como segundo fator e
+      // dispensa o código por e-mail do login de admin (16/11/2026).
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': config.apiKey },
       body: JSON.stringify({ email: config.adminEmail, password: config.adminPassword }),
     }
   );
