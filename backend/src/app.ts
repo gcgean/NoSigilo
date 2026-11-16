@@ -11389,11 +11389,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     return true;
   }
 
-  app.get('/api/tokens/pacotes', requireAuth(env, db), async (_req, res) => {
+  app.get('/api/tokens/pacotes', requireAuth(env, db), async (req, res) => {
     const { produtoId, pacotes } = await configTokens();
+    // Portugal: o valor em euro só como referência (a cobrança é em real).
+    const cotacao = (await situacaoPortugal(db, req, req.auth!.userId)).dePortugal ? await cotacaoEuro(db) : null;
     res.json({
       disponivel: !!produtoId && pacotes.length > 0 && shouldUseHubBilling(env),
-      pacotes: pacotes.map((p) => ({ id: p.id, tokens: p.tokens, valorCents: p.valorCents, rotulo: p.rotulo, maisVendido: !!p.maisVendido })),
+      pacotes: pacotes.map((p) => ({
+        id: p.id, tokens: p.tokens, valorCents: p.valorCents, rotulo: p.rotulo, maisVendido: !!p.maisVendido,
+        ...(cotacao ? { euroAprox: Math.round(p.valorCents / cotacao) / 100 } : {}),
+      })),
     });
   });
 
@@ -14332,8 +14337,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         orderParts.push(...audiencePriority.orderParts);
         params.push(...audiencePriority.params);
         if (city) {
-          orderParts.push('CASE WHEN city = ? THEN 0 ELSE 1 END');
-          params.push(city);
+          // Mesmo nome no Brasil e em Portugal (Santarém, São Luís…): só conta
+          // como "mesma cidade" dentro do mesmo país.
+          orderParts.push("CASE WHEN city = ? AND (UPPER(TRIM(COALESCE(state, ''))) = 'PT') = (? = 1) THEN 0 ELSE 1 END");
+          params.push(city, String(state || '').trim().toUpperCase() === 'PT' ? 1 : 0);
         }
         if (state) {
           orderParts.push('CASE WHEN state = ? THEN 0 ELSE 1 END');
@@ -20310,6 +20317,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const precoFuturoCents = await getPrecoFuturoCents(db);
     res.json({ subscriptionsEnabled, precoFuturoCents });
+  });
+
+  // Cotação do euro: só para o "≈ €" de quem é de Portugal (cobrança segue em real).
+  app.get('/api/admin/settings/cotacao-euro', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    res.json({ cotacao: await cotacaoEuro(db) });
+  });
+  app.put('/api/admin/settings/cotacao-euro', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const parsed = z.object({ cotacao: z.number().gt(1).lt(50) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const cotacao = Math.round(parsed.data.cotacao * 100) / 100;
+    await setSystemSetting(db, 'cotacao_euro_brl', String(cotacao));
+    await persist();
+    res.json({ cotacao });
   });
 
   // Preço futuro da assinatura. Em centavos; 0 desliga o aviso de lançamento.

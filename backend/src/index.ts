@@ -12,6 +12,11 @@ import jwt from 'jsonwebtoken';
 import { sendReengagementEmail, sendWeeklySummaryEmail } from './email.js';
 import { randomUUID } from 'node:crypto';
 
+// Cidade com o mesmo nome no Brasil e em Portugal (Santarém, São Luís…): as
+// contagens "na sua cidade" só juntam gente do mesmo país.
+const MESMO_PAIS = "(UPPER(TRIM(COALESCE(u2.state, ''))) = 'PT') = (? = 1)";
+const ehPortugal = (state: unknown) => (String(state ?? '').trim().toUpperCase() === 'PT' ? 1 : 0);
+
 // Uma promessa rejeitada sem tratamento NAO pode derrubar o site inteiro.
 //
 // Express 4 nao captura erro de rota async: a rejeicao sobe ate o processo, e
@@ -132,11 +137,11 @@ async function runDailyReengagement(db: DbHandle) {
       const genderClause = buildGenderMatchClause(u.looking_for_json, 'u2');
       const newMatchRow = u.city ? await db.queryOne(
         `SELECT COUNT(*) as c FROM users u2
-         WHERE u2.city = ? AND u2.id != ?
+         WHERE u2.city = ? AND ${MESMO_PAIS} AND u2.id != ?
            AND u2.created_at > ?
            AND u2.is_banned = 0
            ${genderClause}`,
-        [u.city, u.id, new Date(u.last_seen_at).toISOString()]
+        [u.city, ehPortugal(u.state), u.id, new Date(u.last_seen_at).toISOString()]
       ) as any : null;
       const newMatches = Number(newMatchRow?.c || 0);
 
@@ -211,15 +216,15 @@ async function runWeeklySummary(db: DbHandle) {
       const [newRow, activeRow] = await Promise.all([
         u.city ? db.queryOne(
           `SELECT COUNT(*) as c FROM users u2
-           WHERE u2.city = ? AND u2.id != ? AND u2.created_at >= ?
+           WHERE u2.city = ? AND ${MESMO_PAIS} AND u2.id != ? AND u2.created_at >= ?
              AND u2.is_banned = 0 ${genderClause}`,
-          [u.city, u.id, ago7]
+          [u.city, ehPortugal(u.state), u.id, ago7]
         ) as Promise<any> : Promise.resolve({ c: 0 }),
         u.city ? db.queryOne(
           `SELECT COUNT(*) as c FROM users u2
-           WHERE u2.city = ? AND u2.id != ? AND u2.last_seen_at >= ?
+           WHERE u2.city = ? AND ${MESMO_PAIS} AND u2.id != ? AND u2.last_seen_at >= ?
              AND u2.is_banned = 0 ${genderClause}`,
-          [u.city, u.id, ago7]
+          [u.city, ehPortugal(u.state), u.id, ago7]
         ) as Promise<any> : Promise.resolve({ c: 0 }),
       ]);
 
@@ -258,7 +263,7 @@ async function runNearbyOnlinePush(db: DbHandle, onlineCount: number) {
 
   // Fetch inactive users with push subscriptions + their preferences
   const users = await db.queryAll(
-    `SELECT u.id, u.city, u.looking_for_json FROM users u
+    `SELECT u.id, u.city, u.state, u.looking_for_json FROM users u
      JOIN push_subscriptions ps ON ps.user_id = u.id
      WHERE u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
        AND (u.last_seen_at IS NULL OR u.last_seen_at < ?)
@@ -274,9 +279,9 @@ async function runNearbyOnlinePush(db: DbHandle, onlineCount: number) {
       const genderClause = buildGenderMatchClause(u.looking_for_json, 'u2');
       const compatRow = u.city ? await db.queryOne(
         `SELECT COUNT(*) as c FROM users u2
-         WHERE u2.city = ? AND u2.id != ? AND u2.last_seen_at >= ?
+         WHERE u2.city = ? AND ${MESMO_PAIS} AND u2.id != ? AND u2.last_seen_at >= ?
            AND u2.is_banned = 0 ${genderClause}`,
-        [u.city, u.id, ago7]
+        [u.city, ehPortugal(u.state), u.id, ago7]
       ) as any : null;
       const compatCount = Number(compatRow?.c || 0);
 

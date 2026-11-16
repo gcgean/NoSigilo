@@ -1,3 +1,4 @@
+import CotacaoEuro from '@/components/admin/CotacaoEuro';
 import ConversaDaDenuncia from '@/components/ConversaDaDenuncia';
 import PromoterAssets from '@/components/PromoterAssets';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -1413,6 +1414,8 @@ export default function Admin() {
           </div>
         </div>
       </Card>
+
+      <CotacaoEuro />
 
       <Card className="mb-6 p-5 glass">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

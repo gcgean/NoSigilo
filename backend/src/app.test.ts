@@ -781,6 +781,42 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/promoter/activate').set(hBr).send(dados).expect(200);
   });
 
+  it('Portugal: tokens com ≈ €, cotação no admin e cidade homônima — Brasil igual a antes', async () => {
+    const br = await createBootstrapSponsor(ctx, { email: 'brasil-tok@example.com', name: 'Brasil Tokens' });
+    const pt = await createBootstrapSponsor(ctx, { email: 'portugal-tok@example.com', name: 'Portugal Tokens' });
+    const admin = await createBootstrapSponsor(ctx, { email: 'admin-cotacao@example.com', name: 'Admin Cotacao' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.id]);
+    await run(ctx.db, "UPDATE users SET city = 'Lisboa', state = 'PT' WHERE id = ?", [pt.id]);
+    const hBr = { Authorization: `Bearer ${br.token}` };
+    const hPt = { Authorization: `Bearer ${pt.token}` };
+    const hAdmin = { Authorization: `Bearer ${admin.token}` };
+    await run(ctx.db, "INSERT INTO system_settings (key, value, updated_at) VALUES ('tokens_pacotes', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      [JSON.stringify([{ id: 'p1', planId: 'x', tokens: 100, valorCents: 1240, rotulo: '100 tokens' }]), new Date().toISOString()]);
+
+    // Cotação: só admin mexe, e vale para planos e tokens.
+    await request(ctx.app).put('/api/admin/settings/cotacao-euro').set(hBr).send({ cotacao: 6.2 }).expect(403);
+    await request(ctx.app).put('/api/admin/settings/cotacao-euro').set(hAdmin).send({ cotacao: 0.5 }).expect(400);
+    expect((await request(ctx.app).put('/api/admin/settings/cotacao-euro').set(hAdmin).send({ cotacao: 6.2 }).expect(200)).body.cotacao).toBe(6.2);
+    expect((await request(ctx.app).get('/api/admin/settings/cotacao-euro').set(hAdmin).expect(200)).body.cotacao).toBe(6.2);
+
+    const pacotesBr = (await request(ctx.app).get('/api/tokens/pacotes').set(hBr).expect(200)).body.pacotes;
+    const pacotesPt = (await request(ctx.app).get('/api/tokens/pacotes').set(hPt).expect(200)).body.pacotes;
+    expect(pacotesBr).toEqual([{ id: 'p1', tokens: 100, valorCents: 1240, rotulo: '100 tokens', maisVendido: false }]);
+    expect(pacotesPt[0].euroAprox).toBe(2);
+    expect(pacotesPt[0].valorCents).toBe(1240); // cobrança continua em real
+
+    // Santarém/PA x Santarém/PT: sugestão "da mesma cidade" só dentro do país.
+    const [doPara, dePortugal] = [await createBootstrapSponsor(ctx, { email: 'santarem-pa@example.com', name: 'Santarem PA' }),
+      await createBootstrapSponsor(ctx, { email: 'santarem-pt@example.com', name: 'Santarem PT' })];
+    await run(ctx.db, "UPDATE users SET gender = 'Mulher', avatar = '/uploads/x.png', city = 'Santarém', state = 'PA' WHERE id = ?", [doPara.id]);
+    await run(ctx.db, "UPDATE users SET gender = 'Mulher', avatar = '/uploads/x.png', city = 'Santarém', state = 'PT' WHERE id = ?", [dePortugal.id]);
+    const ordem = async (state: string) => ((await request(ctx.app).get('/api/onboarding/suggestions')
+      .query({ lookingFor: 'Mulher', city: 'Santarém', state }).expect(200)).body as any[])
+      .filter((u) => u.city === 'Santarém').map((u) => u.state);
+    expect((await ordem('PA'))[0]).toBe('PA');
+    expect((await ordem('PT'))[0]).toBe('PT');
+  });
+
   it('plano de Portugal nunca vira "o plano" do Brasil', () => {
     expect(ehPlanoPortugal({ name: 'Mensal Portugal' })).toBe(true);
     expect(ehPlanoPortugal({ name: 'Mensal' })).toBe(false);

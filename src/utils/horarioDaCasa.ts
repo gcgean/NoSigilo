@@ -14,7 +14,9 @@ export function horaEmLisboa(horaBrasilia: number, agora = Date.now()) {
 
 /** Para quem é de Portugal: o horário d'A Casa no relógio de Lisboa. */
 export function horarioDaCasaEmLisboa(agora = Date.now()) {
-  return `em Lisboa: abre às ${horaEmLisboa(22, agora)} e fecha às ${horaEmLisboa(25, agora)} na sexta e às ${horaEmLisboa(26, agora)} no sábado`;
+  // Em Lisboa a noite de Brasília já é madrugada: sexta 22h aqui = sábado 1h lá.
+  const abre = horaEmLisboa(22, agora);
+  return `em Lisboa: na madrugada de sábado, ${deHora(abre)} ${aHora(horaEmLisboa(25, agora))}, e na de domingo, ${deHora(abre)} ${aHora(horaEmLisboa(26, agora))}`;
 }
 
 /** Hora em que fecha a noite de hoje (ou a que está rolando na madrugada): "1h" ou "2h". */
@@ -23,4 +25,18 @@ export function fechaHoje(agora = Date.now()) {
   const dia = brasilia.getUTCDay();
   const hora = brasilia.getUTCHours();
   return dia === 6 || (dia === 0 && hora < 12) ? '2h' : '1h';
+}
+
+/** "à 1h" / "às 22h" (com o artigo certo para a 1h). */
+export const aHora = (h: string) => (h === '1h' ? `à ${h}` : `às ${h}`);
+/** "da 1h" / "das 2h". */
+export const deHora = (h: string) => (h === '1h' ? `da ${h}` : `das ${h}`);
+
+/** Visitante sem conta: o fuso do navegador diz se está em Portugal (continente, Madeira ou Açores). */
+export function navegadorEmPortugal() {
+  try {
+    return /^(Europe\/Lisbon|Atlantic\/Madeira|Atlantic\/Azores)$/.test(Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+  } catch {
+    return false;
+  }
 }

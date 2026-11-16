@@ -1,7 +1,7 @@
 import { conviteDaCasaPodeAbrir, usePrimeirosPassosAtivos } from '@/utils/primeiroAcesso';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
-import { fechaHoje, HORARIO_DA_CASA_TEXTO } from '@/utils/horarioDaCasa';
+import { aHora, deHora, fechaHoje, horaEmLisboa, horarioDaCasaEmLisboa, HORARIO_DA_CASA_TEXTO } from '@/utils/horarioDaCasa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '@/utils/apiClient';
 import { Button } from '@/components/ui/button';
@@ -26,11 +26,13 @@ function hojeEmBrasilia() {
   return { dia: `${v('year')}-${v('month')}-${v('day')}`, semana: v('weekday') };
 }
 
-function diaDaNoite(iso: string | null) {
-  if (!iso) return 'sexta, às 22h';
+// Quem é de Portugal vê no relógio de Lisboa (a noite de Brasília cai de madrugada lá).
+function diaDaNoite(iso: string | null, lisboa = false) {
+  if (!iso) return lisboa ? `sábado, ${aHora(horaEmLisboa(22))} (hora de Lisboa)` : 'sexta, às 22h';
   const d = new Date(iso);
-  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', hour12: false, timeZone: 'America/Sao_Paulo' }).slice(0, 2);
-  return `${d.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' })}, ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' })}, às ${Number(hora)}h`;
+  const timeZone = lisboa ? 'Europe/Lisbon' : 'America/Sao_Paulo';
+  const hora = Number(d.toLocaleTimeString('pt-BR', { hour: '2-digit', hour12: false, timeZone }).slice(0, 2));
+  return `${d.toLocaleDateString('pt-BR', { weekday: 'long', timeZone })}, ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone })}, ${aHora(`${hora}h`)}${lisboa ? ' (hora de Lisboa)' : ''}`;
 }
 
 export default function LancamentoDaCasa() {
@@ -44,8 +46,10 @@ export default function LancamentoDaCasa() {
   const [lancamento, setLancamento] = useState(true);
   const [quando, setQuando] = useState<string>('sexta 23/10 · 21h');
   const [ehHoje, setEhHoje] = useState(false);
-  // Sexta e sábado abrem às 22h.
-  const horaHoje = '22h';
+  const dePortugal = !!user?.dePortugal;
+  // Sexta e sábado abrem às 22h de Brasília (em Lisboa, de madrugada).
+  const aHoraHoje = dePortugal ? `${aHora(horaEmLisboa(22))} (hora de Lisboa)` : 'às 22h';
+  const fechaHojeTexto = dePortugal ? horaEmLisboa(fechaHoje() === '2h' ? 26 : 25) : fechaHoje();
 
   useEffect(() => {
     if (pathname.startsWith('/casa') || pathname.startsWith('/admin')) return;
@@ -64,7 +68,7 @@ export default function LancamentoDaCasa() {
         if (!conviteDaCasaPodeAbrir()) return;
         setLancamento(emCampanha);
         setEhHoje(semana === 'Fri' || semana === 'Sat');
-        if (!emCampanha) setQuando(diaDaNoite(data?.proximaAbertura ?? null));
+        if (!emCampanha) setQuando(diaDaNoite(data?.proximaAbertura ?? null, dePortugal));
         setReservas(Number(data?.reservas || 0));
         setAberto(true);
         try { localStorage.setItem(CHAVE, hoje); } catch { /* ok */ }
@@ -81,7 +85,7 @@ export default function LancamentoDaCasa() {
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') void enablePushNotifications().catch(() => {});
     try {
       await apiClient.post('/casa/reservar', { reservar: true });
-      toast({ title: lancamento ? '🎟️ Lugar reservado para a inauguração!' : '🎟️ Lugar reservado!', description: lancamento ? 'Sexta, 23/10, às 21h a gente avisa no seu celular.' : ehHoje ? `Hoje às ${horaHoje} a gente avisa no seu celular.` : `Quando abrir (${quando}), a gente avisa no seu celular.` });
+      toast({ title: lancamento ? '🎟️ Lugar reservado para a inauguração!' : '🎟️ Lugar reservado!', description: lancamento ? 'Sexta, 23/10, às 21h a gente avisa no seu celular.' : ehHoje ? `Hoje ${aHoraHoje} a gente avisa no seu celular.` : `Quando abrir (${quando}), a gente avisa no seu celular.` });
     } catch {
       toast({ title: 'Não foi possível reservar agora.', variant: 'destructive' });
     }
@@ -92,10 +96,10 @@ export default function LancamentoDaCasa() {
       <DialogContent className="max-h-[calc(100dvh-1.5rem)] max-w-sm overflow-y-auto overscroll-contain border-fuchsia-500/40 bg-gradient-to-br from-zinc-950 via-fuchsia-950 to-rose-900 p-0 text-white">
         <DialogTitle className="sr-only">A Casa: reserve seu lugar</DialogTitle>
         <div className="space-y-3 p-6 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-200">{lancamento ? (ehHoje ? 'É hoje! Inauguração às 21h' : 'Inauguração · sexta 23/10 · 21h') : ehHoje ? `É hoje · às ${horaHoje}` : `Próxima noite · ${quando}`}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-200">{lancamento ? (ehHoje ? 'É hoje! Inauguração às 21h' : 'Inauguração · sexta 23/10 · 21h') : ehHoje ? `É hoje · ${aHoraHoje}` : `Próxima noite · ${quando}`}</p>
           <h2 className="text-3xl font-black">A Casa 🔥</h2>
           <p className="text-sm text-white/85">
-            {lancamento ? (ehHoje ? 'A casa de swing virtual do NoSigilo abre HOJE, às 21h!' : 'A casa de swing virtual do NoSigilo abre nesta sexta!') : ehHoje ? `Hoje tem A Casa, das ${horaHoje} até ${fechaHoje()}: a casa de swing virtual do NoSigilo. Vai participar?` : `Toda ${HORARIO_DA_CASA_TEXTO} acontece A Casa: a casa de swing virtual do NoSigilo.`} Salas ao vivo com casais, mulheres e singles,
+            {lancamento ? (ehHoje ? 'A casa de swing virtual do NoSigilo abre HOJE, às 21h!' : 'A casa de swing virtual do NoSigilo abre nesta sexta!') : ehHoje ? (dePortugal ? `Esta noite tem A Casa, de madrugada em Lisboa: ${deHora(horaEmLisboa(22))} ${aHora(fechaHojeTexto)}. É a casa de swing virtual do NoSigilo. Vai participar?` : `Hoje tem A Casa, das 22h até ${fechaHojeTexto}: a casa de swing virtual do NoSigilo. Vai participar?`) : `Toda ${HORARIO_DA_CASA_TEXTO}${dePortugal ? ` (horário de Brasília; ${horarioDaCasaEmLisboa()})` : ''} acontece A Casa: a casa de swing virtual do NoSigilo.`} Salas ao vivo com casais, mulheres e singles,
             pulseiras, bar, desafios quentes com a Lola, cabine a dois (de porta aberta, se quiserem 👀) e o Quarto Cuckold.
           </p>
           <ul className="space-y-1 text-left text-xs text-white/75">

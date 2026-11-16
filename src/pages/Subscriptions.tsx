@@ -369,6 +369,8 @@ export default function Subscriptions() {
   // Custo por dia — mesmo preço, enquadramento menor. Conta real, não promessa.
   const porDia = headlinePrice / 30;
   const porDiaLabel = porDia.toFixed(2).replace('.', ',');
+  // Portugal: o valor em euro ao lado, só como referência (a cobrança é em real).
+  const euroDoDestaque = (planoDoDestaque as { euroAprox?: number } | undefined)?.euroAprox;
 
   // Premium ATIVO = pago e ainda não vencido. Um assinante vencido (is_premium=1
   // mas licença expirada) deixa de ser "ativo" → mostra "Regularize", não "Você já é Premium".
@@ -423,6 +425,11 @@ export default function Subscriptions() {
             R$ {headlinePriceLabel}
             <span className="text-base font-medium text-muted-foreground">/mês</span>
           </p>
+          {euroDoDestaque ? (
+            <p className="text-sm font-semibold text-muted-foreground">
+              ≈ €{euroDoDestaque.toFixed(2).replace('.', ',')} por mês · cobrado em reais no cartão
+            </p>
+          ) : null}
 
           {ehLancamento ? (
             <p className="mt-1.5 text-sm font-semibold text-foreground">

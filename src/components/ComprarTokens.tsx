@@ -149,6 +149,7 @@ export default function ComprarTokens({ aoCreditar, novaAba = false }: { aoCredi
                 )}
                 <p className="text-2xl font-extrabold text-amber-500">{p.tokens} <span className="text-sm font-semibold">tokens</span></p>
                 <p className="text-sm font-semibold">{brl(p.valorCents)}</p>
+                {p.euroAprox ? <p className="text-[11px] text-muted-foreground">≈ €{p.euroAprox.toFixed(2).replace('.', ',')}</p> : null}
                 <p className="text-[11px] text-muted-foreground">{Math.floor(p.tokens / 20)} destaques de pedido</p>
               </button>
             ))}

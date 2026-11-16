@@ -3787,8 +3787,8 @@ export default function Feed() {
             </Card>
           )}
 
-          {/* Promoter CTA — always visible on desktop sidebar */}
-          <Card
+          {/* Promoter CTA — desktop. Portugal fica sem: a comissão é paga por Pix. */}
+          {!user?.dePortugal && <Card
             className="overflow-hidden border-0 cursor-pointer"
             onClick={() => navigate('/ganhe')}
           >
@@ -3804,7 +3804,7 @@ export default function Feed() {
                 Quero saber como <ArrowRight className="w-3 h-3" />
               </div>
             </div>
-          </Card>
+          </Card>}
 
           {/* Quick nav — always visible on desktop */}
           <Card className="p-4 glass border-border/50">

@@ -1883,7 +1883,9 @@ export default function Casa() {
       <Dialog open={comprarAberto} onOpenChange={setComprarAberto}>
         <DialogContent className="z-[9996] max-h-[90vh] max-w-md overflow-y-auto">
           <DialogHeader><DialogTitle>🪙 Seus tokens acabaram</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Compre aqui mesmo, sem sair da Casa. Pelo Pix, os tokens caem em segundos e o saldo no topo da sala atualiza sozinho.</p>
+          <p className="text-sm text-muted-foreground">{user?.dePortugal
+            ? 'Compre aqui mesmo, sem sair da Casa. No cartão, os tokens caem na hora e o saldo no topo da sala atualiza sozinho.'
+            : 'Compre aqui mesmo, sem sair da Casa. Pelo Pix, os tokens caem em segundos e o saldo no topo da sala atualiza sozinho.'}</p>
           <ComprarTokens novaAba aoCreditar={() => {
             setComprarAberto(false);
             toast({ title: '🪙 Tokens na conta!', description: 'Pode voltar pra brincadeira 😈' });
@@ -2223,7 +2225,7 @@ export default function Casa() {
         {info?.proximoEncontro && (!info.aberta || mostraProximo) && (
           <div className="space-y-3 rounded-2xl border border-fuchsia-400/30 p-4 text-center">
             <h2 className="font-bold">Próximo encontro</h2>
-            <p>{new Date(info.proximoEncontro.inicio).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · horário de Brasília</p>
+            <p>{new Date(info.proximoEncontro.inicio).toLocaleString('pt-BR', { timeZone: user?.dePortugal ? 'Europe/Lisbon' : 'America/Sao_Paulo', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · {user?.dePortugal ? 'hora de Lisboa' : 'horário de Brasília'}</p>
             <TemaDaProxima tema={info.proximoEncontro.tema} />
             <p className="text-sm">Recepção no Salão, brincadeiras da noite e interação nas salas.</p>
             <p className="text-sm">{info.proximoEncontro.reservas} confirmações</p>

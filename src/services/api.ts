@@ -2457,7 +2457,7 @@ export interface TokenRankingEntry {
   isMe: boolean;
 }
 
-export type PacoteTokens = { id: string; tokens: number; valorCents: number; rotulo: string; maisVendido: boolean };
+export type PacoteTokens = { id: string; tokens: number; valorCents: number; rotulo: string; maisVendido: boolean; /** Só para quem é de Portugal. */ euroAprox?: number };
 
 export type PerfilDisponivel = { id: string; name: string; avatar: string | null; gender?: string | null; city?: string | null; state?: string | null; distanceKm: number | null; disponivelAte: string; isOnline?: boolean };
 export const usosTokensService = {

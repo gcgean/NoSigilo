@@ -1,3 +1,4 @@
+import { aHora, navegadorEmPortugal } from '@/utils/horarioDaCasa';
 import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import { lePrimeiroToque } from '@/utils/primeiroToque';
@@ -161,9 +162,12 @@ export default function Register() {
       if (data?.aberta) { setFaixaDaCasa('🔥 A Casa está aberta agora: falta pouco para entrar'); return; }
       if (!data?.proximaAbertura) return;
       const quando = new Date(data.proximaAbertura);
-      const dia = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' }).format(quando).replace('-feira', '');
-      const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(quando));
-      setFaixaDaCasa(`🔥 Falta pouco: ${data.proximoTema?.nome ? `${data.proximoTema.nome}, ` : 'A Casa abre '}${dia} às ${hora}h`);
+      // Visitante em Portugal (fuso do navegador) vê a hora de Lisboa.
+      const lisboa = navegadorEmPortugal();
+      const timeZone = lisboa ? 'Europe/Lisbon' : 'America/Sao_Paulo';
+      const dia = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', timeZone }).format(quando).replace('-feira', '');
+      const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone }).format(quando));
+      setFaixaDaCasa(`🔥 Falta pouco: ${data.proximoTema?.nome ? `${data.proximoTema.nome}, ` : 'A Casa abre '}${dia} ${aHora(`${hora}h`)}${lisboa ? ' (hora de Lisboa)' : ''}`);
     }).catch(() => { /* fica a frase genérica */ });
   }, [cadastroDaCasa]);
 
