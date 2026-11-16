@@ -3970,13 +3970,13 @@ describe('nosigilo backend', () => {
     expect(noiteDePortugal(new Date('2026-11-22T00:30:00Z'))).toMatchObject({ chave: 'pt-2026-11-21', tema: 'sabado' });
     expect(noiteDePortugal(new Date('2026-11-19T22:30:00Z'))).toBeNull(); // quinta
     expect(noiteDePortugal(new Date('2027-06-05T00:30:00Z'))).toBeNull(); // verão: 1h30 em Lisboa
-    // Um ano inteiro, de 15 em 15 minutos: as duas noites nunca se sobrepõem.
+    // Um ano inteiro, de 30 em 30 minutos (abrem e fecham em hora cheia): as duas noites nunca se sobrepõem.
     const inicio = Date.parse('2026-11-16T00:00:00Z');
-    for (let t = inicio; t < inicio + 366 * 86_400_000; t += 15 * 60_000) {
+    for (let t = inicio; t < inicio + 366 * 86_400_000; t += 30 * 60_000) {
       const d = new Date(t);
       if (noiteDePortugal(d) && noiteDoHorario(d)) throw new Error(`sobreposição em ${d.toISOString()}`);
     }
-  });
+  }, 30_000);
 
   it('noite de Portugal: só perfis de Portugal e admin veem; Brasil igual a antes', async () => {
     const pt = await createBootstrapSponsor(ctx, { email: 'casa-pt@example.com', name: 'Casal Lisboa' });
@@ -4059,6 +4059,32 @@ describe('nosigilo backend', () => {
       vi.useRealTimers();
       await run(ctx.db, "DELETE FROM system_settings WHERE key = 'casa_portugal_ativo'", []);
       await run(ctx.db, 'DELETE FROM casa_reservas WHERE user_id IN (?, ?)', [pt.id, br.id]);
+      await ctx.db.persist();
+    }
+  });
+
+  it('tema da noite de Portugal: próprio quando escolhido, senão o do Brasil; Brasil não muda', async () => {
+    const admin = await createBootstrapSponsor(ctx, { email: 'tema-pt-admin@example.com', name: 'Admin Tema PT' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.id]);
+    await ctx.db.persist();
+    const h = { Authorization: `Bearer ${admin.token}` };
+    const lista = async () => (await request(ctx.app).get('/api/casa/admin/temas').set(h).expect(200)).body;
+    const antes = await lista();
+    const n0 = antes.noites[0];
+    const pt0 = antes.noitesPortugal[0];
+    expect(pt0.data).toBe(n0.data);
+    expect(pt0.tema.id).toBe(n0.tema.id); // sem escolha: igual ao Brasil
+    const outro = antes.temas.find((t: any) => t.id !== n0.tema.id);
+    try {
+      await request(ctx.app).post('/api/casa/admin/temas').set(h).send({ data: n0.data, temaId: outro.id, portugal: true }).expect(200);
+      const depois = await lista();
+      expect(depois.noitesPortugal[0]).toMatchObject({ tema: { id: outro.id }, escolhido: true });
+      expect(depois.noites[0]).toMatchObject({ tema: { id: n0.tema.id }, escolhido: n0.escolhido }); // Brasil igual
+      // Voltar ao do Brasil.
+      await request(ctx.app).post('/api/casa/admin/temas').set(h).send({ data: n0.data, temaId: null, portugal: true }).expect(200);
+      expect((await lista()).noitesPortugal[0].tema.id).toBe(n0.tema.id);
+    } finally {
+      await run(ctx.db, 'DELETE FROM system_settings WHERE key = ?', [`casa_tema:pt-${n0.data}`]);
       await ctx.db.persist();
     }
   });

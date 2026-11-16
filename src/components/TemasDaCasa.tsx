@@ -19,20 +19,22 @@ export default function TemasDaCasa() {
   const { toast } = useToast();
   const [temas, setTemas] = useState<Tema[]>([]);
   const [noites, setNoites] = useState<Noite[]>([]);
+  const [noitesPortugal, setNoitesPortugal] = useState<Noite[]>([]);
 
   const carregar = useCallback(async () => {
     try {
       const { data } = await apiClient.get('/casa/admin/temas');
       setTemas(data.temas ?? []);
       setNoites(data.noites ?? []);
+      setNoitesPortugal(data.noitesPortugal ?? []);
     } catch { /* sem acesso */ }
   }, []);
   useEffect(() => { void carregar(); }, [carregar]);
 
-  const trocar = async (n: Noite, temaId: string) => {
+  const trocar = async (n: Noite, temaId: string, portugal = false) => {
     try {
-      await apiClient.post('/casa/admin/temas', { data: n.data, temaId: temaId || null });
-      toast({ title: temaId ? 'Tema trocado 🎉' : 'Voltou para o tema automático' });
+      await apiClient.post('/casa/admin/temas', { data: n.data, temaId: temaId || null, ...(portugal ? { portugal: true } : {}) });
+      toast({ title: temaId ? 'Tema trocado 🎉' : portugal ? 'Voltou para o mesmo tema do Brasil' : 'Voltou para o tema automático' });
       await carregar();
     } catch {
       toast({ title: 'Não foi possível trocar o tema.', variant: 'destructive' });
@@ -61,6 +63,25 @@ export default function TemasDaCasa() {
           </li>
         ))}
       </ul>
+      {noitesPortugal.length > 0 && (
+        <>
+          <p className="pt-2 font-semibold">🇵🇹 Noites de Portugal (22h de Lisboa)</p>
+          <p className="text-xs text-muted-foreground">Sem escolha, a noite de Portugal usa o mesmo tema da noite do Brasil daquela data.</p>
+          <ul className="space-y-1.5">
+            {noitesPortugal.map((n) => (
+              <li key={`pt-${n.data}`} className="flex flex-wrap items-center gap-2 rounded-xl border p-2">
+                <span className="w-24 text-sm font-medium">{n.dia === 'sabado' ? 'Sáb' : 'Sex'} {dataCurta(n.data)}</span>
+                <select value={n.escolhido ? n.tema.id : ''} onChange={(e) => void trocar(n, e.target.value, true)}
+                  className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1.5 text-sm" aria-label={`Tema de Portugal em ${dataCurta(n.data)}`}>
+                  <option value="">Igual ao Brasil: {n.escolhido ? 'voltar ao do Brasil' : n.tema.nome}</option>
+                  {temas.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                </select>
+                {n.escolhido && <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[10px] text-fuchsia-500">escolhido</span>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

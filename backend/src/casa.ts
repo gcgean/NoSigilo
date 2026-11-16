@@ -967,6 +967,18 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   let temaAtual: TemaDeFesta | null = null;
   const temasEscolhidos = new Map<string, { id: string | null; lidoEm: number }>();
   const temaDaFesta = async (chave: string, dia: 'sexta' | 'sabado'): Promise<TemaDeFesta> => {
+    // Noite de Portugal: tema próprio (casa_tema:pt-<data>) se o admin escolheu;
+    // senão, o mesmo da noite do Brasil daquela data.
+    if (chave.startsWith('pt-')) {
+      let doPt = temasEscolhidos.get(chave);
+      if (!doPt || Date.now() - doPt.lidoEm > 30_000) {
+        const row = (await db.queryOne('SELECT value FROM system_settings WHERE key = ? LIMIT 1', [`casa_tema:${chave}`])) as any;
+        doPt = { id: row?.value ? String(row.value) : null, lidoEm: Date.now() };
+        temasEscolhidos.set(chave, doPt);
+      }
+      const proprio = TEMAS_DE_FESTA.find((t) => t.id === doPt!.id);
+      if (proprio) return proprio;
+    }
     const data = chave.replace(/^(extra|teste|pt)-/, '');
     let escolhido = temasEscolhidos.get(data);
     if (!escolhido || Date.now() - escolhido.lidoEm > 30_000) {
@@ -4267,7 +4279,12 @@ Sala: ${salaId}`).catch(() => {});
       const t = await temaDaFesta(data, dia);
       noites.push({ data, dia, tema: temaPublico(t), escolhido: temasEscolhidos.get(data)?.id === t.id });
     }
-    res.json({ temas: TEMAS_DE_FESTA.map(temaPublico), noites });
+    // As mesmas datas na noite de Portugal (tema próprio ou o do Brasil).
+    const noitesPortugal = await Promise.all(noites.map(async (n) => {
+      const t = await temaDaFesta(`pt-${n.data}`, n.dia);
+      return { data: n.data, dia: n.dia, tema: temaPublico(t), escolhido: temasEscolhidos.get(`pt-${n.data}`)?.id === t.id };
+    }));
+    res.json({ temas: TEMAS_DE_FESTA.map(temaPublico), noites, noitesPortugal });
   });
 
   app.post('/api/casa/admin/temas', deps.requireAuth, async (req, res) => {
@@ -4275,11 +4292,13 @@ Sala: ${salaId}`).catch(() => {});
     const data = String((req.body as any)?.data || '');
     const temaId = (req.body as any)?.temaId ? String((req.body as any).temaId) : null;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || (temaId && !TEMAS_DE_FESTA.some((t) => t.id === temaId))) { res.status(400).json({ error: 'dados' }); return; }
-    await db.run('DELETE FROM system_settings WHERE key = ?', [`casa_tema:${data}`]);
-    if (temaId) await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [`casa_tema:${data}`, temaId, new Date().toISOString()]);
+    // `portugal: true`: tema só da noite de Portugal daquela data.
+    const chaveTema = (req.body as any)?.portugal === true ? `pt-${data}` : data;
+    await db.run('DELETE FROM system_settings WHERE key = ?', [`casa_tema:${chaveTema}`]);
+    if (temaId) await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [`casa_tema:${chaveTema}`, temaId, new Date().toISOString()]);
     await db.persist();
-    temasEscolhidos.set(data, { id: temaId, lidoEm: Date.now() });
-    if (chaveDaNoite.replace(/^(extra|teste)-/, '') === data) await atualizarTema({ chave: chaveDaNoite, tema: diaDaData(data) });
+    temasEscolhidos.set(chaveTema, { id: temaId, lidoEm: Date.now() });
+    if (chaveDaNoite === `pt-${data}` || chaveDaNoite.replace(/^(extra|teste)-/, '') === data) await atualizarTema({ chave: chaveDaNoite, tema: diaDaData(data) });
     res.json({ ok: true });
   });
 
