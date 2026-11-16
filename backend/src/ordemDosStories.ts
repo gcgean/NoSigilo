@@ -47,6 +47,9 @@ export function ordenarStories<T extends LinhaDeStory>(
       n(r.is_pinned) === 1 ? 0 : 1,
       n(r.is_showcase_autor) === 1 ? 1 : 0,
       n(r.is_viewed) === 1 ? 1 : 0,
+      // Quem é de Portugal vê primeiro os de Portugal (antes de destaque e curtidos):
+      // são poucos perto dos do Brasil. Para quem é do Brasil vale sempre 0 (ordem igual).
+      estado === 'PT' && String(r.state || '').trim().toUpperCase() !== 'PT' ? 1 : 0,
       destaqueAqui ? 0 : 1,
       eu.curti.has(String(r.user_id)) ? 0 : 1,
       mesmoEstado ? 0 : 1,

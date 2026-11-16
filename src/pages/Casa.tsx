@@ -7,7 +7,8 @@ import apiClient from '@/utils/apiClient';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useSocket } from '@/contexts/SocketContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { horarioDaCasaEmLisboa } from '@/utils/horarioDaCasa';
+import { aHora, horaEmLisboa, horarioDaCasaEmLisboa } from '@/utils/horarioDaCasa';
+import { ehPortugal } from '@/components/BandeiraPortugal';
 import { enablePushNotifications } from '@/utils/pushNotifications';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -339,6 +340,8 @@ export default function Casa() {
   const [params, setParams] = useSearchParams();
   const [boasVindasCasa, setBoasVindasCasa] = useState(consumirBoasVindasDaCasa);
   const { user } = useAuth();
+  // Perfil de Portugal (UF PT): tem a noite de Portugal, às 22h de Lisboa.
+  const perfilDePortugal = ehPortugal(user?.state);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [revelarAte, setRevelarAte] = useState<number>(0);
   const [escolhendoPulseira, setEscolhendoPulseira] = useState(false);
@@ -2181,9 +2184,19 @@ export default function Casa() {
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
           <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
           <p className="mt-3 text-base text-white/85">
-            A casa de swing online do NoSigilo. Toda <b>sexta às 22h, até 1h, e sábado às 22h, até 2h</b>
-            {user?.dePortugal ? <> (horário de Brasília; <b>{horarioDaCasaEmLisboa()}</b>)</> : null}: salas ao vivo com casais, mulheres e singles,
-            brincadeiras quentes e cabine a dois.
+            {perfilDePortugal ? (
+              <>
+                A casa de swing online do NoSigilo. <b>Noite de Portugal: sexta e sábado às 22h, até à 1h (hora de Lisboa)</b>, só com perfis de Portugal:
+                salas ao vivo com casais, mulheres e singles, brincadeiras quentes e cabine a dois. Depois ainda dá para seguir na noite do Brasil,
+                que abre {aHora(horaEmLisboa(22))} de Lisboa.
+              </>
+            ) : (
+              <>
+                A casa de swing online do NoSigilo. Toda <b>sexta às 22h, até 1h, e sábado às 22h, até 2h</b>
+                {user?.dePortugal ? <> (horário de Brasília; <b>{horarioDaCasaEmLisboa()}</b>)</> : null}: salas ao vivo com casais, mulheres e singles,
+                brincadeiras quentes e cabine a dois.
+              </>
+            )}
           </p>
         </div>
 

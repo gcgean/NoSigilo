@@ -40,4 +40,19 @@ describe('ordenarStories', () => {
     const ordem = ordenarStories(fila, { estado: 'CE', busco: [], curti: new Set(['homem-curtido']), agoraIso: AGORA }).map((r: { user_id: string }) => r.user_id);
     expect(ordem).toEqual(['fixado', 'homem-curtido', 'novo', 'visto']);
   });
+
+  it('Portugal: quem é de Portugal vê os de Portugal antes de destaque e curtidos; Brasil igual', () => {
+    const fila = [
+      s('br-curtido', 'Mulher', 'SP'),
+      s('br-destaque', 'Casal (Ele/Ela)', 'PT', { destaque_ate: '2099-01-01T00:00:00.000Z', state: 'SP' }),
+      s('pt-novo', 'Casal (Ele/Ela)', 'PT'),
+      s('pt-visto', 'Mulher', 'PT', { is_viewed: 1 }),
+      s('br-novo', 'Mulher', 'CE'),
+    ];
+    const ordemPt = ordenarStories(fila, { estado: 'PT', busco: [], curti: new Set(['br-curtido']), agoraIso: AGORA }).map((r: { user_id: string }) => r.user_id);
+    expect(ordemPt).toEqual(['pt-novo', 'br-curtido', 'br-destaque', 'br-novo', 'pt-visto']);
+    // Do Brasil: a mesma ordem de antes (curtido, depois mesmo estado).
+    const ordemCe = ordenarStories(fila, { estado: 'CE', busco: [], curti: new Set(['br-curtido']), agoraIso: AGORA }).map((r: { user_id: string }) => r.user_id);
+    expect(ordemCe).toEqual(['br-curtido', 'br-novo', 'br-destaque', 'pt-novo', 'pt-visto']);
+  });
 });

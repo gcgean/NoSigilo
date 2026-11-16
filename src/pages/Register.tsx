@@ -158,12 +158,18 @@ export default function Register() {
   const [faixaDaCasa, setFaixaDaCasa] = useState('🔥 Falta pouco para entrar na Casa');
   useEffect(() => {
     if (!cadastroDaCasa) return;
-    apiClient.get('/casa/publico').then(({ data }) => {
+    // Visitante em Portugal (fuso do navegador): a noite de Portugal, na hora de Lisboa.
+    const lisboa = navegadorEmPortugal();
+    apiClient.get('/casa/publico', lisboa ? { params: { pais: 'PT' } } : undefined).then(({ data }) => {
+      if (lisboa && data?.proximaPortugal) {
+        const q = new Date(data.proximaPortugal);
+        const diaPt = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', timeZone: 'Europe/Lisbon' }).format(q).replace('-feira', '');
+        setFaixaDaCasa(`🔥 Falta pouco: noite de Portugal n'A Casa, ${diaPt} às 22h (hora de Lisboa)`);
+        return;
+      }
       if (data?.aberta) { setFaixaDaCasa('🔥 A Casa está aberta agora: falta pouco para entrar'); return; }
       if (!data?.proximaAbertura) return;
       const quando = new Date(data.proximaAbertura);
-      // Visitante em Portugal (fuso do navegador) vê a hora de Lisboa.
-      const lisboa = navegadorEmPortugal();
       const timeZone = lisboa ? 'Europe/Lisbon' : 'America/Sao_Paulo';
       const dia = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', timeZone }).format(quando).replace('-feira', '');
       const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone }).format(quando));

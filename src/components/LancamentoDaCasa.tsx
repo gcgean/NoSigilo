@@ -1,5 +1,6 @@
 import { conviteDaCasaPodeAbrir, usePrimeirosPassosAtivos } from '@/utils/primeiroAcesso';
 import { useAuth } from '@/contexts/AuthContext';
+import { ehPortugal } from '@/components/BandeiraPortugal';
 import { useEffect, useState } from 'react';
 import { aHora, deHora, fechaHoje, horaEmLisboa, horarioDaCasaEmLisboa, HORARIO_DA_CASA_TEXTO } from '@/utils/horarioDaCasa';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -46,9 +47,11 @@ export default function LancamentoDaCasa() {
   const [lancamento, setLancamento] = useState(true);
   const [quando, setQuando] = useState<string>('sexta 23/10 · 21h');
   const [ehHoje, setEhHoje] = useState(false);
-  const dePortugal = !!user?.dePortugal;
-  // Sexta e sábado abrem às 22h de Brasília (em Lisboa, de madrugada).
-  const aHoraHoje = dePortugal ? `${aHora(horaEmLisboa(22))} (hora de Lisboa)` : 'às 22h';
+  // Perfil de Portugal (UF PT) tem a noite de Portugal, às 22h de Lisboa. Quem só
+  // acessa de lá vê a noite do Brasil no relógio de Lisboa (de madrugada).
+  const perfilDePortugal = ehPortugal(user?.state);
+  const dePortugal = !!user?.dePortugal || perfilDePortugal;
+  const aHoraHoje = perfilDePortugal ? 'às 22h (hora de Lisboa)' : dePortugal ? `${aHora(horaEmLisboa(22))} (hora de Lisboa)` : 'às 22h';
   const fechaHojeTexto = dePortugal ? horaEmLisboa(fechaHoje() === '2h' ? 26 : 25) : fechaHoje();
 
   useEffect(() => {
@@ -99,7 +102,7 @@ export default function LancamentoDaCasa() {
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-200">{lancamento ? (ehHoje ? 'É hoje! Inauguração às 21h' : 'Inauguração · sexta 23/10 · 21h') : ehHoje ? `É hoje · ${aHoraHoje}` : `Próxima noite · ${quando}`}</p>
           <h2 className="text-3xl font-black">A Casa 🔥</h2>
           <p className="text-sm text-white/85">
-            {lancamento ? (ehHoje ? 'A casa de swing virtual do NoSigilo abre HOJE, às 21h!' : 'A casa de swing virtual do NoSigilo abre nesta sexta!') : ehHoje ? (dePortugal ? `Esta noite tem A Casa, de madrugada em Lisboa: ${deHora(horaEmLisboa(22))} ${aHora(fechaHojeTexto)}. É a casa de swing virtual do NoSigilo. Vai participar?` : `Hoje tem A Casa, das 22h até ${fechaHojeTexto}: a casa de swing virtual do NoSigilo. Vai participar?`) : `Toda ${HORARIO_DA_CASA_TEXTO}${dePortugal ? ` (horário de Brasília; ${horarioDaCasaEmLisboa()})` : ''} acontece A Casa: a casa de swing virtual do NoSigilo.`} Salas ao vivo com casais, mulheres e singles,
+            {lancamento ? (ehHoje ? 'A casa de swing virtual do NoSigilo abre HOJE, às 21h!' : 'A casa de swing virtual do NoSigilo abre nesta sexta!') : ehHoje ? (perfilDePortugal ? "Hoje tem a noite de Portugal n'A Casa, das 22h à 1h (hora de Lisboa), só com perfis de Portugal: a casa de swing virtual do NoSigilo. Vai participar?" : dePortugal ? `Esta noite tem A Casa, de madrugada em Lisboa: ${deHora(horaEmLisboa(22))} ${aHora(fechaHojeTexto)}. É a casa de swing virtual do NoSigilo. Vai participar?` : `Hoje tem A Casa, das 22h até ${fechaHojeTexto}: a casa de swing virtual do NoSigilo. Vai participar?`) : perfilDePortugal ? "Toda sexta e sábado às 22h (hora de Lisboa) tem a noite de Portugal n'A Casa: a casa de swing virtual do NoSigilo." : `Toda ${HORARIO_DA_CASA_TEXTO}${dePortugal ? ` (horário de Brasília; ${horarioDaCasaEmLisboa()})` : ''} acontece A Casa: a casa de swing virtual do NoSigilo.`} Salas ao vivo com casais, mulheres e singles,
             pulseiras, bar, desafios quentes com a Lola, cabine a dois (de porta aberta, se quiserem 👀) e o Quarto Cuckold.
           </p>
           <ul className="space-y-1 text-left text-xs text-white/75">

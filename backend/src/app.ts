@@ -8670,6 +8670,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             ((u.lon - ${myLon}) * ${Math.cos((myLat * Math.PI) / 180)})) ASC,`
         : '',
     ].filter(Boolean).join(' ');
+    // Portugal (16/11/2026): quem é de Portugal vê primeiro os stories de Portugal
+    // (logo depois de "não visto"), antes de destaque e de quem curtiu — senão os
+    // ~300 stories do Brasil enterram os poucos de lá. Para o Brasil a ordem é a de sempre.
+    const paisPrimeiro = myStateRaw === 'PT'
+      ? "(CASE WHEN UPPER(TRIM(COALESCE(u.state, ''))) = 'PT' THEN 0 ELSE 1 END) ASC,"
+      : '';
 
     // Busca stories ativos de outros usuários. Ordem estilo Instagram: não
     // vistos antes de vistos, agora com a região decidindo dentro de cada
@@ -8710,6 +8716,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        ORDER BY is_pinned DESC,
                 (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN 1 ELSE 0 END) ASC,
                 is_viewed ASC,
+                ${paisPrimeiro}
                 -- Story em destaque (pago em tokens) vai na frente para quem
                 -- ainda não viu e é do mesmo estado do autor.
                 (CASE WHEN s.destaque_ate IS NOT NULL AND s.destaque_ate > ? ${myStateRaw ? `AND UPPER(TRIM(u.state)) = '${myStateRaw}'` : ''} THEN 0 ELSE 1 END) ASC,

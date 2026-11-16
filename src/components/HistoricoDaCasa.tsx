@@ -54,7 +54,7 @@ export default function HistoricoDaCasa() {
       {noites.map((n) => (
         <div key={n.noite} className="rounded-xl border">
           <button type="button" onClick={() => void abrir(n.noite)} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 p-3 text-left text-xs">
-            <span className="text-sm font-semibold">{n.noite.replace('extra-', 'Extra ')}</span>
+            <span className="text-sm font-semibold">{n.noite.replace('extra-', 'Extra ').replace('pt-', '🇵🇹 Portugal ')}</span>
             <span>👥 {n.pessoas} entraram</span>
             <span>💬 {n.mensagens} mensagens</span>
             <span>🗣️ {n.falaram} falaram</span>

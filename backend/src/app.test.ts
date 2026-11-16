@@ -7,7 +7,7 @@ import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, seedPortugalCities } from './seedCities.js';
 import { createApp, ehPlanoPortugal, totalDeVisitas, visitasPor, syncHubAccessForUser, runLembretesRenovacao, runIncentivoStoryMulher, runAvisoStoriesNovos } from './app.js';
-import { calcularPermanencia, escolherFotoDaCabine, ordenarParaResponder, pessoasDoMapa, quemFoiMarcado } from './casa.js';
+import { calcularPermanencia, escolherFotoDaCabine, inicioDaNoitePortugal, noiteDePortugal, noiteDoHorario, ordenarParaResponder, pessoasDoMapa, quemFoiMarcado } from './casa.js';
 import type { DbHandle } from './db.js';
 
 // Segredo do webhook do hub no ambiente de teste. Fica aqui em cima porque o
@@ -3956,6 +3956,111 @@ describe('nosigilo backend', () => {
     expect(await aberta('2027-01-10T03:30:00.000Z')).toBe(true); // domingo 00h30: sábado rolando
     expect(await aberta('2027-01-10T04:30:00.000Z')).toBe(true); // domingo 01h30: sábado vai até 2h
     expect(await aberta('2027-01-10T05:05:00.000Z')).toBe(false); // domingo 02h05: fechou
+  });
+
+  it('noite de Portugal: 22h–1h de Lisboa, nunca junto com a do Brasil (inverno e verão)', () => {
+    // Inverno (Lisboa = UTC): sexta 20/11/2026 22h em Lisboa = 22h UTC = 19h em Brasília.
+    expect(inicioDaNoitePortugal('2026-11-20')).toBe(Date.parse('2026-11-20T22:00:00Z'));
+    // Verão (Lisboa = UTC+1): 22h em Lisboa = 21h UTC.
+    expect(inicioDaNoitePortugal('2027-06-04')).toBe(Date.parse('2027-06-04T21:00:00Z'));
+    expect(noiteDePortugal(new Date('2026-11-20T22:30:00Z'))).toMatchObject({ chave: 'pt-2026-11-20', tema: 'sexta' });
+    expect(noiteDePortugal(new Date('2026-11-21T00:59:00Z'))).toMatchObject({ chave: 'pt-2026-11-20', tema: 'sexta' });
+    expect(noiteDePortugal(new Date('2026-11-21T01:00:00Z'))).toBeNull(); // 1h em Lisboa: fechou
+    expect(noiteDePortugal(new Date('2026-11-21T22:30:00Z'))).toMatchObject({ chave: 'pt-2026-11-21', tema: 'sabado' });
+    expect(noiteDePortugal(new Date('2026-11-22T00:30:00Z'))).toMatchObject({ chave: 'pt-2026-11-21', tema: 'sabado' });
+    expect(noiteDePortugal(new Date('2026-11-19T22:30:00Z'))).toBeNull(); // quinta
+    expect(noiteDePortugal(new Date('2027-06-05T00:30:00Z'))).toBeNull(); // verão: 1h30 em Lisboa
+    // Um ano inteiro, de 15 em 15 minutos: as duas noites nunca se sobrepõem.
+    const inicio = Date.parse('2026-11-16T00:00:00Z');
+    for (let t = inicio; t < inicio + 366 * 86_400_000; t += 15 * 60_000) {
+      const d = new Date(t);
+      if (noiteDePortugal(d) && noiteDoHorario(d)) throw new Error(`sobreposição em ${d.toISOString()}`);
+    }
+  });
+
+  it('noite de Portugal: só perfis de Portugal e admin veem; Brasil igual a antes', async () => {
+    const pt = await createBootstrapSponsor(ctx, { email: 'casa-pt@example.com', name: 'Casal Lisboa' });
+    const br = await createBootstrapSponsor(ctx, { email: 'casa-br@example.com', name: 'Casal Recife' });
+    const admin = await createBootstrapSponsor(ctx, { email: 'casa-admin-pt@example.com', name: 'Admin Casa PT' });
+    await run(ctx.db, "UPDATE users SET gender = 'Casal (Ele/Ela)', city = 'Lisboa', state = 'PT' WHERE id = ?", [pt.id]);
+    await run(ctx.db, "UPDATE users SET gender = 'Casal (Ele/Ela)', city = 'Recife', state = 'PE' WHERE id = ?", [br.id]);
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.id]);
+    await ctx.db.persist();
+    const h = (u: { token: string }) => ({ Authorization: `Bearer ${u.token}` });
+    // Próxima sexta (até 7 dias), para o login de teste continuar valendo.
+    const sexta = new Date();
+    do sexta.setUTCDate(sexta.getUTCDate() + 1); while (sexta.getUTCDay() !== 5);
+    const data = sexta.toISOString().slice(0, 10);
+    const abrePt = inicioDaNoitePortugal(data);
+    const abreBr = Date.parse(`${data}T22:00:00-03:00`);
+    const em = async <T,>(ms: number, f: () => Promise<T>) => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(ms) });
+      try { return await f(); } finally { vi.useRealTimers(); }
+    };
+    const casa = (u: { token: string }) => request(ctx.app).get('/api/casa').set(h(u)).expect(200).then((r) => r.body);
+    const publico = () => request(ctx.app).get('/api/casa/publico').expect(200).then((r) => r.body);
+    try {
+      // 30 min depois de abrir a noite de Portugal.
+      await em(abrePt + 30 * 60_000, async () => {
+        const vPt = await casa(pt);
+        expect(vPt.aberta).toBe(true);
+        expect(vPt.noitePortugal).toBe(true);
+        expect(Date.parse(vPt.abertaAte)).toBe(abrePt + 3 * 3_600_000);
+        expect(vPt.horario).toMatch(/Lisboa/);
+        const vBr = await casa(br);
+        expect(vBr.aberta).toBe(false);
+        expect(vBr.noitePortugal).toBe(false);
+        expect(Date.parse(vBr.proximaAbertura)).toBe(abreBr); // o Brasil continua esperando as 22h de Brasília
+        expect(vBr.horario).not.toMatch(/Lisboa/);
+        expect((await casa(admin)).aberta).toBe(true);
+        const pub = await publico();
+        expect(pub.aberta).toBe(false);
+        expect(pub.pessoas).toBe(0);
+        expect((await request(ctx.app).get('/api/casa/minha-reserva').set(h(br)).expect(200)).body.aberta).toBe(false);
+        expect((await request(ctx.app).get('/api/casa/minha-reserva').set(h(pt)).expect(200)).body.aberta).toBe(true);
+        // Quem é do Brasil não entra na noite de Portugal.
+        await request(ctx.app).post('/api/casa/salao/fila').set(h(br)).send({}).expect(403);
+        // Reserva de cada um vai para a noite do seu país.
+        await request(ctx.app).post('/api/casa/reservar').set(h(br)).send({ reservar: true }).expect(200);
+        await request(ctx.app).post('/api/casa/reservar').set(h(pt)).send({ reservar: true }).expect(200);
+      });
+      const reservas = (await queryAll(ctx.db, 'SELECT user_id, noite FROM casa_reservas WHERE user_id IN (?, ?)', [pt.id, br.id])) as any[];
+      expect(reservas.find((r) => r.user_id === br.id)?.noite).toBe(data);
+      expect(reservas.find((r) => r.user_id === pt.id)?.noite).toBe(`pt-${data}`);
+
+      // Antes de abrir: o perfil de Portugal vê a próxima abertura às 22h de Lisboa.
+      await em(abrePt - 5 * 3_600_000, async () => {
+        const vPt = await casa(pt);
+        expect(vPt.aberta).toBe(false);
+        expect(Date.parse(vPt.proximaAbertura)).toBe(abrePt);
+        expect(Date.parse((await casa(br)).proximaAbertura)).toBe(abreBr);
+        // Visitante de Portugal na página pública.
+        const pubPt = (await request(ctx.app).get('/api/casa/publico').query({ pais: 'PT' }).expect(200)).body;
+        expect(Date.parse(pubPt.proximaPortugal)).toBe(abrePt);
+        expect((await publico()).proximaPortugal).toBeUndefined();
+      });
+
+      // Noite do Brasil: aberta para todo mundo, como sempre (inclusive Portugal).
+      await em(abreBr + 30 * 60_000, async () => {
+        expect((await casa(br)).aberta).toBe(true);
+        expect((await casa(pt)).aberta).toBe(true);
+        expect((await casa(pt)).noitePortugal).toBe(false);
+        expect((await publico()).aberta).toBe(true);
+      });
+
+      // Desligada no admin (casa_portugal_ativo = '0'): ninguém vê a noite de Portugal.
+      await run(ctx.db, "INSERT INTO system_settings (key, value, updated_at) VALUES ('casa_portugal_ativo', '0', ?)", [new Date().toISOString()]);
+      await em(abrePt + 24 * 3_600_000 + 10 * 60_000, async () => {
+        // Sábado, noite de Portugal no horário: desligada, o perfil de Portugal vê fechada.
+        const login = (await request(ctx.app).post('/api/auth/login').send({ email: pt.email, password: pt.password }).expect(200)).body;
+        expect((await casa({ token: login.token })).aberta).toBe(false);
+      });
+    } finally {
+      vi.useRealTimers();
+      await run(ctx.db, "DELETE FROM system_settings WHERE key = 'casa_portugal_ativo'", []);
+      await run(ctx.db, 'DELETE FROM casa_reservas WHERE user_id IN (?, ?)', [pt.id, br.id]);
+      await ctx.db.persist();
+    }
   });
 
   it('Suruba: casal e mulher entram direto; solteiro só com pontos, curtidas ou chamado', async () => {

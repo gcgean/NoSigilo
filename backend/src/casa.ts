@@ -324,7 +324,7 @@ export function ganhaBonusCasalCedo(cat: string | undefined, chaveDaNoite: strin
   return cat === 'casal' && NOITES_CASAL_CEDO.has(chaveDaNoite) && agoraBrasilia(agora).data === chaveDaNoite;
 }
 
-function noiteDoHorario(d = new Date()): { chave: string; tema: 'sexta' | 'sabado' } | null {
+export function noiteDoHorario(d = new Date()): { chave: string; tema: 'sexta' | 'sabado' } | null {
   const { dow, hora, data } = agoraBrasilia(d);
   if (dow === 5 && hora >= HORA_DE_ABRIR.sexta) return { chave: data, tema: 'sexta' };
   if (dow === 6 && hora >= HORA_DE_ABRIR.sabado) return { chave: data, tema: 'sabado' };
@@ -332,6 +332,40 @@ function noiteDoHorario(d = new Date()): { chave: string; tema: 'sexta' | 'sabad
   if (madrugadaDe && hora < HORA_DE_FECHAR[madrugadaDe]) {
     const ontem = agoraBrasilia(new Date(d.getTime() - (hora + 1) * 3600_000));
     return { chave: ontem.data, tema: madrugadaDe };
+  }
+  return null;
+}
+
+// ─── Noite de Portugal (16/11/2026) ─────────────────────────────────────────
+// Sexta e sábado das 22h à 1h no relógio de LISBOA, só para perfis de Portugal
+// (UF "PT") e admin. Em Brasília isso é 19h–22h (18h–21h no verão de lá): acaba
+// antes de a noite do Brasil abrir, então as duas nunca se sobrepõem. Para o
+// Brasil nada muda: ninguém daqui vê a noite de Portugal, nem recebe aviso dela.
+const PT_ABRIR = 22;
+const PT_FECHAR = 1;
+export const HORARIO_DE_PORTUGAL = 'Sexta e sábado às 22h, até 1h (hora de Lisboa)';
+function agoraLisboa(d = new Date()) {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Lisbon', weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const p = (t: string) => partes.find((x) => x.type === t)?.value ?? '';
+  const dias: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return { dow: dias[p('weekday')] ?? 0, hora: Number(p('hour')) % 24, data: `${p('year')}-${p('month')}-${p('day')}` };
+}
+/** Início (ms) da noite de Portugal da data `AAAA-MM-DD` (22h em Lisboa, com o horário de verão de lá). */
+export function inicioDaNoitePortugal(data: string) {
+  const comoUtc = Date.parse(`${data}T${PT_ABRIR}:00:00Z`);
+  const horaLa = agoraLisboa(new Date(comoUtc)).hora;
+  return comoUtc - (horaLa - PT_ABRIR) * 3_600_000;
+}
+export const fimDaNoitePortugal = (data: string) => inicioDaNoitePortugal(data) + (24 - PT_ABRIR + PT_FECHAR) * 3_600_000;
+/** Noite de Portugal em curso (chave "pt-AAAA-MM-DD", data de Lisboa) ou null. */
+export function noiteDePortugal(d = new Date()): { chave: string; tema: 'sexta' | 'sabado'; data: string } | null {
+  const { dow, hora, data } = agoraLisboa(d);
+  if ((dow === 5 || dow === 6) && hora >= PT_ABRIR) return { chave: `pt-${data}`, tema: dow === 6 ? 'sabado' : 'sexta', data };
+  if ((dow === 6 || dow === 0) && hora < PT_FECHAR) {
+    const ontem = agoraLisboa(new Date(d.getTime() - (hora + 1) * 3600_000));
+    return { chave: `pt-${ontem.data}`, tema: dow === 0 ? 'sabado' : 'sexta', data: ontem.data };
   }
   return null;
 }
@@ -873,19 +907,42 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     testeCache = { ativo: !!v?.ativo, convidados: Array.isArray(v?.convidados) ? v.convidados.map((e: unknown) => String(e).toLowerCase()) : [], lidoEm: Date.now() };
     return testeCache;
   };
-  const noiteAtual = async () => {
+  // Liga/desliga sem deploy: system_settings.casa_portugal_ativo = '0' desliga.
+  let portugalCache = { ativo: true, lidoEm: 0 };
+  const portugalAtivo = async () => {
+    if (Date.now() - portugalCache.lidoEm < 30_000) return portugalCache.ativo;
+    const row = (await db.queryOne("SELECT value FROM system_settings WHERE key = 'casa_portugal_ativo' LIMIT 1", [])) as any;
+    portugalCache = { ativo: String(row?.value ?? '') !== '0', lidoEm: Date.now() };
+    return portugalCache.ativo;
+  };
+  const ehDePortugal = async (userId: string) =>
+    String(((await db.queryOne('SELECT state FROM users WHERE id = ? LIMIT 1', [userId])) as any)?.state || '').trim().toUpperCase() === 'PT';
+  // `portugal`: noite de Portugal. Conta como "forçada" (fora do horário do Brasil),
+  // então tudo que já pulava abertura forçada (aviso para todos, sorteio, lembretes)
+  // pula também; `fimMs` é quando ela fecha.
+  const noiteAtual = async (): Promise<{ chave: string; tema: 'sexta' | 'sabado'; forcada: boolean; teste: boolean; portugal: boolean; fimMs: number | null } | null> => {
     const pelaHora = noiteDoHorario();
-    if (pelaHora) return { ...pelaHora, forcada: false, teste: false };
+    if (pelaHora) return { ...pelaHora, forcada: false, teste: false, portugal: false, fimMs: null };
+    const pt = noiteDePortugal();
+    if (pt && (await portugalAtivo())) return { chave: pt.chave, tema: pt.tema, forcada: true, teste: false, portugal: true, fimMs: fimDaNoitePortugal(pt.data) };
     if ((await abertaAte()) > Date.now()) {
       const { dow, data } = agoraBrasilia();
       const teste = (await modoTeste()).ativo;
-      return { chave: `${teste ? 'teste' : 'extra'}-${data}`, tema: (dow === 6 ? 'sabado' : 'sexta') as 'sexta' | 'sabado', forcada: true, teste };
+      return { chave: `${teste ? 'teste' : 'extra'}-${data}`, tema: (dow === 6 ? 'sabado' : 'sexta') as 'sexta' | 'sabado', forcada: true, teste, portugal: false, fimMs: null };
     }
     return null;
   };
+  /** Quando a noite em curso fecha: horário fixo, Portugal ou abertura forçada. */
+  const fimDaNoiteAtual = async (noite: { chave: string; tema: 'sexta' | 'sabado'; forcada: boolean; fimMs: number | null }) =>
+    noite.fimMs ?? (noite.forcada ? await abertaAte() : fimDaNoite(noite.chave, noite.tema));
   /** A noite como a pessoa enxerga: no modo teste, só admin e convidados veem a Casa aberta. */
   const noitePara = async (userId: string) => {
     const noite = await noiteAtual();
+    // Noite de Portugal: só perfis de Portugal (e admin) enxergam.
+    if (noite?.portugal) {
+      if (await ehDePortugal(userId)) return noite;
+      return (await carregarPerfil(userId))?.admin ? noite : null;
+    }
     if (!noite?.teste) return noite;
     const perfil = await carregarPerfil(userId);
     if (perfil?.admin) return noite;
@@ -910,7 +967,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   let temaAtual: TemaDeFesta | null = null;
   const temasEscolhidos = new Map<string, { id: string | null; lidoEm: number }>();
   const temaDaFesta = async (chave: string, dia: 'sexta' | 'sabado'): Promise<TemaDeFesta> => {
-    const data = chave.replace(/^(extra|teste)-/, '');
+    const data = chave.replace(/^(extra|teste|pt)-/, '');
     let escolhido = temasEscolhidos.get(data);
     if (!escolhido || Date.now() - escolhido.lidoEm > 30_000) {
       const row = (await db.queryOne('SELECT value FROM system_settings WHERE key = ? LIMIT 1', [`casa_tema:${data}`])) as any;
@@ -1139,10 +1196,11 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   const minimoParaDestravar = () => (temaAtual?.id === 'suruba' ? 10 : MINIMO_PARA_DESTRAVAR);
   const liberadas = new Set<string>();
   const naCasaAgora = () => [...salas.values()].reduce((n, s) => n + s.presentes.size + s.espiando.size, 0);
-  const trancada = (sala: Sala, noite: { chave: string; forcada: boolean } | null) =>
-    !!noite && !noite.forcada && SALAS_EXTRAS.includes(sala.id) && !liberadas.has(`${noite.chave}:${sala.id}`);
-  const destravarSeEncheu = (noite: { chave: string; forcada: boolean }) => {
-    if (noite.forcada) return;
+  // Na noite de Portugal as salas extras também começam trancadas: pouca gente, junta todo mundo.
+  const trancada = (sala: Sala, noite: { chave: string; forcada: boolean; portugal?: boolean } | null) =>
+    !!noite && (!noite.forcada || !!noite.portugal) && SALAS_EXTRAS.includes(sala.id) && !liberadas.has(`${noite.chave}:${sala.id}`);
+  const destravarSeEncheu = (noite: { chave: string; forcada: boolean; portugal?: boolean }) => {
+    if (noite.forcada && !noite.portugal) return;
     const n = naCasaAgora();
     if (n < minimoParaDestravar()) return;
     for (const id of SALAS_EXTRAS) {
@@ -2097,6 +2155,12 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
         }
       }
     }
+    if (noite?.portugal && noite.chave !== noiteAnterior) {
+      noiteAnterior = noite.chave;
+      if (await umaVez(`casa_aviso:${noite.chave}`)) {
+        void avisarAberturaPortugal(noite.tema, noite.chave).catch((err) => console.error('[casa] aviso de Portugal falhou', err));
+      }
+    }
     if (!noite) noiteAnterior = null;
     // Avisos de interação da Casa no sino valem só enquanto ela está aberta: fechou, somem
     // (também depois de um reinício do servidor com a Casa já fechada).
@@ -2399,6 +2463,34 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     }, jaAvisados);
   };
 
+  // Noite de Portugal: avisa só perfis de Portugal (reservou ou usou o site em 7 dias).
+  const avisarAberturaPortugal = async (tema: 'sexta' | 'sabado', chave: string) => {
+    const t = await temaDaFesta(chave, tema);
+    const desde = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const pessoas = (await db.queryAll(
+      `SELECT DISTINCT u.id FROM users u JOIN push_subscriptions ps ON ps.user_id = u.id
+        WHERE UPPER(TRIM(COALESCE(u.state, ''))) = 'PT'
+          AND (u.last_seen_at >= ? OR EXISTS (SELECT 1 FROM casa_reservas r WHERE r.user_id = u.id AND r.noite = ? AND r.lembrete = 1))
+          AND COALESCE(u.is_showcase,0) = 0 AND COALESCE(u.is_banned,0) = 0
+          AND COALESCE(u.is_deactivated,0) = 0 AND u.deleted_at IS NULL`,
+      [desde, chave],
+    )) as any[];
+    let enviados = 0;
+    for (const p of pessoas) {
+      try {
+        await deps.push(String(p.id), {
+          title: `🇵🇹 A Casa abriu: ${t.nome}!`,
+          body: 'Noite de Portugal, até à 1h (hora de Lisboa): salas ao vivo, brincadeiras com a Lola e cabine a dois. Entra!',
+          url: '/casa',
+          tag: 'casa-abriu',
+        });
+        enviados++;
+      } catch { /* segue */ }
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    console.log(`[casa] noite de Portugal: aviso para ${enviados} pessoa(s)`);
+  };
+
   const avisarParaAtivos = async (payload: { title: string; body: string; url: string; tag: string }, pular: Set<string> = new Set()) => {
     const desde = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const pessoas = (await db.queryAll(
@@ -2450,12 +2542,19 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
   };
 
   /** Chave da noite em curso ou da próxima (é nela que a reserva vale). */
-  const proximaNoite = async (apenasFutura = false): Promise<{ chave: string; inicio: string | null }> => {
+  // `portugal`: a próxima noite de Portugal (para perfis de Portugal). Sem isso,
+  // a do Brasil — exatamente como antes; a noite de Portugal nunca conta aqui.
+  const proximaNoite = async (apenasFutura = false, portugal = false): Promise<{ chave: string; inicio: string | null }> => {
     const agora = await noiteAtual();
-    if (agora && !agora.teste && !apenasFutura) return { chave: agora.chave, inicio: null };
+    if (agora && !agora.teste && !apenasFutura && agora.portugal === portugal) return { chave: agora.chave, inicio: null };
     const base = Math.ceil(Date.now() / 3_600_000) * 3_600_000;
     for (let h = 0; h < 8 * 24; h++) {
       const t = new Date(base + h * 3_600_000);
+      if (portugal) {
+        const n = noiteDePortugal(t);
+        if (n && (!apenasFutura || n.chave !== agora?.chave)) return { chave: n.chave, inicio: new Date(inicioDaNoitePortugal(n.data)).toISOString() };
+        continue;
+      }
       const n = noiteDoHorario(t);
       if (n && (!apenasFutura || n.chave !== agora?.chave)) return { chave: n.chave, inicio: t.toISOString() };
     }
@@ -2596,12 +2695,14 @@ Sala: ${salaId}`).catch(() => {});
   const userDe = (req: express.Request) => String((req as any).auth?.userId || '');
 
   // Página pública d'A Casa (sem login): só números, nada de nomes ou fotos.
-  app.get('/api/casa/publico', async (_req, res) => {
+  app.get('/api/casa/publico', async (req, res) => {
     const noiteReal = await noiteAtual();
-    const noite = noiteReal?.teste ? null : noiteReal;
+    // Modo teste e noite de Portugal não aparecem para o público.
+    const escondida = !!noiteReal?.teste || !!noiteReal?.portugal;
+    const noite = escondida ? null : noiteReal;
     let pessoas = 0;
     // No modo teste a contagem fica zerada (ninguém de fora sabe que tem gente testando).
-    if (!noiteReal?.teste) for (const s of salas.values()) pessoas += s.presentes.size + s.espiando.size;
+    if (!escondida) for (const s of salas.values()) pessoas += s.presentes.size + s.espiando.size;
     // Próxima abertura: anda de hora em hora até cair dentro do horário.
     let proxima: string | null = null;
     if (!noite) {
@@ -2613,8 +2714,12 @@ Sala: ${salaId}`).catch(() => {});
     }
     res.setHeader('Cache-Control', 'public, max-age=30');
     const prox = await proximaNoite();
+    // Visitante de Portugal (?pais=PT): quando abre a próxima noite de Portugal.
+    const proximaPortugal = String(req.query.pais || '').toUpperCase() === 'PT' && (await portugalAtivo())
+      ? (await proximaNoite(true, true)).inicio : null;
     res.json({
       aberta: !!noite,
+      ...(proximaPortugal ? { proximaPortugal } : {}),
       tema: noite ? temaPublico(await temaDaFesta(noite.chave, noite.tema)) : null,
       proximoTema: !noite && prox.chave ? temaPublico(await temaDaFesta(prox.chave, diaDaData(prox.chave))) : null,
       pessoas,
@@ -2628,7 +2733,7 @@ Sala: ${salaId}`).catch(() => {});
   // reservaram abriram o app durante a noite e não entraram: o app mostra um chamado.)
   app.get('/api/casa/minha-reserva', deps.requireAuth, async (req, res) => {
     const userId = userDe(req);
-    const noite = await noiteAtual();
+    const noite = await noitePara(userId);
     if (!noite || noite.teste) { res.json({ aberta: false, reservado: false, pessoas: 0 }); return; }
     const reservado = !!(await db.queryOne('SELECT 1 AS x FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, noite.chave]));
     res.json({ aberta: true, reservado, noite: noite.chave, pessoas: naCasaAgora(), naCasa: estaEmAlgumLugarDaCasa(userId) });
@@ -2639,9 +2744,11 @@ Sala: ${salaId}`).catch(() => {});
     const noite = await noitePara(userId);
     const perfil = await carregarPerfil(userId);
     const podeFalar = await podeFalarNaCasa(userId, perfil?.cat);
-    const prox = await proximaNoite();
+    // Perfil de Portugal: reserva, próxima abertura e encontro da noite de Portugal.
+    const dePortugal = perfil?.uf === 'PT' && (await portugalAtivo());
+    const prox = await proximaNoite(false, dePortugal);
     const reservado = prox.chave ? !!(await db.queryOne('SELECT 1 AS x FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, prox.chave])) : false;
-    const encontro = await proximaNoite(true);
+    const encontro = await proximaNoite(true, dePortugal);
     const reservaEncontro = encontro.chave ? await db.queryOne('SELECT lembrete FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, encontro.chave]) as { lembrete: number } | undefined : undefined;
     const fundosDoMapa = new Map(await Promise.all([...salas.keys()].map(async (id) => [id, await fundoPublico(id)] as const)));
     // Fotos no mapa só para quem pode falar na Casa (quem entrar na sala veria o mesmo).
@@ -2654,7 +2761,8 @@ Sala: ${salaId}`).catch(() => {});
       aberta: !!noite,
       tema: noite ? temaPublico(await temaDaFesta(noite.chave, noite.tema)) : null,
       proximoTema: !noite && prox.chave ? temaPublico(await temaDaFesta(prox.chave, diaDaData(prox.chave))) : null,
-      horario: HORARIO_DA_CASA,
+      horario: dePortugal ? HORARIO_DE_PORTUGAL : HORARIO_DA_CASA,
+      noitePortugal: !!noite?.portugal,
       reservado,
       pessoasAgora: noite ? new Set([...salas.values()].flatMap((sala) => [...sala.presentes.keys(), ...sala.espiando.keys()])).size : 0,
       proximoEncontro: encontro.inicio ? {
@@ -2673,7 +2781,7 @@ Sala: ${salaId}`).catch(() => {});
       // Modo teste: sem proteção de print (para mandar prints das melhorias).
       teste: !!noite?.teste,
       podeFalar,
-      abertaAte: noite?.forcada ? new Date(await abertaAte()).toISOString() : null,
+      abertaAte: noite?.forcada ? new Date(await fimDaNoiteAtual(noite)).toISOString() : null,
       salas: [...salas.values()].filter((s) => !guardada(s) || perfil?.admin).map((s) => {
         const c = contagem(s);
         const souHomem = perfil?.cat === 'homem';
@@ -2910,7 +3018,7 @@ Sala: ${salaId}`).catch(() => {});
   // Reservar lugar na próxima noite (ou na de hoje): aviso no celular quando abrir.
   app.post('/api/casa/reservar', deps.requireAuth, async (req, res) => {
     const userId = userDe(req);
-    const prox = await proximaNoite((req.body as any)?.proxima === true);
+    const prox = await proximaNoite((req.body as any)?.proxima === true, (await ehDePortugal(userId)) && (await portugalAtivo()));
     if (!prox.chave) { res.status(400).json({ error: 'sem_noite' }); return; }
     if ((req.body as any)?.reservar === false) {
       await db.run('DELETE FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, prox.chave]);
@@ -3547,9 +3655,10 @@ Sala: ${salaId}`).catch(() => {});
       aberta: !!noite,
       forcada: !!noite?.forcada,
       teste: !!noite?.teste,
+      portugal: !!noite?.portugal,
       convidadosTeste: noite?.teste ? (await modoTeste()).convidados : [],
       tema: noite ? temaPublico(await temaDaFesta(noite.chave, noite.tema)) : null,
-      abertaAte: noite?.forcada ? new Date(await abertaAte()).toISOString() : null,
+      abertaAte: noite?.forcada ? new Date(await fimDaNoiteAtual(noite)).toISOString() : null,
       proximaAbertura: prox.inicio,
       proximaNoite: prox.chave,
       totalReservas,
@@ -3615,7 +3724,7 @@ Sala: ${salaId}`).catch(() => {});
                 SUM(CASE WHEN tipo = 'denuncia' THEN 1 ELSE 0 END) AS denuncias FROM casa_eventos WHERE noite = ?`,
         [noite],
       )) as any;
-      const dia = noite.replace('extra-', '');
+      const dia = noite.replace(/^(extra|pt)-/, '');
       const cadastros = Number(((await db.queryOne(
         `SELECT COUNT(*) AS c FROM users WHERE origem_canal LIKE 'A Casa%' AND created_at >= ? AND created_at <= ?`,
         [inicio, fim],
@@ -4006,10 +4115,10 @@ Sala: ${salaId}`).catch(() => {});
       proxima: null,
     });
     if (noiteAgora) {
-      const inicioNoite = noiteAgora.forcada ? null : inicioDaNoite(noiteAgora.chave, noiteAgora.tema);
-      const fimNoite = noiteAgora.forcada ? await abertaAte() : fimDaNoite(noiteAgora.chave, noiteAgora.tema);
+      const inicioNoite = noiteAgora.portugal ? inicioDaNoitePortugal(noiteAgora.chave.slice(3)) : noiteAgora.forcada ? null : inicioDaNoite(noiteAgora.chave, noiteAgora.tema);
+      const fimNoite = await fimDaNoiteAtual(noiteAgora);
       const abertura = todas.find((f) => f.tipo === 'abertura');
-      const fechamento = fechamentoDaNoite(todas.filter((f) => f.tipo === 'fechamento'), noiteAgora.forcada ? null : HORA_DE_FECHAR[noiteAgora.tema]);
+      const fechamento = fechamentoDaNoite(todas.filter((f) => f.tipo === 'fechamento'), noiteAgora.portugal ? PT_FECHAR : noiteAgora.forcada ? null : HORA_DE_FECHAR[noiteAgora.tema]);
       if (abertura && inicioNoite && agoraMs >= inicioNoite && agoraMs < inicioNoite + abertura.duracao * 1000) { vinhetaNaHora(abertura, inicioNoite); return; }
       if (fechamento && agoraMs >= fimNoite - fechamento.duracao * 1000 && agoraMs < fimNoite) { vinhetaNaHora(fechamento, fimNoite - fechamento.duracao * 1000); return; }
     }
@@ -4036,7 +4145,9 @@ Sala: ${salaId}`).catch(() => {});
     const total = lista.reduce((s, f) => s + f.duracao, 0);
     if (total <= 0) { res.json({ tocando: null }); return; }
     // Na noite normal a rádio começa do 1º item logo depois da abertura das 22h.
-    const inicioNormal = noiteAgora && !noiteAgora.forcada ? inicioDaNoite(noiteAgora.chave, noiteAgora.tema) + (todas.find((f) => f.tipo === 'abertura')?.duracao ?? 0) * 1000 : null;
+    const inicioDaNoiteAgora = noiteAgora?.portugal ? inicioDaNoitePortugal(noiteAgora.chave.slice(3))
+      : noiteAgora && !noiteAgora.forcada ? inicioDaNoite(noiteAgora.chave, noiteAgora.tema) : null;
+    const inicioNormal = inicioDaNoiteAgora != null ? inicioDaNoiteAgora + (todas.find((f) => f.tipo === 'abertura')?.duracao ?? 0) * 1000 : null;
     const zero = inicioNormal && agoraMs >= inicioNormal ? inicioNormal : INICIO_DA_RADIO;
     let pos = ((agoraMs - zero) / 1000) % total;
     let i = 0;
