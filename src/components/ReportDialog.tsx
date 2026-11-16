@@ -76,7 +76,7 @@ export default function ReportDialog({
 
     setIsSubmitting(true);
     try {
-      await reportsService.submit({
+      const r = await reportsService.submit({
         targetType,
         targetId,
         targetName,
@@ -85,7 +85,9 @@ export default function ReportDialog({
       });
       toast({
         title: 'Denúncia enviada',
-        description: 'Nossa equipe irá analisar o conteúdo reportado.',
+        description: r?.bloqueado
+          ? 'Nossa equipe vai analisar. Também bloqueamos o perfil para você: vocês não se veem mais. Dá para desbloquear em Configurações › Privacidade.'
+          : 'Nossa equipe irá analisar o conteúdo reportado.',
       });
       setReason('');
       setDetails('');

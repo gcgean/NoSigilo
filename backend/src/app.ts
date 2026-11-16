@@ -23215,8 +23215,33 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           createdAt,
         ]
       );
-      await persist();
-      res.status(201).json({ id });
+      // Denunciar já bloqueia (pedido do dono, 16/11/2026): quem denunciou não
+      // deve continuar recebendo mensagem, comentário em story nem vendo o
+      // denunciado. Igual ao botão Bloquear: dá para desfazer em Privacidade.
+      // Conta oficial e admins ficam de fora (avisos e suporte).
+      let bloqueado = false;
+      try {
+        const t = parsed.data.targetType;
+        const alvoId = parsed.data.targetId;
+        const autor = t === 'user' ? { id: alvoId }
+          : t === 'post' ? await queryOne(db, 'SELECT user_id AS id FROM posts WHERE id = ?', [alvoId])
+          : t === 'story' ? await queryOne(db, 'SELECT user_id AS id FROM stories WHERE id = ?', [alvoId])
+          : t === 'photo' ? await queryOne(db, 'SELECT user_id AS id FROM media WHERE id = ?', [alvoId])
+          : await queryOne(db, 'SELECT sender_id AS id FROM messages WHERE id = ?', [alvoId]);
+        const autorId = (autor as any)?.id ? String((autor as any).id) : '';
+        if (autorId && autorId !== reporterId) {
+          const u = (await queryOne(db, 'SELECT is_admin, conta_oficial FROM users WHERE id = ?', [autorId])) as any;
+          if (u && Number(u.is_admin || 0) !== 1 && Number(u.conta_oficial || 0) !== 1) {
+            await run(db, 'INSERT OR IGNORE INTO blocks (id, blocker_user_id, blocked_user_id, created_at) VALUES (?, ?, ?, ?)',
+              [randomUUID(), reporterId, autorId, createdAt]);
+            await persist();
+            bloqueado = true;
+          }
+        }
+      } catch (err) {
+        console.error('[reports/post] bloqueio automatico falhou', err);
+      }
+      res.status(201).json({ id, bloqueado });
     } catch (err) {
       console.error('[reports/post]', err);
       res.status(500).json({ error: 'internal' });

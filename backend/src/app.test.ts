@@ -5652,6 +5652,33 @@ describe('nosigilo backend', () => {
     expect(Number(depois?.c || 0)).toBe(0);
   });
 
+  it('denúncia já bloqueia o denunciado para quem denunciou (perfil e story), menos conta oficial', async () => {
+    const quem = await registerInvitedUser(ctx, sponsorToken, { name: 'Quem Denuncia', email: 'quem-denuncia@example.com', password: 'senha123', gender: 'Mulher' });
+    const alvo = await registerInvitedUser(ctx, sponsorToken, { name: 'Alvo Denuncia', email: 'alvo-denuncia@example.com', password: 'senha123', gender: 'Homem' });
+    const outro = await registerInvitedUser(ctx, sponsorToken, { name: 'Outro Denuncia', email: 'outro-denuncia@example.com', password: 'senha123', gender: 'Homem' });
+    const oficial = await registerInvitedUser(ctx, sponsorToken, { name: 'Oficial Denuncia', email: 'oficial-denuncia@example.com', password: 'senha123', gender: 'Mulher' });
+    await run(ctx.db, 'UPDATE users SET conta_oficial = 1 WHERE id = ?', [String(oficial.user.id)]);
+    const storyId = `story-den-${Date.now()}`;
+    const agora = new Date();
+    await run(ctx.db, "INSERT INTO stories (id, user_id, media_id, text, background, audience, created_at, expires_at) VALUES (?, ?, '', 'oi', 'sunset', 'all', ?, ?)",
+      [storyId, String(outro.user.id), agora.toISOString(), new Date(agora.getTime() + 86_400_000).toISOString()]);
+    await ctx.db.persist();
+    const Q = { Authorization: `Bearer ${quem.token}` };
+    const bloqueou = async (b: string) => !!(await ctx.db.queryOne('SELECT 1 AS x FROM blocks WHERE blocker_user_id = ? AND blocked_user_id = ?', [String(quem.user.id), b]));
+
+    const r1 = await request(ctx.app).post('/api/reports').set(Q).send({ targetType: 'user', targetId: String(alvo.user.id), reason: 'spam' }).expect(201);
+    expect(r1.body.bloqueado).toBe(true);
+    expect(await bloqueou(String(alvo.user.id))).toBe(true);
+
+    const r2 = await request(ctx.app).post('/api/reports').set(Q).send({ targetType: 'story', targetId: storyId, reason: 'spam' }).expect(201);
+    expect(r2.body.bloqueado).toBe(true);
+    expect(await bloqueou(String(outro.user.id))).toBe(true);
+
+    const r3 = await request(ctx.app).post('/api/reports').set(Q).send({ targetType: 'user', targetId: String(oficial.user.id), reason: 'spam' }).expect(201);
+    expect(r3.body.bloqueado).toBe(false);
+    expect(await bloqueou(String(oficial.user.id))).toBe(false);
+  });
+
   it('stories: mulher ganha +15 no 1º story da semana e recebe incentivo quando o último teve público', async () => {
     const ela = await registerInvitedUser(ctx, sponsorToken, { name: 'Bia Incentivo', email: 'bia-incentivo@example.com', password: 'senha123', gender: 'Mulher' });
     const homem = await registerInvitedUser(ctx, sponsorToken, { name: 'Leo Sem Bonus', email: 'leo-sem-bonus@example.com', password: 'senha123', gender: 'Homem' });

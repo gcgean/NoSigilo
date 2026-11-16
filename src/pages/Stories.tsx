@@ -1322,7 +1322,7 @@ function StoryViewer({
             const autorNome = denunciando.autorNome;
             setDenunciando(null);
             if (enviada) {
-              setAvisoViewer(`Denúncia enviada. Você não vai mais ver os stories de ${autorNome}.`);
+              setAvisoViewer(`Denúncia enviada. ${autorNome} foi bloqueado(a) para você.`);
               window.setTimeout(() => setAvisoViewer(''), 2500);
             }
             // Era o último perfil da fila: oculta e fecha só agora.
