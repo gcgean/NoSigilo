@@ -5632,6 +5632,26 @@ describe('nosigilo backend', () => {
     expect(aviso?.title).toContain('50 pessoas');
   });
 
+  it('stories: quem foi bloqueado não comenta, não curte e não vê o story', async () => {
+    const dono = await registerInvitedUser(ctx, sponsorToken, { name: 'Dono Story Bloq', email: 'dono-story-bloq@example.com', password: 'senha123', gender: 'Homem' });
+    const chato = await registerInvitedUser(ctx, sponsorToken, { name: 'Chato Story Bloq', email: 'chato-story-bloq@example.com', password: 'senha123', gender: 'Homem' });
+    const donoId = String(dono.user.id);
+    const storyId = `story-bloq-${Date.now()}`;
+    const agora = new Date();
+    await run(ctx.db, "INSERT INTO stories (id, user_id, media_id, text, background, audience, created_at, expires_at) VALUES (?, ?, '', 'oi', 'sunset', 'all', ?, ?)",
+      [storyId, donoId, agora.toISOString(), new Date(agora.getTime() + 86_400_000).toISOString()]);
+    await ctx.db.persist();
+    const C = { Authorization: `Bearer ${chato.token}` };
+    // Antes do bloqueio, comenta normalmente.
+    await request(ctx.app).post(`/api/stories/${storyId}/comments`).set(C).send({ text: 'antes' }).expect(200);
+    await request(ctx.app).post(`/api/users/${String(chato.user.id)}/block`).set({ Authorization: `Bearer ${dono.token}` }).expect(200);
+    await request(ctx.app).post(`/api/stories/${storyId}/comments`).set(C).send({ text: 'depois' }).expect(403);
+    await request(ctx.app).post(`/api/stories/${storyId}/like`).set(C).send({}).expect(403);
+    await request(ctx.app).post(`/api/stories/${storyId}/view`).set(C).expect(403);
+    const depois = await ctx.db.queryOne("SELECT COUNT(*) AS c FROM story_comments WHERE story_id = ? AND text = 'depois'", [storyId]) as any;
+    expect(Number(depois?.c || 0)).toBe(0);
+  });
+
   it('stories: mulher ganha +15 no 1º story da semana e recebe incentivo quando o último teve público', async () => {
     const ela = await registerInvitedUser(ctx, sponsorToken, { name: 'Bia Incentivo', email: 'bia-incentivo@example.com', password: 'senha123', gender: 'Mulher' });
     const homem = await registerInvitedUser(ctx, sponsorToken, { name: 'Leo Sem Bonus', email: 'leo-sem-bonus@example.com', password: 'senha123', gender: 'Homem' });

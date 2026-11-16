@@ -8521,6 +8521,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     viewerId: string
   ): Promise<'forbidden' | undefined> {
     if (String(story.user_id) === viewerId) return undefined;
+    // Bloqueio vale para o story também (relato de 16/11/2026): quem foi
+    // bloqueado, ou bloqueou, não vê, não curte e não comenta. Antes o
+    // comentário passava e o dono recebia "comentou no seu story".
+    if (await isUserBlocked({ db }, { viewerId, targetId: String(story.user_id) })) return 'forbidden';
     if (storyAudience(story.audience) !== 'favorites') return undefined;
     const permitido = (await queryOne(
       db,
