@@ -15,6 +15,7 @@
  * - Verdade ou desafio e match às cegas só sorteiam quem marcou "Quero brincar".
  */
 import { randomUUID } from 'node:crypto';
+import { DEEPSEEK_URL, MODELO_TEXTO, SEM_PENSAR } from './modelosIa.js';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
@@ -1133,11 +1134,12 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const controle = new AbortController();
     const timer = setTimeout(() => controle.abort(), 10_000);
     try {
-      const r = await fetch('https://api.deepseek.com/chat/completions', {
+      const r = await fetch(DEEPSEEK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
         body: JSON.stringify({
-          model: 'deepseek-chat',
+          model: MODELO_TEXTO,
+          ...SEM_PENSAR,
           temperature: 0,
           max_tokens: 10,
           messages: [
@@ -1331,11 +1333,12 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     const controle = new AbortController();
     const timer = setTimeout(() => controle.abort(), 12_000);
     try {
-      const r = await fetch('https://api.deepseek.com/chat/completions', {
+      const r = await fetch(DEEPSEEK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
         body: JSON.stringify({
-          model: 'deepseek-chat',
+          model: MODELO_TEXTO,
+          ...SEM_PENSAR,
           temperature: 1.1,
           max_tokens: 120,
           messages: [
@@ -1368,11 +1371,12 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     const controle = new AbortController();
     const timer = setTimeout(() => controle.abort(), 10_000);
     try {
-      const r = await fetch('https://api.deepseek.com/chat/completions', {
+      const r = await fetch(DEEPSEEK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
         body: JSON.stringify({
-          model: 'deepseek-chat',
+          model: MODELO_TEXTO,
+          ...SEM_PENSAR,
           temperature: 1,
           max_tokens: 120,
           messages: [
@@ -1416,11 +1420,12 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         .map((p) => `${p.nome} (${p.cat}${p.cidade ? `, ${p.cidade}` : ''})`).join(', ');
       const conversa = sala.mensagens.slice(-6).filter((m) => m.tipo === 'pessoa' || m.tipo === 'lola' || m.tipo === 'anfitriao')
         .map((m) => `${m.tipo === 'lola' ? 'Lola' : m.autor?.nome ?? '?'}: ${m.texto.slice(0, 120)}`).join('\n');
-      const r = await fetch('https://api.deepseek.com/chat/completions', {
+      const r = await fetch(DEEPSEEK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
         body: JSON.stringify({
-          model: 'deepseek-chat',
+          model: MODELO_TEXTO,
+          ...SEM_PENSAR,
           temperature: 1,
           max_tokens: 120,
           messages: [
@@ -1555,11 +1560,12 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     const controle = new AbortController();
     const timer = setTimeout(() => controle.abort(), 10_000);
     try {
-      const r = await fetch('https://api.deepseek.com/chat/completions', {
+      const r = await fetch(DEEPSEEK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
         body: JSON.stringify({
-          model: 'deepseek-chat',
+          model: MODELO_TEXTO,
+          ...SEM_PENSAR,
           temperature: 1.05,
           max_tokens: 90,
           messages: [

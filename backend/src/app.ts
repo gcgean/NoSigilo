@@ -6156,6 +6156,17 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     setSetting: (key, value) => setSystemSetting(db, key, value),
     persist,
     notificarEquipe: (texto, tipo) => notifyAdminsTelegram({ db, env }, texto, tipo ?? 'suporte'),
+    // Print do chat de suporte para a Lola ler (só imagem, até 5 MB).
+    lerImagem: async (imageUrl) => {
+      const m = /^\/uploads\/([A-Za-z0-9._-]+)$/.exec(imageUrl);
+      if (!m) return null;
+      const ext = m[1].split('.').pop()?.toLowerCase() ?? '';
+      const mime = ({ webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' } as Record<string, string>)[ext];
+      if (!mime) return null;
+      const caminho = resolveMediaFilePath(m[1], false) ?? resolveMediaFilePath(m[1], true);
+      if (!caminho || statSync(caminho).size > 5 * 1024 * 1024) return null;
+      return { mime, base64: readFileSync(caminho).toString('base64') };
+    },
     // Mesma conferência do botão "Já paguei — verificar" (/api/subscriptions/status).
     verificarPagamento: async (alvo) => {
       if (!shouldUseHubBilling(env)) return;

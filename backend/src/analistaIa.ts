@@ -6,11 +6,11 @@ import { MANUAL_DO_SISTEMA } from './supportAiConhecimento.js';
 // manda os dados de cada painel aberto (utils/paineisParaIa.ts); aqui eles são
 // limpos, reduzidos e enviados ao DeepSeek com o contexto do negócio.
 //
-// Usa o deepseek-reasoner: análise de números com cruzamento entre painéis é o
+// Usa o V4 Pro "pensando": análise de números com cruzamento entre painéis é o
 // caso em que raciocinar antes compensa a espera. Se ele gastar a saída toda
-// raciocinando e não escrever resposta, repete no deepseek-chat.
+// raciocinando e não escrever resposta, repete sem pensar (ver modelosIa.ts).
 
-const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
+import { DEEPSEEK_URL, MODELO_TEXTO, PENSANDO, SEM_PENSAR } from './modelosIa.js';
 const LIMITE_DA_CHAMADA_MS = 150_000;
 const MAX_ITENS_POR_LISTA = 40;
 const MAX_CARACTERES_DOS_DADOS = 120_000;
@@ -77,7 +77,7 @@ ${MANUAL_DO_SISTEMA}`;
 
 async function chamarDeepSeek(
   apiKey: string,
-  modelo: 'deepseek-reasoner' | 'deepseek-chat',
+  modo: 'pensando' | 'direto',
   mensagens: Array<{ role: string; content: string }>
 ): Promise<{ texto: string; motivo?: string }> {
   const resposta = await fetch(DEEPSEEK_URL, {
@@ -85,11 +85,12 @@ async function chamarDeepSeek(
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(LIMITE_DA_CHAMADA_MS),
     body: JSON.stringify({
-      model: modelo,
+      model: MODELO_TEXTO,
+      ...(modo === 'pensando' ? PENSANDO : SEM_PENSAR),
       messages: mensagens,
-      // No reasoner o raciocínio conta dentro do limite de saída: com pouco,
+      // Pensando, o raciocínio conta dentro do limite de saída: com pouco,
       // ele raciocina e não sobra espaço para a resposta.
-      max_tokens: modelo === 'deepseek-reasoner' ? 32_000 : 4_000,
+      max_tokens: modo === 'pensando' ? 32_000 : 4_000,
       stream: false,
     }),
   });
@@ -128,17 +129,17 @@ export async function analisarPaineis(params: {
     },
   ];
 
-  const pensado = await chamarDeepSeek(params.apiKey, 'deepseek-reasoner', mensagens);
-  if (pensado.texto) return { resposta: pensado.texto, modelo: 'deepseek-reasoner' };
+  const pensado = await chamarDeepSeek(params.apiKey, 'pensando', mensagens);
+  if (pensado.texto) return { resposta: pensado.texto, modelo: `${MODELO_TEXTO} (pensando)` };
 
-  const direto = await chamarDeepSeek(params.apiKey, 'deepseek-chat', mensagens);
+  const direto = await chamarDeepSeek(params.apiKey, 'direto', mensagens);
   if (!direto.texto) throw new Error(`DeepSeek não devolveu resposta (${direto.motivo || pensado.motivo || 'sem motivo'})`);
-  return { resposta: direto.texto, modelo: 'deepseek-chat' };
+  return { resposta: direto.texto, modelo: MODELO_TEXTO };
 }
 
 // ─── Pré-análise do resumo diário do Telegram ───────────────────────────────
 // Recebe só números agregados (nenhum dado de pessoa) e devolve poucas linhas
-// para o dono ler no celular. Vai no deepseek-chat: é curto e roda às 8h.
+// para o dono ler no celular. Vai sem pensar: é curto e roda às 8h.
 const PROMPT_RESUMO_DIARIO = `Você é o analista financeiro do NoSigilo, rede social adulta liberal (swing). Receita: assinatura mensal (~R$ 9,90; a maioria paga por Pix, que NÃO renova sozinho, então renovação depende de lembrete) e compra avulsa de tokens. Há teste grátis; "vieram do teste grátis" são assinantes novos que estavam em teste.
 
 Você recebe em JSON os números do dia fechado, comparações (dia anterior, mesmo dia da semana passada), o mês até esse dia, o mês anterior até o mesmo dia e a projeção de fechamento do mês.
@@ -152,7 +153,7 @@ Os totais já aparecem acima do seu texto: não os repita. Escreva em português
 - não invente dado que não está no JSON.`;
 
 export async function analisarResumoDiario(apiKey: string, dados: unknown): Promise<string> {
-  const { texto } = await chamarDeepSeek(apiKey, 'deepseek-chat', [
+  const { texto } = await chamarDeepSeek(apiKey, 'direto', [
     { role: 'system', content: PROMPT_RESUMO_DIARIO },
     { role: 'user', content: JSON.stringify(dados) },
   ]);

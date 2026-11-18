@@ -7,8 +7,7 @@
  */
 import { MANUAL_DO_SISTEMA } from './supportAiConhecimento.js';
 
-const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const MODELO = 'deepseek-chat';
+import { DEEPSEEK_URL, MODELO_TEXTO as MODELO, SEM_PENSAR } from './modelosIa.js';
 const LIMITE_DA_CHAMADA_MS = 40_000;
 export const TAMANHO_MAXIMO_RESPOSTA = 1200;
 
@@ -40,6 +39,7 @@ export async function melhorarRespostaSuporte(
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: MODELO,
+        ...SEM_PENSAR,
         temperature: 0.4,
         max_tokens: 600,
         messages: [

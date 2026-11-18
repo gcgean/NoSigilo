@@ -4,8 +4,7 @@
  * gentil e dizer exatamente o que fazer para ser aprovada na próxima tentativa.
  * A IA só melhora o texto; quem decide recusar é sempre o admin.
  */
-const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const MODELO = 'deepseek-chat';
+import { DEEPSEEK_URL, MODELO_TEXTO as MODELO, SEM_PENSAR } from './modelosIa.js';
 const LIMITE_DA_CHAMADA_MS = 30_000;
 export const TAMANHO_MAXIMO_MOTIVO = 300;
 
@@ -36,6 +35,7 @@ export async function melhorarMotivoRecusa(
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: MODELO,
+        ...SEM_PENSAR,
         temperature: 0.4,
         max_tokens: 200,
         messages: [

@@ -21,11 +21,10 @@ import { executarFerramenta, FERRAMENTAS, type VerificarPagamento } from './supp
 
 export const SENDER_ID_IA = 'ia';
 const MARCADOR_HUMANO = '[[HUMANO]]';
-// DeepSeek expõe API compatível com a da OpenAI. "deepseek-chat" responde direto;
-// o "deepseek-reasoner" gasta a saída raciocinando e demora mais, sem ganho para
-// conversa de suporte.
-const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const MODELO = 'deepseek-chat';
+// DeepSeek expõe API compatível com a da OpenAI. Texto no V4 Pro sem "pensar"
+// (resposta direta, sem gastar a saída raciocinando); prints no Flash, que lê
+// imagem (ver modelosIa.ts).
+import { DEEPSEEK_URL, MODELO_TEXTO as MODELO, MODELO_IMAGEM, SEM_PENSAR } from './modelosIa.js';
 const LIMITE_DA_CHAMADA_MS = 60_000;
 const ESPERA_ANTES_DE_RESPONDER_MS = 2_500; // junta mensagens mandadas em sequência
 const SILENCIO_APOS_HUMANO_MS = 12 * 60 * 60 * 1000;
@@ -43,6 +42,8 @@ export type Dependencias = {
   notificarEquipe: (texto: string, tipo?: 'suporte' | 'sugestoes') => Promise<void>;
   aoResponder?: (userId: string) => void;
   verificarPagamento?: VerificarPagamento;
+  /** Lê o arquivo de um print do chat ("/uploads/x.webp"); null se não achar. */
+  lerImagem?: (imageUrl: string) => Promise<{ mime: string; base64: string } | null>;
 };
 
 const PROMPT_BASE = `Você é a Lola, a assistente virtual do suporte do NoSigilo (a mesma Lola que anima A Casa, a boate virtual do site). Quando fizer sentido (primeira resposta da conversa ou se perguntarem quem está atendendo), apresente-se como Lola; não fique repetindo o nome. Você trabalha no suporte do NoSigilo, uma rede social adulta de encontros e swing no Brasil. Você atende, pelo chat de suporte do site, dois públicos: usuários do app e promotores (quem divulga o NoSigilo com link de convite e ganha comissão).
@@ -93,7 +94,7 @@ export async function iaAtendendo(deps: Pick<Dependencias, 'getSetting' | 'apiKe
   return !!deps.apiKey && (await deps.getSetting(CHAVE_ATIVA)) === '1';
 }
 
-async function transferirParaEquipe(deps: Dependencias, userId: string, motivo: string): Promise<void> {
+async function transferirParaEquipe(deps: Dependencias, userId: string, motivo: string, detalhe = ''): Promise<void> {
   await deps.setSetting(chaveTransferido(userId), new Date().toISOString());
   const usuario = (await queryOne(deps.db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [userId])) as any;
   const ultimas = (await queryAll(
@@ -108,7 +109,7 @@ async function transferirParaEquipe(deps: Dependencias, userId: string, motivo: 
     .map((m) => `• ${String(m.message).slice(0, 200)}`)
     .join('\n');
   await deps.notificarEquipe(
-    `🙋 <b>Suporte precisa de atendente</b> (${motivo})\n\n<b>${String(usuario?.name || 'Usuário')}</b>\n${String(usuario?.email || '')}\n\n${trecho}\n\nResponda pelo admin. A IA fica fora desta conversa até alguém da equipe responder.`
+    `🙋 <b>Suporte precisa de atendente</b> (${motivo})\n\n<b>${String(usuario?.name || 'Usuário')}</b>\n${String(usuario?.email || '')}\n\n${trecho}${detalhe ? `\n\n${detalhe}` : ''}\n\nResponda pelo admin. A IA fica fora desta conversa até alguém da equipe responder.`
   );
 }
 
@@ -239,6 +240,93 @@ async function perguntarMotivoDeNovo(deps: Dependencias, userId: string): Promis
   return true;
 }
 
+const PROMPT_PRINT = `Você é a Lola, do suporte do NoSigilo (rede social adulta brasileira de encontros e swing). Um cliente mandou print(s) da tela no chat de suporte. Olhe a(s) imagem(ns) e o texto dele e responda SOMENTE um JSON:
+{"o_que_vi": "...", "resumo_equipe": "...", "resposta_sugerida": "..."}
+- o_que_vi: uma frase curta, para o cliente, dizendo que tela aparece e a mensagem de erro ou aviso que se lê (copie o texto do aviso entre aspas). Sem começar com "Vi" nem "No print".
+- resumo_equipe: até 3 frases para a equipe: que tela é, o que está escrito de importante (erro, valor, data, status), e o que o cliente parece estar tentando fazer.
+- resposta_sugerida: a resposta que você daria ao cliente, em português do Brasil, cordial, de 1 a 3 frases, usando o manual abaixo. Não prometa nada que dependa da equipe (reembolso, liberar acesso, prazo).
+Regras: não invente o que não dá para ler; se a imagem estiver ilegível, diga isso. Se aparecer nudez ou foto íntima, não descreva corpo nem pessoa: diga só "uma foto de perfil" ou "uma imagem do feed". Nunca repita e-mail, telefone, CPF, senha ou número de cartão que apareça no print.
+
+MANUAL DO NOSIGILO:
+${MANUAL_DO_SISTEMA}`;
+
+const MAX_PRINTS_POR_VEZ = 3;
+
+/**
+ * Lê os prints pendentes com o modelo de imagem, diz ao cliente o que viu e
+ * transfere a conversa para a equipe com o resumo e uma resposta sugerida — a
+ * resposta de verdade sai do admin. Devolve false se não conseguiu ler nada
+ * (aí o fluxo de texto segue como antes).
+ */
+async function responderPrint(deps: Dependencias, userId: string, pendentes: any[]): Promise<boolean> {
+  const imagens: Array<{ mime: string; base64: string }> = [];
+  for (const m of pendentes.filter((x) => x.image_url).slice(-MAX_PRINTS_POR_VEZ)) {
+    const img = await deps.lerImagem!(String(m.image_url)).catch(() => null);
+    if (img) imagens.push(img);
+  }
+  if (imagens.length === 0) return false;
+  const textoDoCliente = pendentes.map((m) => String(m.message || '').trim()).filter(Boolean).join('\n').slice(0, 2000);
+
+  const comecouEm = Date.now();
+  digitandoAte.set(userId, comecouEm + 90_000);
+  let leitura: { o_que_vi?: string; resumo_equipe?: string; resposta_sugerida?: string } = {};
+  try {
+    const resposta = await fetch(DEEPSEEK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.apiKey}` },
+      signal: AbortSignal.timeout(LIMITE_DA_CHAMADA_MS),
+      body: JSON.stringify({
+        model: MODELO_IMAGEM,
+        ...SEM_PENSAR,
+        messages: [
+          { role: 'system', content: PROMPT_PRINT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: textoDoCliente ? `Texto do cliente: ${textoDoCliente}` : 'O cliente mandou só o print, sem texto.' },
+              ...imagens.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.base64}` } })),
+            ],
+          },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3,
+        max_tokens: 800,
+        stream: false,
+      }),
+    });
+    if (!resposta.ok) throw new Error(`DeepSeek (imagem) respondeu HTTP ${resposta.status}: ${(await resposta.text()).slice(0, 200)}`);
+    const corpo = (await resposta.json()) as any;
+    leitura = JSON.parse(String(corpo?.choices?.[0]?.message?.content || '{}'));
+  } catch (err) {
+    console.error('[suporte-ia] não leu o print:', err);
+    return false;
+  }
+  const oQueVi = String(leitura.o_que_vi || '').trim().slice(0, 400);
+  if (!oQueVi) return false;
+
+  // Escreveu de novo enquanto a IA lia: o novo agendamento responde lendo tudo.
+  if (temporizadores.has(userId)) return true;
+  const texto = `Recebi seu print 👀 Pelo que vi: ${oQueVi.replace(/\.$/, '')}. Já passei para a equipe conferir e te respondemos por aqui mesmo.`;
+  const espera = tempoDeDigitacaoMs(texto, Date.now() - comecouEm);
+  if (espera > 0) await new Promise((ok) => setTimeout(ok, espera));
+  if (temporizadores.has(userId)) return true;
+
+  await run(
+    deps.db,
+    'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [randomUUID(), userId, 'admin', SENDER_ID_IA, texto, new Date().toISOString()]
+  );
+  await deps.persist();
+  deps.aoResponder?.(userId);
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const detalhe = [
+    `🖼️ <b>A Lola leu o print:</b> ${esc(String(leitura.resumo_equipe || oQueVi).slice(0, 600))}`,
+    leitura.resposta_sugerida ? `💬 <b>Resposta sugerida:</b> ${esc(String(leitura.resposta_sugerida).slice(0, 600))}` : '',
+  ].filter(Boolean).join('\n\n');
+  await transferirParaEquipe(deps, userId, 'mandou print', detalhe);
+  return true;
+}
+
 async function responder(deps: Dependencias, userId: string): Promise<void> {
   const { db } = deps;
   // Já com a equipe e só respondeu "Olá boa noite" ao pedido de motivo (caso de
@@ -275,6 +363,16 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
     .find((m) => String(m.sender_type) === 'admin' && String(m.sender_id) !== SENDER_ID_IA);
   if (ultimoHumano && Date.now() - new Date(String(ultimoHumano.created_at)).getTime() < SILENCIO_APOS_HUMANO_MS) {
     return;
+  }
+
+  // Print novo (ainda sem resposta): a Lola lê, diz o que viu e passa para a
+  // equipe aprovar a resposta (pedido do dono, 18/11/2026). Se não conseguir
+  // ler, segue o fluxo de texto de antes (pede para descrever ou chama a equipe).
+  let ultimaResposta = -1;
+  mensagens.forEach((m, i) => { if (String(m.sender_type) !== 'promoter') ultimaResposta = i; });
+  const pendentes = mensagens.slice(ultimaResposta + 1);
+  if (deps.lerImagem && pendentes.some((m) => m.image_url)) {
+    if (await responderPrint(deps, userId, pendentes)) return;
   }
 
   type Mensagem = { role: 'system' | 'user' | 'assistant'; content: string };
@@ -327,6 +425,7 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
       signal: AbortSignal.timeout(LIMITE_DA_CHAMADA_MS),
       body: JSON.stringify({
         model: MODELO,
+        ...SEM_PENSAR,
         messages: conversa,
         tools: FERRAMENTAS,
         // Na última ida, sem consultas: ela precisa responder com o que já tem.
@@ -436,6 +535,7 @@ export async function responderSugestaoComIa(
     signal: AbortSignal.timeout(LIMITE_DA_CHAMADA_MS),
     body: JSON.stringify({
       model: MODELO,
+      ...SEM_PENSAR,
       messages: [
         { role: 'system', content: PROMPT_SUGESTAO },
         { role: 'user', content: `Categoria: ${ROTULO_CATEGORIA[sugestao.categoria] ?? sugestao.categoria}\nSugestão: ${sugestao.conteudo}` },

@@ -10,8 +10,7 @@
  */
 import type { DbHandle } from './db.js';
 
-const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const MODELO = 'deepseek-chat';
+import { DEEPSEEK_URL, MODELO_TEXTO as MODELO, SEM_PENSAR } from './modelosIa.js';
 const LIMITE_DA_CHAMADA_MS = 60_000;
 
 export const ACOES = ['banir', 'advertir', 'remover_conteudo', 'descartar', 'revisar_humano'] as const;
@@ -95,6 +94,7 @@ export async function analisarDenuncia(apiKey: string | undefined, ctx: Contexto
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: MODELO,
+        ...SEM_PENSAR,
         temperature: 0.2,
         max_tokens: 300,
         messages: [
