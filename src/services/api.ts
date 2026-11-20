@@ -1568,6 +1568,11 @@ export const adminVisitantesService = {
     const response = await apiClient.get('/admin/analytics/visitantes', { params: { dias } });
     return response.data;
   },
+  // Visitas (1ª tela da sessão) e cadastros por rede social; anúncio separado.
+  redesSociais: async (dias: number): Promise<{ dias: number; linhas: Array<{ rotulo: string; rede: string; pago: boolean; visitas: number; cadastros: number }> }> => {
+    const response = await apiClient.get('/admin/analytics/redes-sociais', { params: { dias } });
+    return response.data;
+  },
   // Origem gravada no próprio cadastro (desde 14/10/2026): 7, 30 ou 90 dias.
   cadastrosPorOrigem: async (dias: number): Promise<{ dias: number; canais: Array<{ canal: string; cadastros: number; pagantes: number; pctPagantes: number; mulheres: number; casais: number }> }> => {
     const response = await apiClient.get('/admin/analytics/cadastros-por-origem', { params: { dias } });

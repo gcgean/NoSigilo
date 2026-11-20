@@ -31,6 +31,7 @@ import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { registrarCasa } from './casa.js';
 import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.js';
 import { estatisticasDosVideos, gostoDoLeitor, ordenarParaLeitor, postsComVideo, tipoDePerfil, type CandidatoVideo } from './videosParaVoce.js';
+import { redeSocialDaVisita, rotuloDaRede } from './origemVisita.js';
 import { EVENTO_DESAFIO, PREMIO_DESAFIO_CENTS, DIAS_DAS_BOAS_VINDAS, diaEmBrasilia as diaBrasilia, quandoPostar, semanaDoDesafio, semanaPassada, situacaoNoRanking, taxaDaComissao, textoBoasVindas, textoMaterialNovo, type Posicao } from './promotores.js';
 import { DIAS_NA_ABA, MAX_AVISOS_POR_SEMANA, bloqueiosEntre, combinaComOQueProcura, lerLookingFor, leitorDaLinha, motivoSemBoasVindas, novosParaLeitor, perfisNovosDesde, registrarBoasVindas, textoDoAviso } from './novosNaRegiao.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail, sendCasaAbriuEmail } from './email.js';
@@ -386,10 +387,14 @@ function getReferrerDomain(referrer: string | null) {
   }
 }
 
-function inferOriginType(referrerDomain: string | null, utmSource: string | null) {
+function inferOriginType(referrerDomain: string | null, utmSource: string | null, userAgent: string | null = null) {
   const source = String(utmSource || referrerDomain || '').toLowerCase();
-  if (!source) return 'direct';
   if (source.includes('nosigilo.net') || source.includes('nosigilo.baselider.com.br')) return 'internal';
+  // Rede social pela UTM, pelo site de origem ou pelo navegador do app
+  // (20/11/2026): utm_source=ig/fb caía em "referral", e o app do Facebook sem
+  // referência caía em "direct".
+  if (redeSocialDaVisita({ dominio: referrerDomain, utmSource, userAgent })) return 'social';
+  if (!source) return 'direct';
   if (/(google|bing|yahoo|duckduckgo|search)/.test(source)) return 'search';
   if (/(instagram|facebook|fb|tiktok|x\.com|twitter|telegram|whatsapp|youtube|linkedin|kwai)/.test(source)) return 'social';
   if (/(email|mail|newsletter)/.test(source)) return 'email';
@@ -7691,7 +7696,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           limitText(payload.title, 255),
           referrer,
           referrerDomain,
-          inferOriginType(referrerDomain, utmSource),
+          inferOriginType(referrerDomain, utmSource, userAgent),
           utmSource,
           limitText(payload.utmMedium, 120),
           limitText(payload.utmCampaign, 120),
@@ -22364,6 +22369,62 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   // Cadastros por canal de origem (gravado no próprio cadastro desde 14/10/2026)
   // e quantos viraram pagantes. É a métrica confiável de canal: não depende do IP.
+  // Visitas e cadastros por rede social (20/11/2026: o dono começou a postar e
+  // anunciar no Facebook). Conta só a 1ª tela de cada sessão (o resto é
+  // "internal"). A classificação é feita em JS sobre linhas já agrupadas, então
+  // vale também para visitas antigas (antes, utm_source=ig/fb virava "referral").
+  app.get('/api/admin/analytics/redes-sociais', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const dias = [7, 30, 90].includes(Number(req.query.dias)) ? Number(req.query.dias) : 30;
+      const desde = new Date(Date.now() - dias * 86_400_000).toISOString();
+      const grupos = (await queryAll(
+        db,
+        `SELECT COALESCE(referrer_domain, '') AS d, LOWER(COALESCE(utm_source, '')) AS u, LOWER(COALESCE(utm_medium, '')) AS m,
+                CASE WHEN user_agent LIKE '%Instagram%' THEN 'instagram'
+                     WHEN user_agent LIKE '%FBAN%' OR user_agent LIKE '%FBAV%' OR user_agent LIKE '%FB_IAB%' THEN 'facebook'
+                     WHEN user_agent LIKE '%TikTok%' OR user_agent LIKE '%musical_ly%' OR user_agent LIKE '%BytedanceWebview%' THEN 'tiktok'
+                     ELSE '' END AS app,
+                COUNT(*) AS n
+         FROM site_visits
+         WHERE created_at >= ? AND COALESCE(origin_type, '') <> 'internal'
+         GROUP BY 1, 2, 3, 4`,
+        [desde]
+      )) as any[];
+      const porRede = new Map<string, { rede: string; pago: boolean; visitas: number; cadastros: number }>();
+      const somar = (rede: string, pago: boolean, campo: 'visitas' | 'cadastros', n: number) => {
+        const chave = rotuloDaRede({ rede, pago });
+        const atual = porRede.get(chave) ?? { rede, pago, visitas: 0, cadastros: 0 };
+        atual[campo] += n;
+        porRede.set(chave, atual);
+      };
+      for (const g of grupos) {
+        const r = redeSocialDaVisita({ dominio: g.d, utmSource: g.u, utmMedium: g.m, app: (g.app || null) as any });
+        if (r) somar(r.rede, r.pago, 'visitas', Number(g.n || 0));
+      }
+      // Cadastros: o canal gravado no cadastro (users.origem_canal), primeira palavra.
+      const canais = (await queryAll(
+        db,
+        `SELECT COALESCE(origem_canal, '') AS canal, COALESCE(origem_json, '') AS j, COUNT(*) AS n
+         FROM users WHERE created_at >= ? AND COALESCE(origem_canal, '') <> '' GROUP BY 1, 2`,
+        [desde]
+      )) as any[];
+      for (const c of canais) {
+        let medio = '';
+        try { medio = String(JSON.parse(c.j || '{}')?.utmMedium || ''); } catch { /* sem origem */ }
+        const canal = String(c.canal);
+        const r = redeSocialDaVisita({ utmSource: canal.toLowerCase().replace(/\s*\(.*$/, ''), utmMedium: medio, app: null });
+        if (r) somar(r.rede, r.pago, 'cadastros', Number(c.n || 0));
+      }
+      const linhas = [...porRede.entries()]
+        .map(([rotulo, v]) => ({ rotulo, ...v }))
+        .sort((a, b) => b.visitas - a.visitas || b.cadastros - a.cadastros);
+      res.json({ dias, linhas });
+    } catch (err) {
+      console.error('[analytics/redes-sociais]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
   app.get('/api/admin/analytics/cadastros-por-origem', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const pedido = Number(req.query.dias || 30);

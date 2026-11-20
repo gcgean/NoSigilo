@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Smartphone, TrendingDown, Users } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { adminVisitantesService, type CadastroPassos, type TesteEspiar, type UsoDoApp, type VisitantesRelatorio } from '@/services/api';
 
@@ -64,6 +65,7 @@ export default function AdminVisitantes() {
   const [teste, setTeste] = useState<TesteEspiar | null>(null);
   const [uso, setUso] = useState<UsoDoApp | null>(null);
   const [porCanal, setPorCanal] = useState<Awaited<ReturnType<typeof adminVisitantesService.cadastrosPorOrigem>> | null>(null);
+  const [redes, setRedes] = useState<Awaited<ReturnType<typeof adminVisitantesService.redesSociais>> | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
 
@@ -79,6 +81,7 @@ export default function AdminVisitantes() {
       ]);
       // A origem gravada no cadastro aceita 7, 30 ou 90 dias ("Hoje" usa 7).
       setPorCanal(await adminVisitantesService.cadastrosPorOrigem(dias === 1 ? 7 : dias).catch(() => null));
+      setRedes(await adminVisitantesService.redesSociais(dias === 1 ? 7 : dias).catch(() => null));
       setDados(relatorio);
       setPassos(cadastro);
       setTeste(ab);
@@ -318,6 +321,8 @@ export default function AdminVisitantes() {
 
           <Barra linhas={dados.porDominio} titulo="Sites que mais mandam gente" ajuda="Primeiro site externo de onde cada visitante veio (o próprio NoSigilo, o login com Google e a volta do pagamento não contam) e quanto virou cadastro depois da visita. Estimado pelo IP." />
 
+          {redes && <RedesSociais dados={redes} />}
+
           {porCanal && porCanal.canais.length > 0 && (
             <Card className="p-5 glass">
               <h3 className="font-semibold mb-1">Cadastros por origem (registrada no cadastro)</h3>
@@ -355,5 +360,54 @@ export default function AdminVisitantes() {
         </>
       )}
     </div>
+  );
+}
+
+const LINKS_FACEBOOK = [
+  { titulo: 'Postagem no Facebook (perfil, página, grupo)', url: 'https://nosigilo.net/?utm_source=facebook&utm_medium=social' },
+  { titulo: 'Anúncio no Facebook (Gerenciador de Anúncios)', url: 'https://nosigilo.net/?utm_source=facebook&utm_medium=paid_social&utm_campaign=NOME_DA_CAMPANHA' },
+];
+
+/** Visitas e cadastros por rede social, com Facebook/Instagram separados de anúncio. */
+function RedesSociais({ dados }: { dados: { dias: number; linhas: Array<{ rotulo: string; visitas: number; cadastros: number }> } }) {
+  const [copiado, setCopiado] = useState('');
+  const copiar = async (url: string) => {
+    try { await navigator.clipboard.writeText(url); setCopiado(url); setTimeout(() => setCopiado(''), 2000); } catch { /* o link fica visível para copiar à mão */ }
+  };
+  const max = Math.max(1, ...dados.linhas.map((l) => l.visitas));
+  return (
+    <Card className="p-5 glass">
+      <h3 className="font-semibold mb-1">Redes sociais (Facebook, Instagram...)</h3>
+      <p className="text-xs text-muted-foreground mb-4">
+        Quantas vezes cada rede trouxe alguém ao site nos últimos {dados.dias} dias (conta a chegada, não cada tela) e quantos cadastros vieram dela. Reconhece o link marcado (utm), o site de onde veio e o navegador de dentro do app do Facebook/Instagram. "(anúncio)" é o que veio de link de anúncio.
+      </p>
+      {dados.linhas.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhuma visita de rede social no período.</p>
+      ) : (
+        <div className="space-y-2">
+          {dados.linhas.map((l) => (
+            <div key={l.rotulo} className="text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="truncate">{l.rotulo}</span>
+                <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                  {l.visitas.toLocaleString('pt-BR')} visitas · {l.cadastros.toLocaleString('pt-BR')} cadastros
+                </span>
+              </div>
+              <div className="mt-1 h-2 rounded bg-secondary/40"><div className="h-2 rounded bg-primary" style={{ width: `${Math.max(2, (l.visitas / max) * 100)}%` }} /></div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-5 space-y-2 border-t pt-4">
+        <p className="text-xs font-medium">Links marcados para usar no Facebook</p>
+        {LINKS_FACEBOOK.map((l) => (
+          <div key={l.url} className="rounded-lg bg-secondary/30 p-3 text-xs space-y-2">
+            <p className="font-medium">{l.titulo}</p>
+            <p className="break-all text-muted-foreground">{l.url}</p>
+            <Button size="sm" variant="outline" onClick={() => void copiar(l.url)}>{copiado === l.url ? 'Copiado!' : 'Copiar link'}</Button>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
