@@ -123,7 +123,7 @@ export default function RadioDaCasa({ compacto = false }: { compacto?: boolean }
       <PopoverTrigger asChild>
         <button type="button" aria-label="Rádio da Casa: ver música atual"
           className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-fuchsia-300/40 bg-black/35 px-3 text-xs font-semibold text-white">
-          <Radio aria-hidden="true" className="h-4 w-4 text-fuchsia-300" /> Rádio
+          <Radio aria-hidden="true" className="h-4 w-4 text-fuchsia-300" /> <span className="hidden sm:inline">Rádio</span>
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" collisionPadding={12} aria-label="Rádio da Casa" className="z-[9992] max-w-[calc(100vw-24px)]">

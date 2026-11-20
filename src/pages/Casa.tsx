@@ -758,6 +758,16 @@ export default function Casa() {
   // Rolagem estilo WhatsApp: só desce sozinho se a pessoa já está no fim.
   // @menções: quem está na sala (e meu nome aqui, que pode ser apelido).
   const meuNomeNaSala = estado?.presentes.find((x) => x.id === estado.eu.idPublico)?.nome;
+  const botoesDaVisao = (classe: string) => (
+    <>
+      {info?.salas?.length ? (
+        <button type="button" onClick={() => { setPorDentro(true); void carregar(); }} className={cn('shrink-0 rounded-full border border-white/20 px-2.5 py-1.5 text-xs', classe)} title="Ver a sala por dentro" aria-label="Ver a sala por dentro">🎮</button>
+      ) : null}
+      <button type="button" onClick={trocarFundo3D} aria-pressed={fundo3D}
+        className={cn('shrink-0 rounded-full border px-2.5 py-1.5 text-xs', fundo3D ? 'border-fuchsia-400 bg-fuchsia-500/25' : 'border-white/20', classe)}
+        title={fundo3D ? 'Desligar a sala em 3D atrás do chat' : 'Ver a sala em 3D atrás do chat'} aria-label="Fundo 3D">🎬</button>
+    </>
+  );
   const nomesNaSala = (estado?.presentes ?? []).map((x) => x.nome);
   // Promotores não ficam na lista de presentes: os nomes deles vêm das falas, para o @ destacar.
   const nomesDosPromotores = [...new Set((estado?.mensagens ?? []).filter((x) => x.autor?.id.startsWith('promotor:')).map((x) => x.autor!.nome))];
@@ -1327,16 +1337,14 @@ export default function Casa() {
           </p>
         </div>
         <RadioDaCasa compacto />
-        {info?.salas?.length ? (
-          <button type="button" onClick={() => { setPorDentro(true); void carregar(); }} className="shrink-0 rounded-full border border-white/20 px-2.5 py-1.5 text-xs" title="Ver a sala por dentro" aria-label="Ver a sala por dentro">🎮</button>
-        ) : null}
-        <button type="button" onClick={trocarFundo3D} aria-pressed={fundo3D}
-          className={cn('shrink-0 rounded-full border px-2.5 py-1.5 text-xs', fundo3D ? 'border-fuchsia-400 bg-fuchsia-500/25' : 'border-white/20')}
-          title={fundo3D ? 'Desligar a sala em 3D atrás do chat' : 'Ver a sala em 3D atrás do chat'} aria-label="Fundo 3D">🎬</button>
+        {/* 🎮 e 🎬: no celular descem para a linha de ícones (20/11/2026: na
+            primeira linha espremiam o nome da sala até sumir em 375 px). */}
+        {botoesDaVisao('hidden sm:block')}
         {/* Ícones: no celular descem para uma 2ª linha, para o nome da sala não sumir. */}
         {/* Uma linha só (13/11/2026): o convite por extenso jogava 🔔🏆⚪ para uma
             3ª linha e roubava espaço do chat. Se não couber, rola para o lado. */}
         <div className="order-last flex w-full min-w-0 flex-nowrap items-center justify-between gap-1.5 overflow-x-auto [scrollbar-width:none] [&>*]:shrink-0 sm:order-none sm:w-auto sm:justify-end">
+        {botoesDaVisao('sm:hidden')}
         {estado.sala_anonima && estado.eu.podeFalar && !estado.eu.revelado && (
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
@@ -2126,7 +2134,10 @@ export default function Casa() {
                 </div>
               ) : (
               <div className="grid w-full gap-2">
-                {estado.eu.podeFalar && (
+                {/* O próprio cartão (tocar na sua foto) só mostra o perfil: drink,
+                    cabine, desafio e denúncia para si mesmo não fazem sentido. */}
+                {pessoaAberta.id === estado.eu.idPublico && <p className="text-xs text-muted-foreground">Este é você 😉</p>}
+                {estado.eu.podeFalar && pessoaAberta.id !== estado.eu.idPublico && (
                   <>
                     <div className="grid grid-cols-2 gap-2">
                       <Button variant="outline" onClick={() => void olhar(pessoaAberta)}>👀 Dar uma olhada</Button>
@@ -2154,12 +2165,12 @@ export default function Casa() {
                     })()}
                   </>
                 )}
-                <div className="flex gap-2">
+                {pessoaAberta.id !== estado.eu.idPublico && <div className="flex gap-2">
                   <Button variant="ghost" size="sm" className="flex-1 text-xs text-muted-foreground" onClick={() => void denunciar(pessoaAberta)}>🚩 Denunciar</Button>
                   {info?.souAdmin && <Button variant="ghost" size="sm" className="flex-1 text-xs text-destructive" onClick={() => void tirarDaCasa(pessoaAberta)}>🚫 Tirar da Casa</Button>}
-                </div>
+                </div>}
                 {estado.sala_anonima ? (
-                  estado.eu.podeFalar && <Button variant="outline" onClick={() => void bater(pessoaAberta)}>🕳️ Bater na parede (anônimo)</Button>
+                  estado.eu.podeFalar && pessoaAberta.id !== estado.eu.idPublico && <Button variant="outline" onClick={() => void bater(pessoaAberta)}>🕳️ Bater na parede (anônimo)</Button>
                 ) : (
                   <Button variant="outline" onClick={() => { setPerfilAberto(pessoaAberta.id); setPessoaAberta(null); }}>{comStoryNovo.has(pessoaAberta.id) ? 'Ver perfil e stories' : 'Ver perfil'}</Button>
                 )}
@@ -2211,7 +2222,8 @@ export default function Casa() {
             </>
           ) : (
             <>
-              <ContagemRegressiva alvo={info?.proximaAbertura ?? null} />
+              {/* Enquanto carrega, não mostra o horário (parecia "fechada" mesmo aberta). */}
+              {info ? <ContagemRegressiva alvo={info.proximaAbertura ?? null} /> : <p className="text-sm text-white/70">Carregando…</p>}
 
             </>
           )}
