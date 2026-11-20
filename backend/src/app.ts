@@ -32,7 +32,7 @@ import { registrarCasa } from './casa.js';
 import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.js';
 import { estatisticasDosVideos, gostoDoLeitor, ordenarParaLeitor, postsComVideo, tipoDePerfil, type CandidatoVideo } from './videosParaVoce.js';
 import { redeSocialDaVisita, rotuloDaRede } from './origemVisita.js';
-import { EVENTO_DESAFIO, PREMIO_DESAFIO_CENTS, DIAS_DAS_BOAS_VINDAS, diaEmBrasilia as diaBrasilia, quandoPostar, semanaDoDesafio, semanaPassada, situacaoNoRanking, taxaDaComissao, textoBoasVindas, textoMaterialNovo, type Posicao } from './promotores.js';
+import { EVENTO_DESAFIO, PREMIO_DESAFIO_CENTS, DIAS_DAS_BOAS_VINDAS, diaEmBrasilia as diaBrasilia, quandoPostar, semanaDoDesafio, semanaPassada, situacaoNoRanking, taxaDaComissao, textoBoasVindas, textoDaComissao, textoMaterialNovo, type Posicao } from './promotores.js';
 import { DIAS_NA_ABA, MAX_AVISOS_POR_SEMANA, bloqueiosEntre, combinaComOQueProcura, lerLookingFor, leitorDaLinha, motivoSemBoasVindas, novosParaLeitor, perfisNovosDesde, registrarBoasVindas, textoDoAviso } from './novosNaRegiao.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail, sendCasaAbriuEmail } from './email.js';
 import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, sendFimDoTesteEmail, montarLembreteRenovacao, montarVoltaRenovacao, montarFimDoTeste } from './emailRenovacao.js';
@@ -1244,7 +1244,11 @@ export async function syncHubAccessForUser(
   // polling de /subscriptions/status), não só pelo webhook. Garantimos a comissão
   // aqui também, senão assinaturas confirmadas pelo sync ficam sem comissão.
   if (result.accessStatus === 'licensed') {
-    await ensurePromoterCommission(db, userId, 990, 'access_synced', ctx);
+    // Licença estendida aqui = pagamento (o mesmo sinal da renovação abaixo).
+    // Antes este caminho só criava a PRIMEIRA comissão: renovação que chegava
+    // pelo sync (o caminho comum) não gerava comissão nem aviso ao promotor
+    // (20/11/2026). 'por-periodo' tem trava de uma por assinante por mês.
+    await ensurePromoterCommission(db, userId, 990, 'access_synced', ctx, pagouAgora ? 'por-periodo' : 'primeira');
   }
   if (pagouAgora) {
     await registrarPagamentoRenovacao(db, userId, ctx?.io);
@@ -1384,6 +1388,8 @@ async function ensurePromoterCommission(
       )
     : await queryOne(db, 'SELECT id FROM promoter_commissions WHERE subscriber_user_id = ? LIMIT 1', [subscriberUserId]);
   if (existing) return false;
+  // Já houve comissão deste assinante antes (outro mês)? Então é renovação.
+  const jaPagouAntes = !!(await queryOne(db, 'SELECT id FROM promoter_commissions WHERE subscriber_user_id = ? LIMIT 1', [subscriberUserId]));
 
   const subAmount = Number(subscriptionAmountCents || 990);
   // Faixa (20/11/2026): a partir da 11ª venda do mês a comissão sobe para 25%.
@@ -1411,8 +1417,6 @@ async function ensurePromoterCommission(
 
   // Notifica o promotor: "alguém assinou pelo seu convite" + push.
   try {
-    const commReais = (commAmount / 100).toFixed(2).replace('.', ',');
-    const title = '💰 Você ganhou uma comissão!';
 
     // O saldo e quanto falta para o Pix vao junto do aviso.
     //
@@ -1439,13 +1443,15 @@ async function ensurePromoterCommission(
     } catch {
       // Falha ao somar nao pode derrubar o aviso: cai no valor desta comissao.
     }
-    const emReais = (centavos: number) => (centavos / 100).toFixed(2).replace('.', ',');
-    const faltam = PROMOTER_MIN_PAYOUT_CENTS - saldoDaVez;
-    const linhaDoSaldo = faltam <= 0
-      ? `Seu saldo é R$ ${emReais(saldoDaVez)} e o Pix sai no dia 01 do mês que vem.`
-      : `Seu saldo é R$ ${emReais(saldoDaVez)}. O Pix sai no dia 01 de cada mês, a partir de R$ ${emReais(PROMOTER_MIN_PAYOUT_CENTS)} acumulados (faltam R$ ${emReais(faltam)}).`;
-    const linhaDaFaixa = taxa > 0.2 ? ' Você já está na faixa de 25% este mês! 🔥' : '';
-    const description = `Um convidado seu assinou o Premium. Você ganhou R$ ${commReais} de comissão, já aprovada. ${linhaDoSaldo}${linhaDaFaixa}`;
+    const indicado = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [subscriberUserId])) as any;
+    const { titulo: title, texto: description } = textoDaComissao({
+      renovacao: jaPagouAntes,
+      nomeDoIndicado: String(indicado?.name || ''),
+      comissaoCents: commAmount,
+      saldoCents: saldoDaVez,
+      minimoCents: PROMOTER_MIN_PAYOUT_CENTS,
+      faixaAlta: taxa > 0.2,
+    });
     await createNotification(
       { db, io: ctx?.io },
       {
@@ -1453,7 +1459,7 @@ async function ensurePromoterCommission(
         type: 'promoter.commission',
         title,
         description,
-        dataJson: { subscriberUserId, commissionCents: commAmount, period },
+        dataJson: { subscriberUserId, commissionCents: commAmount, period, renovacao: jaPagouAntes },
       }
     );
     if (ctx?.env) {
@@ -1465,7 +1471,7 @@ async function ensurePromoterCommission(
             title,
             body: description,
             url: '/promoter',
-            tag: `promoter-commission:${subscriberUserId}`,
+            tag: `promoter-commission:${subscriberUserId}:${period}`,
             data: { subscriberUserId },
           },
         }

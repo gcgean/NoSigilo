@@ -151,3 +151,43 @@ ${linhas}${extra}
 Legenda pronta e o seu link já estão lá, é só copiar e postar.
 Abrir a Central de divulgação: nosigilo.net/promoter/artes`;
 }
+
+/** "01/12": o dia 01 do mês seguinte a `agora`, em Brasília (quando sai o Pix). */
+export function diaDoProximoPix(agora: Date = new Date()): string {
+  const [ano, mes] = diaEmBrasilia(agora).split('-').map(Number);
+  const proximo = mes === 12 ? 1 : mes + 1;
+  return `01/${String(proximo).padStart(2, '0')}`;
+}
+
+const reais = (centavos: number) => (centavos / 100).toFixed(2).replace('.', ',');
+
+/**
+ * Aviso de comissão (20/11/2026, pedido do dono): toda assinatura e toda
+ * renovação de um indicado avisa o promotor, com o quanto ele já acumulou
+ * para o Pix do dia 01. É a recompensa vista na hora, a cada pagamento.
+ */
+export function textoDaComissao(c: {
+  renovacao: boolean;
+  nomeDoIndicado: string;
+  comissaoCents: number;
+  saldoCents: number;
+  minimoCents: number;
+  faixaAlta: boolean;
+  agora?: Date;
+}): { titulo: string; texto: string } {
+  const nome = primeiroNome(c.nomeDoIndicado) || 'Um indicado seu';
+  const pix = diaDoProximoPix(c.agora);
+  const titulo = c.renovacao
+    ? `🔁 ${nome} renovou! +R$ ${reais(c.comissaoCents)} pra você`
+    : `💰 ${nome} assinou pelo seu link! +R$ ${reais(c.comissaoCents)}`;
+  const acao = c.renovacao
+    ? `${nome} renovou o Premium e você ganhou mais R$ ${reais(c.comissaoCents)} de comissão, já aprovada.`
+    : `${nome} assinou o Premium pelo seu convite e você ganhou R$ ${reais(c.comissaoCents)} de comissão, já aprovada.`;
+  const faltam = c.minimoCents - c.saldoCents;
+  const saldo = faltam <= 0
+    ? `Você já acumulou R$ ${reais(c.saldoCents)} para o Pix do dia ${pix} 💸`
+    : `Você já acumulou R$ ${reais(c.saldoCents)}. Faltam R$ ${reais(faltam)} para o Pix do dia ${pix} (mínimo de R$ ${reais(c.minimoCents)}).`;
+  const faixa = c.faixaAlta ? ' Você está na faixa de 25% este mês! 🔥' : '';
+  const recorrencia = c.renovacao ? '' : ' E toda vez que renovar, cai mais comissão pra você.';
+  return { titulo, texto: `${acao} ${saldo}${faixa}${recorrencia}` };
+}

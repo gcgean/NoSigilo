@@ -8,6 +8,7 @@ import { initDb, queryAll, queryOne, run } from './db.js';
 import { createApp } from './app.js';
 import type { DbHandle } from './db.js';
 import { quandoPostar, semanaDoDesafio, semanaPassada, situacaoNoRanking, taxaDaComissao, textoBoasVindas } from './promotores.js';
+import { diaDoProximoPix, textoDaComissao } from './promotores.js';
 
 const SEGREDO = 'segredo-webhook-promotores';
 
@@ -245,5 +246,26 @@ describe('engajamento dos promotores (rotas e tarefas)', () => {
     const depois = (await queryAll(db, 'SELECT message FROM promoter_support_messages WHERE promoter_user_id = ? ORDER BY created_at', [novo.id])) as any[];
     expect(depois).toHaveLength(2);
     expect(depois[1].message).toContain('story hoje');
+  });
+});
+
+describe('aviso de comissão', () => {
+  const agora = new Date('2026-11-20T15:00:00Z');
+  it('nova assinatura: nome, valor, quanto acumulou e quanto falta para o Pix do dia 01', () => {
+    const { titulo, texto } = textoDaComissao({ renovacao: false, nomeDoIndicado: 'Ana Paula', comissaoCents: 198, saldoCents: 594, minimoCents: 1000, faixaAlta: false, agora });
+    expect(titulo).toBe('💰 Ana assinou pelo seu link! +R$ 1,98');
+    expect(texto).toContain('Você já acumulou R$ 5,94. Faltam R$ 4,06 para o Pix do dia 01/12');
+    expect(texto).toContain('toda vez que renovar');
+  });
+  it('renovação com saldo acima do mínimo', () => {
+    const { titulo, texto } = textoDaComissao({ renovacao: true, nomeDoIndicado: 'Casal Sigilo', comissaoCents: 248, saldoCents: 1500, minimoCents: 1000, faixaAlta: true, agora });
+    expect(titulo).toBe('🔁 Casal renovou! +R$ 2,48 pra você');
+    expect(texto).toContain('Você já acumulou R$ 15,00 para o Pix do dia 01/12 💸');
+    expect(texto).toContain('faixa de 25%');
+    expect(texto).not.toContain('toda vez que renovar');
+  });
+  it('dezembro vira 01/01 e sem nome cai em "Um indicado seu"', () => {
+    expect(diaDoProximoPix(new Date('2026-12-15T12:00:00Z'))).toBe('01/01');
+    expect(textoDaComissao({ renovacao: false, nomeDoIndicado: '', comissaoCents: 198, saldoCents: 198, minimoCents: 1000, faixaAlta: false, agora }).titulo).toContain('Um indicado seu');
   });
 });
