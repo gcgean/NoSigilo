@@ -1358,7 +1358,7 @@ export default function Casa() {
           } catch (error) {
             if (!(error instanceof DOMException && error.name === 'AbortError')) toast({ title: 'Não foi possível compartilhar o convite', variant: 'destructive' });
           }
-        }}>➕ Convidar</button>
+        }} aria-label="Convidar">➕<span className="hidden sm:inline"> Convidar</span></button>
         {minhasCabines.length > 0 && (
           <button type="button" onClick={() => setListaDeCabines(true)} className="relative rounded-full border border-rose-400/60 bg-rose-600/30 px-2 py-1.5 text-xs" aria-label="Minhas cabines" title="Minhas cabines">
             🚪
