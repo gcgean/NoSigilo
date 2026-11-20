@@ -1058,6 +1058,10 @@ export const promoterService = {
   publishAsset: async (data: { title: string; caption: string; mediaId: string; destination: 'community' | 'casa'; usarEm?: string; usarAte?: string }) => (await apiClient.post('/admin/promoter-assets', data)).data,
   updateAsset: async (id: string, data: Pick<PromoterAsset, 'title' | 'caption' | 'destination'> & { usarEm?: string; usarAte?: string }) =>
     (await apiClient.patch(`/admin/promoter-assets/${encodeURIComponent(id)}`, data)).data,
+  publicAssetsLink: async (renovar = false): Promise<{ token: string }> =>
+    (renovar ? await apiClient.post('/admin/promoter-assets/public-link/renew') : await apiClient.get('/admin/promoter-assets/public-link')).data,
+  publicAssets: async (token: string): Promise<{ assets: Array<Pick<PromoterAsset, 'id' | 'title' | 'caption' | 'destination' | 'createdAt' | 'url' | 'mimeType' | 'quandoPostar'>> }> =>
+    (await apiClient.get(`/public/materiais/${encodeURIComponent(token)}`)).data,
   restoreAsset: async (id: string) => (await apiClient.post(`/admin/promoter-assets/${encodeURIComponent(id)}/restore`)).data,
   removeAsset: async (id: string) => (await apiClient.delete(`/admin/promoter-assets/${encodeURIComponent(id)}`)).data,
   // Posição do próprio promotor no ranking do mês (sem expor os outros).

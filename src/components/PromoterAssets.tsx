@@ -11,6 +11,28 @@ import PromoterCasaKit from '@/components/PromoterCasaKit';
 
 const diaDaPublicacao = (date: string) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(new Date(date));
 
+function PublicLinkBox({ copy }: { copy: (text: string) => void | Promise<void> }) {
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { promoterService.publicAssetsLink().then((r) => setToken(r.token)).catch(() => setToken('')); }, []);
+  const link = token ? `${getSiteUrl()}/materiais/${token}` : '';
+  const renovar = async () => {
+    if (!window.confirm('Gerar um link novo? O link atual para de funcionar na hora.')) return;
+    setBusy(true);
+    try { setToken((await promoterService.publicAssetsLink(true)).token); } finally { setBusy(false); }
+  };
+  return <div className="glass rounded-2xl p-5 space-y-3">
+    <h2 className="font-semibold">Link público para baixar (sem login)</h2>
+    <p className="text-sm text-muted-foreground">Quem tiver este link vê e baixa os materiais ativos, sem entrar no site. Arquivados não aparecem. O resto do site continua exigindo login.</p>
+    <Input readOnly value={link || 'Carregando…'} onFocus={(e) => e.currentTarget.select()} />
+    <div className="flex flex-wrap gap-2">
+      <Button disabled={!link} onClick={() => void copy(link)}>Copiar link público</Button>
+      {link && <Button asChild variant="outline"><a href={link} target="_blank" rel="noreferrer">Abrir</a></Button>}
+      <Button variant="outline" disabled={busy || !link} onClick={() => void renovar()}>{busy ? 'Gerando…' : 'Gerar novo link'}</Button>
+    </div>
+  </div>;
+}
+
 export default function PromoterAssets({ admin = false }: { admin?: boolean }) {
   const { toast } = useToast();
   const [assets, setAssets] = useState<PromoterAsset[]>([]);
@@ -138,6 +160,7 @@ export default function PromoterAssets({ admin = false }: { admin?: boolean }) {
   return <section className="max-w-4xl mx-auto w-full space-y-5 pb-6">
     {!admin && <Link to="/promoter" className="inline-block py-3 text-primary">← Voltar ao meu painel</Link>}
     <div><h1 className="text-2xl font-bold">Central de divulgação</h1><p className="text-sm text-muted-foreground mt-2">Fotos, vídeos e textos oficiais para divulgar com a sua indicação.</p>{admin && <Button variant="outline" className="mt-3" onClick={() => void copy(`${getSiteUrl()}/promoter/artes`)}>Copiar endereço da central</Button>}</div>
+    {admin && <PublicLinkBox copy={copy} />}
     {admin && <PromoterAssetsEngagement />}
     {admin ? <div id="promoter-asset-form" className="glass rounded-2xl p-5 space-y-4">
       <h2 className="font-semibold">{editing ? 'Editar material' : 'Publicar fotos e vídeos'}</h2>

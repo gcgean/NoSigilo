@@ -56,6 +56,7 @@ const Match = lazy(() => import("./pages/Match"));
 const Radar = lazy(() => import("./pages/Radar"));
 const Casa = lazy(() => import("./pages/Casa"));
 const ACasaPublica = lazy(() => import("./pages/ACasaPublica"));
+const MateriaisPublicos = lazy(() => import("./pages/MateriaisPublicos"));
 const Stories = lazy(() => import("./pages/Stories"));
 const Profile = lazy(() => import("./pages/Profile"));
 const ProfileVisitors = lazy(() => import("./pages/ProfileVisitors"));
@@ -117,6 +118,7 @@ const App = () => (
                     <Route path="/espiar" element={<Espiar />} />
                     <Route path="/a-casa" element={<ACasaPublica />} />
                     <Route path="/acasa" element={<ACasaPublica />} />
+                    <Route path="/materiais/:token" element={<MateriaisPublicos />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/instalar" element={<Instalar />} />
                     <Route path="/vem" element={<Vem />} />

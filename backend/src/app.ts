@@ -6094,6 +6094,39 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     });
   });
 
+  // Link público dos materiais (20/11/2026, pedido do dono): quem tem o link
+  // baixa as artes ativas sem login. O token fica em system_settings; gerar um
+  // novo invalida o anterior. Só materiais ativos, prontos e não privados.
+  const CHAVE_LINK_PUBLICO_MATERIAIS = 'promoter_assets_public_token';
+  const tokenDosMateriais = async (renovar = false) => {
+    let token = renovar ? null : await getSystemSetting(db, CHAVE_LINK_PUBLICO_MATERIAIS);
+    if (!token) {
+      token = randomBytes(16).toString('hex');
+      await setSystemSetting(db, CHAVE_LINK_PUBLICO_MATERIAIS, token);
+    }
+    return String(token);
+  };
+  app.get('/api/admin/promoter-assets/public-link', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    res.json({ token: await tokenDosMateriais() });
+  });
+  app.post('/api/admin/promoter-assets/public-link/renew', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    res.json({ token: await tokenDosMateriais(true) });
+  });
+  app.get('/api/public/materiais/:token', async (req, res) => {
+    const pedido = String(req.params.token || '');
+    const atual = await getSystemSetting(db, CHAVE_LINK_PUBLICO_MATERIAIS);
+    const ok = !!atual && /^[a-f0-9]{32}$/.test(pedido) && pedido.length === String(atual).length
+      && timingSafeEqual(Buffer.from(pedido), Buffer.from(String(atual)));
+    if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+    const rows = await queryAll(db, `SELECT a.id, a.title, a.caption, a.destination, a.created_at, a.usar_em, a.usar_ate, m.filename, m.mime_type
+      FROM promoter_assets a JOIN media m ON m.id = a.media_id
+      WHERE m.is_private = 0 AND a.archived_at IS NULL AND COALESCE(m.processando,0) = 0
+      ORDER BY a.created_at DESC, a.id DESC`) as any[];
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.json({ assets: rows.map((r) => ({ id: String(r.id), title: String(r.title), caption: String(r.caption || ''), destination: r.destination, createdAt: String(r.created_at), quandoPostar: quandoPostar(r.usar_em, r.usar_ate), url: '/uploads/' + r.filename, mimeType: String(r.mime_type || '') })) });
+  });
+
   // Central compartilhada: somente admins publicam; promotores acessam com sua conta.
   app.get('/api/promoter/assets', requireAuth(env, db), async (req, res) => {
     const account = await queryOne(db, 'SELECT is_admin FROM users WHERE id = ?', [req.auth!.userId]) as any;
