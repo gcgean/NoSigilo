@@ -14589,10 +14589,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // depois calcula as contagens (fotos, vídeos, curtidas, conversas) para
     // esses 100. Antes as contagens rodavam para TODOS os candidatos antes do
     // LIMIT e a consulta levava ~0,6 s em média (até 3,6 s).
+    // O passo 1 devolve só o id (e as faixas): ordenar as linhas inteiras de
+    // users (~2 KB cada, milhares de candidatos) custava ~110 ms por chamada;
+    // só o id, ~40 ms (medido em produção, 20/11/2026). O resto do perfil vem
+    // no passo 2, junto com as contagens.
     const rows = await queryAll(
       db,
       `
-      SELECT u.*,
+      SELECT u.id,
         ${proximityBandExpr} AS match_proximity_band,
         ${activityTierExpr} AS match_activity_tier
       FROM users u
@@ -14620,7 +14624,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (escolhidos.length > 0) {
       const extras = (await queryAll(
         db,
-        `SELECT u.id,
+        `SELECT u.*,
         (
           SELECT m.filename
           FROM media m
