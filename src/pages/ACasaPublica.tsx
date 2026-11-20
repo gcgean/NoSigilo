@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import apiClient from '@/utils/apiClient';
+import { authService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { guardarDestinoPosCadastro } from '@/utils/destinoPosCadastro';
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,9 @@ export default function ACasaPublica() {
   const [info, setInfo] = useState<Publico | null>(null);
   const [agora, setAgora] = useState(Date.now());
   const convite = params.get('invite')?.trim() || '';
+
+  // Visita pelo link do promotor conta no painel dele.
+  useEffect(() => { if (convite) void authService.registrarVisitaDoConvite(convite); }, [convite]);
 
   useEffect(() => {
     document.title = 'A Casa: casa liberal online e boate liberal virtual | NoSigilo';

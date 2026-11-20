@@ -51,8 +51,8 @@ const STEPS = [
   {
     icon: Wallet,
     color: 'bg-yellow-500/15 text-yellow-500',
-    title: 'Receba 20% via Pix todo mês',
-    desc: 'Cada assinatura confirmada pelo seu convite gera R$1,98 de comissão para você.',
+    title: 'Receba até 25% via Pix todo dia 01',
+    desc: 'Cada assinatura paga pelo seu convite gera R$1,98 de comissão, aprovada na hora. A partir da 11ª venda no mês, 25%.',
   },
 ];
 
@@ -72,7 +72,7 @@ const FAQS = [
   },
   {
     q: 'Como recebo o pagamento?',
-    a: 'Via Pix, na chave que você cadastra ao ativar o perfil de promotor. O pagamento sai até o dia 10 do mês seguinte, desde que o seu saldo tenha atingido R$ 10,00.',
+    a: 'Via Pix, na chave que você cadastra ao ativar o perfil de promotor. A comissão é aprovada assim que o seu indicado paga, e o Pix sai no dia 01 do mês seguinte, desde que o seu saldo tenha atingido R$ 10,00.',
   },
   {
     q: 'Existe valor mínimo para receber?',
@@ -206,9 +206,9 @@ export default function PromoterLanding() {
           {/* Big stat */}
           <div className="grid grid-cols-3 gap-4 max-w-sm mx-auto pt-2">
             {[
-              { value: '20%', label: 'de comissão' },
+              { value: 'até 25%', label: 'de comissão' },
               { value: 'R$0', label: 'para participar' },
-              { value: 'Pix', label: 'todo mês' },
+              { value: 'Pix', label: 'todo dia 01' },
             ].map((s) => (
               <div key={s.label} className="rounded-2xl bg-white/15 backdrop-blur-sm p-3 text-center">
                 <p className="text-2xl font-extrabold text-yellow-300">{s.value}</p>

@@ -31,6 +31,7 @@ import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { registrarCasa } from './casa.js';
 import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.js';
 import { estatisticasDosVideos, gostoDoLeitor, ordenarParaLeitor, postsComVideo, tipoDePerfil, type CandidatoVideo } from './videosParaVoce.js';
+import { EVENTO_DESAFIO, PREMIO_DESAFIO_CENTS, DIAS_DAS_BOAS_VINDAS, diaEmBrasilia as diaBrasilia, quandoPostar, semanaDoDesafio, semanaPassada, situacaoNoRanking, taxaDaComissao, textoBoasVindas, textoMaterialNovo, type Posicao } from './promotores.js';
 import { DIAS_NA_ABA, MAX_AVISOS_POR_SEMANA, bloqueiosEntre, combinaComOQueProcura, lerLookingFor, leitorDaLinha, motivoSemBoasVindas, novosParaLeitor, perfisNovosDesde, registrarBoasVindas, textoDoAviso } from './novosNaRegiao.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail, sendCasaAbriuEmail } from './email.js';
 import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, sendFimDoTesteEmail, montarLembreteRenovacao, montarVoltaRenovacao, montarFimDoTeste } from './emailRenovacao.js';
@@ -1380,7 +1381,15 @@ async function ensurePromoterCommission(
   if (existing) return false;
 
   const subAmount = Number(subscriptionAmountCents || 990);
-  const commAmount = Math.round(subAmount * 0.20);
+  // Faixa (20/11/2026): a partir da 11ª venda do mês a comissão sobe para 25%.
+  // Conta as vendas já registradas no mês (prêmio do desafio não é venda).
+  const vendasNoMes = (await queryOne(
+    db,
+    "SELECT COUNT(*) AS c FROM promoter_commissions WHERE promoter_user_id = ? AND period = ? AND status <> 'cancelled' AND COALESCE(event_type, '') <> ?",
+    [inviterUserId, period, EVENTO_DESAFIO]
+  )) as any;
+  const taxa = taxaDaComissao(Number(vendasNoMes?.c || 0));
+  const commAmount = Math.round(subAmount * taxa);
   await run(
     db,
     // ON CONFLICT: o indice unico (subscriber_user_id, period) da migracao 086
@@ -1389,7 +1398,9 @@ async function ensurePromoterCommission(
     db.mode === 'pg'
       ? 'INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING'
       : 'INSERT OR IGNORE INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [randomUUID(), inviterUserId, subscriberUserId, subAmount, commAmount, 'pending', period, eventType, nowIso()]
+    // Aprovada assim que o indicado paga (pedido do dono, 20/11/2026); o Pix
+    // sai no dia 01 do mês seguinte para quem tiver o mínimo aprovado.
+    [randomUUID(), inviterUserId, subscriberUserId, subAmount, commAmount, 'approved', period, eventType, nowIso()]
   );
   console.log(`[promoter] commission created (${eventType}): promoter=${inviterUserId} subscriber=${subscriberUserId} R$${(commAmount / 100).toFixed(2)}`);
 
@@ -1426,9 +1437,10 @@ async function ensurePromoterCommission(
     const emReais = (centavos: number) => (centavos / 100).toFixed(2).replace('.', ',');
     const faltam = PROMOTER_MIN_PAYOUT_CENTS - saldoDaVez;
     const linhaDoSaldo = faltam <= 0
-      ? `Seu saldo é R$ ${emReais(saldoDaVez)} — já dá para receber via Pix.`
-      : `Seu saldo é R$ ${emReais(saldoDaVez)}. O Pix sai a partir de R$ ${emReais(PROMOTER_MIN_PAYOUT_CENTS)} acumulados (faltam R$ ${emReais(faltam)}).`;
-    const description = `Um convidado seu assinou o Premium. Você ganhou R$ ${commReais} de comissão. ${linhaDoSaldo}`;
+      ? `Seu saldo é R$ ${emReais(saldoDaVez)} e o Pix sai no dia 01 do mês que vem.`
+      : `Seu saldo é R$ ${emReais(saldoDaVez)}. O Pix sai no dia 01 de cada mês, a partir de R$ ${emReais(PROMOTER_MIN_PAYOUT_CENTS)} acumulados (faltam R$ ${emReais(faltam)}).`;
+    const linhaDaFaixa = taxa > 0.2 ? ' Você já está na faixa de 25% este mês! 🔥' : '';
+    const description = `Um convidado seu assinou o Premium. Você ganhou R$ ${commReais} de comissão, já aprovada. ${linhaDoSaldo}${linhaDaFaixa}`;
     await createNotification(
       { db, io: ctx?.io },
       {
@@ -5883,6 +5895,51 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ promoter: { id: String(r.id), fullName: String(r.full_name), pixKey: String(r.pix_key), whatsapp: r.whatsapp ? String(r.whatsapp) : null, contactEmail: r.contact_email ? String(r.contact_email) : null, status: String(r.status), activatedAt: String(r.activated_at) } });
   });
 
+  // Ranking do desafio semanal: cadastros pelo link na semana, só de promotor
+  // ativo. Não conta conta banida/desativada nem dois cadastros do mesmo IP
+  // (fazer conta falsa para ganhar o prêmio é o risco óbvio).
+  const rankingDoDesafio = async (inicio: string, fim: string): Promise<Posicao[]> => {
+    const rows = (await queryAll(
+      db,
+      `SELECT l.inviter_user_id AS user_id, MAX(pu.name) AS nome,
+              COUNT(DISTINCT COALESCE(inv.registration_ip_hash, inv.id)) AS cadastros
+       FROM invite_link_entries e
+       JOIN invite_links l ON l.id = e.invite_link_id
+       JOIN promoters p ON p.user_id = l.inviter_user_id AND p.status = 'active'
+       JOIN users pu ON pu.id = l.inviter_user_id
+       JOIN users inv ON inv.id = e.invitee_user_id
+       WHERE e.created_at >= ? AND e.created_at < ?
+         AND COALESCE(inv.is_banned, 0) = 0 AND COALESCE(inv.is_deactivated, 0) = 0
+       GROUP BY l.inviter_user_id
+       ORDER BY cadastros DESC, MIN(e.created_at) ASC`,
+      [inicio, fim]
+    )) as any[];
+    return rows.map((r) => ({ userId: String(r.user_id), nome: String(r.nome || ''), cadastros: Number(r.cadastros || 0) }));
+  };
+
+  // Visita ao link de convite (página do convite e /acasa?invite=). Uma por
+  // visitante por dia; o visitante é um hash de IP + navegador, sem guardar o IP.
+  app.post('/api/invites/public/:token/visita', async (req, res) => {
+    try {
+      const token = String(req.params.token || '').trim().slice(0, 200);
+      const link = token ? (await queryOne(db, 'SELECT inviter_user_id FROM invite_links WHERE invite_token = ? LIMIT 1', [token])) as any : null;
+      if (link) {
+        const visitante = createHash('sha256').update(`${getRequestIp(req) || ''}|${String(req.headers['user-agent'] || '')}`).digest('hex').slice(0, 32);
+        await run(
+          db,
+          db.mode === 'pg'
+            ? 'INSERT INTO promoter_link_clicks (inviter_user_id, visitante, dia, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING'
+            : 'INSERT OR IGNORE INTO promoter_link_clicks (inviter_user_id, visitante, dia, created_at) VALUES (?, ?, ?, ?)',
+          [String(link.inviter_user_id), visitante, diaBrasilia(), nowIso()]
+        );
+        await persist();
+      }
+    } catch (err) {
+      console.error('[promotor] visita ao link falhou:', err);
+    }
+    res.json({ ok: true });
+  });
+
   app.get('/api/promoter/dashboard', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const promoterRow = await queryOne(db, 'SELECT * FROM promoters WHERE user_id = ? LIMIT 1', [userId]);
@@ -5949,8 +6006,69 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       {} as Record<string, number>
     );
 
+    // Retorno rápido (hoje, 7 dias, mês), faixa de comissão e desafio da semana.
+    const hojeBr = diaBrasilia();
+    const seteDiasBr = diaBrasilia(new Date(Date.now() - 6 * 86_400_000));
+    const inicioHoje = new Date(`${hojeBr}T03:00:00.000Z`).toISOString();
+    const inicio7d = new Date(`${seteDiasBr}T03:00:00.000Z`).toISOString();
+    const mesAtual = new Date().toISOString().slice(0, 7);
+    const cliques = (await queryOne(
+      db,
+      'SELECT SUM(CASE WHEN dia = ? THEN 1 ELSE 0 END) AS hoje, COUNT(*) AS semana FROM promoter_link_clicks WHERE inviter_user_id = ? AND dia >= ?',
+      [hojeBr, userId, seteDiasBr]
+    )) as any;
+    const cadastros = (await queryOne(
+      db,
+      `SELECT SUM(CASE WHEN e.created_at >= ? THEN 1 ELSE 0 END) AS hoje, COUNT(*) AS semana
+       FROM invite_link_entries e JOIN invite_links l ON l.id = e.invite_link_id
+       WHERE l.inviter_user_id = ? AND e.created_at >= ?`,
+      [inicioHoje, userId, inicio7d]
+    )) as any;
+    const vendas = (await queryOne(
+      db,
+      `SELECT SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS hoje, COUNT(*) AS mes
+       FROM promoter_commissions
+       WHERE promoter_user_id = ? AND period = ? AND status <> 'cancelled' AND COALESCE(event_type, '') <> ?`,
+      [inicioHoje, userId, mesAtual, EVENTO_DESAFIO]
+    )) as any;
+    const vendasNoMes = Number(vendas?.mes || 0);
+    const semana = semanaDoDesafio();
+    const ranking = await rankingDoDesafio(semana.inicio, semana.fim);
+    const minhaSituacao = situacaoNoRanking(ranking, userId);
+    const ultimoDesafio = (await queryOne(
+      db,
+      `SELECT d.semana, d.cadastros, u.name FROM promoter_desafios d LEFT JOIN users u ON u.id = d.vencedor_user_id
+       WHERE d.vencedor_user_id IS NOT NULL ORDER BY d.semana DESC LIMIT 1`
+    )) as any;
+
     res.json({
       promoter: { id: String(pr.id), fullName: String(pr.full_name), pixKey: String(pr.pix_key), status: String(pr.status), activatedAt: String(pr.activated_at) },
+      hoje: {
+        cliquesHoje: Number(cliques?.hoje || 0),
+        cliques7d: Number(cliques?.semana || 0),
+        cadastrosHoje: Number(cadastros?.hoje || 0),
+        cadastros7d: Number(cadastros?.semana || 0),
+        vendasHoje: Number(vendas?.hoje || 0),
+        vendasMes: vendasNoMes,
+      },
+      faixa: {
+        vendasMes: vendasNoMes,
+        vendasParaFaixaAlta: 10,
+        taxaAtual: Math.round(taxaDaComissao(vendasNoMes) * 100),
+      },
+      desafio: {
+        semana: semana.chave,
+        terminaEm: semana.fim,
+        premioCents: PREMIO_DESAFIO_CENTS,
+        posicao: minhaSituacao.posicao,
+        cadastros: minhaSituacao.cadastros,
+        faltamParaSubir: minhaSituacao.faltamParaSubir,
+        participantes: ranking.length,
+        // Sem nomes dos outros (mesma regra do ranking do mês); só o campeão da
+        // semana passada aparece com nome, que é o destaque do prêmio.
+        top: ranking.slice(0, 3).map((r) => ({ cadastros: r.cadastros, voce: r.userId === userId })),
+        ultimoCampeao: ultimoDesafio ? { nome: String(ultimoDesafio.name || ''), cadastros: Number(ultimoDesafio.cadastros || 0), semana: String(ultimoDesafio.semana) } : null,
+      },
       stats: {
         invitesSent: Number(invitesRow?.c ?? 0),
         totalSignups: Number(signupsRow?.c ?? 0),
@@ -5983,7 +6101,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     if (Number(account?.is_admin) !== 1 && !promoter) { res.status(403).json({ error: 'promoter_required' }); return; }
     const isAdmin = Number(account?.is_admin) === 1 && req.query.view !== 'promoter';
     const rows = await queryAll(db, `SELECT a.*, m.filename, m.mime_type, m.processando, v.viewed_at FROM promoter_assets a JOIN media m ON m.id = a.media_id LEFT JOIN promoter_asset_views v ON v.asset_id = a.id AND v.user_id = ? WHERE m.is_private = 0 ${isAdmin ? '' : 'AND a.archived_at IS NULL AND COALESCE(m.processando,0) = 0'} ORDER BY a.created_at DESC, a.id DESC`, [req.auth!.userId]) as any[];
-    const assets = rows.map((r) => ({ id: r.id, title: r.title, caption: r.caption, destination: r.destination, createdAt: r.created_at, url: '/uploads/' + r.filename, mimeType: r.mime_type, processing: !!Number(r.processando), archivedAt: r.archived_at, isNew: !r.archived_at && !r.viewed_at && !Number(r.processando) }));
+    const assets = rows.map((r) => ({ id: r.id, title: r.title, caption: r.caption, destination: r.destination, createdAt: r.created_at, usarEm: r.usar_em ?? null, usarAte: r.usar_ate ?? null, quandoPostar: quandoPostar(r.usar_em, r.usar_ate), url: '/uploads/' + r.filename, mimeType: r.mime_type, processing: !!Number(r.processando), archivedAt: r.archived_at, isNew: !r.archived_at && !r.viewed_at && !Number(r.processando) }));
     res.json({ assets, newCount: assets.filter((a) => a.isNew).length });
   });
   const diaAcessoCentral = (diasAtras = 0) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(new Date(Date.now() - diasAtras * 86_400_000));
@@ -6022,24 +6140,31 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await persist();
     res.json({ ok: true });
   });
+  // Dia e hora certos para postar (opcionais): "2026-11-20" e "21:00".
+  const campoQuandoPostar = {
+    usarEm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal('')),
+    usarAte: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional().or(z.literal('')),
+  };
   app.post('/api/admin/promoter-assets', requireAuth(env, db), requireAdmin(), async (req, res) => {
-    const parsed = z.object({ title: z.string().trim().min(1).max(100), caption: z.string().trim().max(2000), mediaId: z.string().min(1), destination: z.enum(['community', 'casa']) }).safeParse(req.body);
+    const parsed = z.object({ title: z.string().trim().min(1).max(100), caption: z.string().trim().max(2000), mediaId: z.string().min(1), destination: z.enum(['community', 'casa']), ...campoQuandoPostar }).safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
     const data = parsed.data;
     const media = await queryOne(db, "SELECT id FROM media WHERE id = ? AND user_id = ? AND is_private = 0 AND mime_type IN ('image/jpeg','image/png','image/webp','video/mp4','video/webm','video/quicktime')", [data.mediaId, req.auth!.userId]);
     if (!media) { res.status(400).json({ error: 'invalid_media' }); return; }
     const id = randomUUID();
-    await run(db, 'INSERT INTO promoter_assets (id, title, caption, media_id, destination, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, data.title, data.caption, data.mediaId, data.destination, nowIso()]);
+    // avisado_em fica vazio: o aviso de material novo (push + chat) sai em lote
+    // alguns minutos depois, para várias publicações seguidas virarem um aviso só.
+    await run(db, 'INSERT INTO promoter_assets (id, title, caption, media_id, destination, created_at, usar_em, usar_ate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, data.title, data.caption, data.mediaId, data.destination, nowIso(), data.usarEm || null, data.usarAte || null]);
     await persist();
     res.status(201).json({ id });
   });
   app.patch('/api/admin/promoter-assets/:id', requireAuth(env, db), requireAdmin(), async (req, res) => {
-    const parsed = z.object({ title: z.string().trim().min(1).max(100), caption: z.string().trim().max(2000), destination: z.enum(['community', 'casa']) }).safeParse(req.body);
+    const parsed = z.object({ title: z.string().trim().min(1).max(100), caption: z.string().trim().max(2000), destination: z.enum(['community', 'casa']), ...campoQuandoPostar }).safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
     const id = String(req.params.id);
     if (!(await queryOne(db, 'SELECT id FROM promoter_assets WHERE id = ?', [id]))) { res.status(404).json({ error: 'not_found' }); return; }
-    const { title, caption, destination } = parsed.data;
-    await run(db, 'UPDATE promoter_assets SET title = ?, caption = ?, destination = ? WHERE id = ?', [title, caption, destination, id]);
+    const { title, caption, destination, usarEm, usarAte } = parsed.data;
+    await run(db, 'UPDATE promoter_assets SET title = ?, caption = ?, destination = ?, usar_em = ?, usar_ate = ? WHERE id = ?', [title, caption, destination, usarEm || null, usarAte || null, id]);
     await persist();
     res.json({ ok: true });
   });
@@ -6457,12 +6582,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
          COALESCE(p.pix_key, '') as pix_key,
          CASE WHEN p.user_id IS NULL THEN 0 ELSE 1 END as is_promoter,
          u.email as user_email, u.avatar as user_avatar,
-         (SELECT CASE WHEN message = '' AND image_url IS NOT NULL THEN '📷 Imagem' ELSE message END FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message,
-         (SELECT created_at FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message_at,
+         (SELECT CASE WHEN message = '' AND image_url IS NOT NULL THEN '📷 Imagem' ELSE message END FROM promoter_support_messages WHERE promoter_user_id = s.user_id AND COALESCE(automatica, 0) = 0 ORDER BY created_at DESC LIMIT 1) as last_message,
+         (SELECT created_at FROM promoter_support_messages WHERE promoter_user_id = s.user_id AND COALESCE(automatica, 0) = 0 ORDER BY created_at DESC LIMIT 1) as last_message_at,
          (SELECT COUNT(*) FROM promoter_support_messages WHERE promoter_user_id = s.user_id AND sender_type = 'promoter' AND read_at IS NULL) as unread_count,
          (SELECT value FROM system_settings WHERE key = 'support_handoff:' || s.user_id LIMIT 1) as handoff_at,
          u.embaixador_oficial_em
-       FROM (SELECT DISTINCT promoter_user_id as user_id FROM promoter_support_messages) s
+       -- Avisos automáticos (boas-vindas, material novo, desafio) não abrem conversa aqui.
+       FROM (SELECT DISTINCT promoter_user_id as user_id FROM promoter_support_messages WHERE COALESCE(automatica, 0) = 0) s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN promoters p ON p.user_id = s.user_id
        ORDER BY last_message_at DESC NULLS LAST`,
@@ -6714,9 +6840,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       if (!parsed.success) { res.status(400).json({ error: 'invalid_input — period deve ser YYYY-MM' }); return; }
       const { period } = parsed.data;
 
-      // Due date: dia 10 do mês seguinte ao período
+      // Pagamento: dia 01 do mês seguinte ao período (regra de 20/11/2026; antes, dia 10).
       const [py, pm] = period.split('-').map(Number);
-      const dueDate = new Date(py, pm, 10); // pm é o mês atual (1-indexed), Date usa 0-indexed, então pm = próximo mês
+      const dueDate = new Date(py, pm, 1); // pm é o mês atual (1-indexed), Date usa 0-indexed, então pm = próximo mês
       const dueDateStr = dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
       // Buscar todos os promotores ativos com seus dados e comissões do período,
@@ -25286,6 +25412,206 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   setTimeout(() => void limparContasExcluidasPendentes(), 2 * 60 * 1000);
   setInterval(() => void limparContasExcluidasPendentes(), 10 * 60 * 1000);
 
+  // ── Engajamento dos promotores (20/11/2026) ──────────────────────────────
+  // Mensagens automáticas entram no chat de suporte como da Lola ('ia'), para
+  // não calar a IA (resposta humana a cala por 12h), e marcadas como
+  // automáticas, para não lotar a lista de conversas do admin.
+  const mensagemAutomaticaAoPromotor = async (userId: string, texto: string, push?: { title: string; body: string; url: string; tag: string }) => {
+    await run(
+      db,
+      'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at, automatica) VALUES (?, ?, ?, ?, ?, ?, 1)',
+      [randomUUID(), userId, 'admin', SENDER_ID_IA, texto, nowIso()]
+    );
+    if (push) {
+      try { await sendPushToUser({ db, env }, { userId, payload: push }); } catch { /* push é bônus */ }
+    }
+  };
+  const promotoresAtivos = async () => (await queryAll(
+    db,
+    `SELECT p.user_id, p.activated_at, u.name,
+       (SELECT il.invite_token FROM invite_links il WHERE il.inviter_user_id = p.user_id AND il.status = 'created' ORDER BY il.created_at DESC LIMIT 1) AS token
+     FROM promoters p JOIN users u ON u.id = p.user_id
+     WHERE p.status = 'active' AND COALESCE(u.is_banned, 0) = 0 AND u.deleted_at IS NULL`
+  )) as any[];
+
+  // 1) Material novo: um aviso por lote, 3 min depois da última publicação.
+  let avisandoMaterial = false;
+  const avisarMaterialNovo = async () => {
+    if (avisandoMaterial) return;
+    avisandoMaterial = true;
+    try {
+      const novos = (await queryAll(
+        db,
+        `SELECT a.id, a.title, a.usar_em, a.usar_ate, a.created_at FROM promoter_assets a JOIN media m ON m.id = a.media_id
+         WHERE a.avisado_em IS NULL AND a.archived_at IS NULL AND COALESCE(m.processando, 0) = 0
+         ORDER BY a.created_at ASC`
+      )) as any[];
+      if (!novos.length) return;
+      const ultimo = Math.max(...novos.map((n) => new Date(String(n.created_at)).getTime()));
+      if (Date.now() - ultimo < 3 * 60_000) return; // ainda publicando
+      await run(db, `UPDATE promoter_assets SET avisado_em = ? WHERE id IN (${novos.map(() => '?').join(',')})`, [nowIso(), ...novos.map((n) => String(n.id))]);
+      await persist();
+      const materiais = novos.map((n) => ({ titulo: String(n.title), quando: quandoPostar(n.usar_em, n.usar_ate) }));
+      const primeiro = materiais[0];
+      const push = {
+        title: novos.length === 1 ? '🎬 Material novo para divulgar' : `🎬 ${novos.length} materiais novos para divulgar`,
+        body: `${primeiro.titulo}${primeiro.quando ? ` — postar ${primeiro.quando}` : ''}. Legenda pronta e seu link na Central.`,
+        url: '/promoter/artes',
+        tag: 'promotor-material',
+      };
+      let enviados = 0;
+      for (const p of await promotoresAtivos()) {
+        try {
+          await mensagemAutomaticaAoPromotor(String(p.user_id), textoMaterialNovo(String(p.name || ''), materiais), push);
+          enviados++;
+        } catch (err) { console.error('[promotores] aviso de material falhou:', p.user_id, err); }
+      }
+      await persist();
+      console.log(`[promotores] material novo avisado: ${novos.length} material(is), ${enviados} promotor(es)`);
+    } catch (err) {
+      console.error('[promotores] aviso de material novo falhou:', err);
+    } finally {
+      avisandoMaterial = false;
+    }
+  };
+
+  // 2) Boas-vindas da Lola: dias 1, 3 e 7 depois de virar promotor.
+  const enviarBoasVindasPromotores = async () => {
+    try {
+      const materiais = ((await queryAll(
+        db,
+        `SELECT a.title FROM promoter_assets a JOIN media m ON m.id = a.media_id
+         WHERE a.archived_at IS NULL AND COALESCE(m.processando, 0) = 0 ORDER BY a.created_at DESC LIMIT 3`
+      )) as any[]).map((r) => String(r.title));
+      let enviados = 0;
+      for (const p of await promotoresAtivos()) {
+        const userId = String(p.user_id);
+        const ativadoMs = new Date(String(p.activated_at || '')).getTime();
+        if (!Number.isFinite(ativadoMs)) continue;
+        const feitas = new Set(((await queryAll(db, 'SELECT etapa FROM promoter_boas_vindas WHERE user_id = ?', [userId])) as any[]).map((r) => Number(r.etapa)));
+        // Só a próxima etapa que já venceu (uma por rodada, nunca duas no mesmo dia).
+        const etapa = DIAS_DAS_BOAS_VINDAS.findIndex((_, i) => !feitas.has(i));
+        if (etapa < 0 || Date.now() < ativadoMs + DIAS_DAS_BOAS_VINDAS[etapa] * 86_400_000) continue;
+        const token = p.token ? encodeURIComponent(String(p.token)) : '';
+        const desde = new Date(Date.now() - 7 * 86_400_000);
+        const cliques7d = Number(((await queryOne(db, 'SELECT COUNT(*) AS c FROM promoter_link_clicks WHERE inviter_user_id = ? AND dia >= ?', [userId, diaBrasilia(desde)])) as any)?.c || 0);
+        const cadastros7d = Number(((await queryOne(db, 'SELECT COUNT(*) AS c FROM invite_link_entries e JOIN invite_links l ON l.id = e.invite_link_id WHERE l.inviter_user_id = ? AND e.created_at >= ?', [userId, desde.toISOString()])) as any)?.c || 0);
+        const texto = textoBoasVindas(etapa, {
+          nome: String(p.name || ''),
+          link: token ? `nosigilo.net/invite/${token}` : 'gere o seu link em nosigilo.net/promoter',
+          linkCasa: token ? `nosigilo.net/acasa?invite=${token}` : 'nosigilo.net/promoter',
+          materiais,
+          cliques7d,
+          cadastros7d,
+        });
+        if (!texto) continue;
+        await run(
+          db,
+          db.mode === 'pg'
+            ? 'INSERT INTO promoter_boas_vindas (user_id, etapa, enviado_em) VALUES (?, ?, ?) ON CONFLICT DO NOTHING'
+            : 'INSERT OR IGNORE INTO promoter_boas_vindas (user_id, etapa, enviado_em) VALUES (?, ?, ?)',
+          [userId, etapa, nowIso()]
+        );
+        await mensagemAutomaticaAoPromotor(userId, texto, {
+          title: ['🎉 Bem-vindo(a) ao time de promotores!', '📲 Bora postar um story hoje?', '📊 Seu resultado da semana'][etapa],
+          body: ['Seu link e materiais prontos estão no chat de suporte.', 'Escolha um material na Central e poste com o seu link.', 'Veja quantas pessoas visitaram o seu link.'][etapa],
+          url: etapa === 1 ? '/promoter/artes' : '/promoter',
+          tag: `promotor-boas-vindas-${etapa}`,
+        });
+        enviados++;
+      }
+      if (enviados) {
+        await persist();
+        console.log(`[promotores] boas-vindas enviadas: ${enviados}`);
+      }
+    } catch (err) {
+      console.error('[promotores] boas-vindas falharam:', err);
+    }
+  };
+
+  // 3) Desafio semanal: na segunda-feira fecha a semana anterior. O prêmio
+  // entra como comissão aprovada (paga no dia 01 com o resto do saldo).
+  const fecharDesafioSemanal = async () => {
+    try {
+      const semana = semanaPassada();
+      if (await queryOne(db, 'SELECT semana FROM promoter_desafios WHERE semana = ?', [semana.chave])) return;
+      const ranking = await rankingDoDesafio(semana.inicio, semana.fim);
+      const campeao = ranking[0] && ranking[0].cadastros > 0 ? ranking[0] : null;
+      await run(
+        db,
+        db.mode === 'pg'
+          ? 'INSERT INTO promoter_desafios (semana, vencedor_user_id, cadastros, fechado_em) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING'
+          : 'INSERT OR IGNORE INTO promoter_desafios (semana, vencedor_user_id, cadastros, fechado_em) VALUES (?, ?, ?, ?)',
+        [semana.chave, campeao?.userId ?? null, campeao?.cadastros ?? 0, nowIso()]
+      );
+      if (!campeao) { await persist(); return; }
+      const mes = new Date().toISOString().slice(0, 7);
+      await run(
+        db,
+        db.mode === 'pg'
+          ? 'INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at, admin_notes) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING'
+          : 'INSERT OR IGNORE INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at, admin_notes) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)',
+        // subscriber_user_id = "desafio:<semana>": o índice único (assinante, período) impede prêmio em dobro.
+        [randomUUID(), campeao.userId, `desafio:${semana.chave}`, PREMIO_DESAFIO_CENTS, 'approved', mes, EVENTO_DESAFIO, nowIso(), `Desafio da semana de ${semana.chave}: ${campeao.cadastros} cadastros`]
+      );
+      const dataBr = semana.chave.slice(8, 10) + '/' + semana.chave.slice(5, 7);
+      const premio = (PREMIO_DESAFIO_CENTS / 100).toFixed(2).replace('.', ',');
+      await mensagemAutomaticaAoPromotor(
+        campeao.userId,
+        `🏆 Você venceu o desafio da semana (a partir de ${dataBr}) com ${campeao.cadastros} cadastros pelo seu link!\n\nO prêmio de R$ ${premio} já entrou no seu saldo aprovado e sai no Pix do dia 01. E o seu nome fica em destaque no painel dos promotores esta semana. Parabéns! 🔥`,
+        { title: '🏆 Você venceu o desafio da semana!', body: `R$ ${premio} no seu saldo, pago no dia 01.`, url: '/promoter', tag: 'promotor-desafio' }
+      );
+      await persist();
+      const quem = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ?', [campeao.userId])) as any;
+      const vices = ranking.slice(1, 3).map((r) => `${r.nome} (${r.cadastros})`).join(', ');
+      void notifyAdminsTelegram(
+        { db, env },
+        `🏆 Desafio dos promotores (semana de ${dataBr}): ${quem?.name || campeao.nome} (${quem?.email || ''}) venceu com ${campeao.cadastros} cadastros. Prêmio de R$ ${premio} lançado no saldo para o Pix do dia 01.${vices ? `\nDepois: ${vices}.` : ''}\nConfira se os cadastros parecem reais antes de pagar.`,
+        'pagamentos'
+      ).catch(() => {});
+      console.log(`[promotores] desafio ${semana.chave}: ${campeao.userId} com ${campeao.cadastros}`);
+    } catch (err) {
+      console.error('[promotores] fechamento do desafio falhou:', err);
+    }
+  };
+
+  // 4) Dia 01: lembra o admin de pagar (o Pix é feito por pessoa, não pelo sistema).
+  const lembrarPagamentoDosPromotores = async () => {
+    try {
+      const hoje = diaBrasilia();
+      if (!hoje.endsWith('-01')) return;
+      const horaBr = Number(new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }).format(new Date()));
+      if (horaBr < 8) return;
+      const chave = `promotores_lembrete_pagamento:${hoje.slice(0, 7)}`;
+      if (await getSystemSetting(db, chave)) return;
+      await setSystemSetting(db, chave, nowIso());
+      await persist();
+      const fila = (await queryAll(
+        db,
+        `SELECT promoter_user_id, SUM(commission_amount) AS cents FROM promoter_commissions
+         WHERE status = 'approved' GROUP BY promoter_user_id HAVING SUM(commission_amount) >= ?`,
+        [PROMOTER_MIN_PAYOUT_CENTS]
+      )) as any[];
+      const total = fila.reduce((n, r) => n + Number(r.cents || 0), 0);
+      void notifyAdminsTelegram(
+        { db, env },
+        `💸 Hoje é dia 01, dia de pagar os promotores: ${fila.length} promotor(es) com R$ 10 ou mais, total de R$ ${(total / 100).toFixed(2).replace('.', ',')}. Admin → Promotores → pagar em lote.`,
+        'pagamentos'
+      ).catch(() => {});
+    } catch (err) {
+      console.error('[promotores] lembrete de pagamento falhou:', err);
+    }
+  };
+
+  if (process.env.VITEST !== 'true') {
+    setInterval(() => void avisarMaterialNovo(), 2 * 60 * 1000);
+    setTimeout(() => void enviarBoasVindasPromotores(), 4 * 60 * 1000);
+    setInterval(() => void enviarBoasVindasPromotores(), 60 * 60 * 1000);
+    setInterval(() => void fecharDesafioSemanal(), 30 * 60 * 1000);
+    setInterval(() => void lembrarPagamentoDosPromotores(), 30 * 60 * 1000);
+  }
+  // Os testes chamam as tarefas direto (sem esperar o relógio).
+  app.set('promotoresTarefas', { avisarMaterialNovo, enviarBoasVindasPromotores, fecharDesafioSemanal, lembrarPagamentoDosPromotores });
 
   return app;
 }

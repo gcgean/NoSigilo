@@ -875,7 +875,7 @@ export async function sendPromoterMonthlySummaryEmail(
     pendingCents: number;      // ainda pendente de aprovação (no período)
     approvedCents: number;     // aprovado aguardando pagamento (no período)
     paidCents: number;         // já pago (no período)
-    dueDate: string;           // '10/MM/YYYY' — data de pagamento prevista
+    dueDate: string;           // '01/MM/YYYY' — data de pagamento prevista
     totalApprovedBalanceCents: number; // saldo aprovado acumulado em TODOS os períodos (usado no gate de R$10)
     minPayoutCents: number;    // valor mínimo acumulado para liberar o pagamento
   }
@@ -912,7 +912,7 @@ export async function sendPromoterMonthlySummaryEmail(
     : `<div style="background:#fefce8;border:1px solid #fde047;border-radius:12px;padding:14px 16px;margin:0 0 24px;display:flex;align-items:center;gap:10px;">
         <span style="font-size:20px;">💰</span>
         <div><p style="font-size:13px;font-weight:700;color:#854d0e;margin:0 0 2px;">Pagamento mínimo: ${minPayoutBRL}</p>
-        <p style="font-size:13px;color:#713f12;margin:0;">Pagamos via Pix assim que suas comissões acumuladas somarem ${minPayoutBRL}. Faltam ${fmt(Math.max(0, payload.minPayoutCents - payload.totalApprovedBalanceCents))} para liberar seu próximo pagamento.</p></div>
+        <p style="font-size:13px;color:#713f12;margin:0;">O Pix sai no dia 01 de cada mês para quem tiver ${minPayoutBRL} ou mais em comissões aprovadas. Faltam ${fmt(Math.max(0, payload.minPayoutCents - payload.totalApprovedBalanceCents))} para liberar seu próximo pagamento.</p></div>
       </div>`;
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0fdf4;font-family:Arial,sans-serif;">

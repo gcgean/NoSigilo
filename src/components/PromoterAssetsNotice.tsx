@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ImagePlus } from 'lucide-react';
 import { promoterService } from '@/services/api';
 
-// Aviso exclusivo desta área: não cria notificação global, push, e-mail ou mensagem.
+// Selo da central no painel. O aviso de material novo (push + chat) sai do
+// servidor, em lote, desde 20/11/2026 (pedido do dono).
 export default function PromoterAssetsNotice() {
   const [count, setCount] = useState<number | null>(null);
   useEffect(() => {

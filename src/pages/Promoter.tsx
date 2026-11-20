@@ -28,7 +28,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { promoterService, promoterSupportService, type PromoterProfile, type PromoterCommission, type PromoterStats, type PromoterReferredUser, type SupportMessage } from '@/services/api';
+import { promoterService, promoterSupportService, type PromoterProfile, type PromoterCommission, type PromoterStats, type PromoterReferredUser, type SupportMessage, type PromoterHoje, type PromoterFaixa, type PromoterDesafio } from '@/services/api';
+import { separarLinks } from '@/utils/linksDoSuporte';
 import { invitesService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import InviteModal from '@/components/InviteModal';
@@ -76,6 +77,7 @@ export default function Promoter() {
   const [saindo, setSaindo] = useState(false);
   const [confirmandoSaida, setConfirmandoSaida] = useState(false);
   const [stats, setStats] = useState<PromoterStats | null>(null);
+  const [extras, setExtras] = useState<{ hoje?: PromoterHoje; faixa?: PromoterFaixa; desafio?: PromoterDesafio }>({});
   const [history, setHistory] = useState<PromoterHistory[]>([]);
   const [posicaoRanking, setPosicaoRanking] = useState<{ posicao: number | null; total: number } | null>(null);
   useEffect(() => {
@@ -121,6 +123,7 @@ export default function Promoter() {
           invitesService.listMine().catch(() => []),
         ]);
         setStats(dash.stats);
+        setExtras({ hoje: dash.hoje, faixa: dash.faixa, desafio: dash.desafio });
         setHistory(dash.history ?? []);
         setCommissions(dash.commissions);
         setReferredUsers(dash.referredUsers ?? []);
@@ -383,7 +386,7 @@ export default function Promoter() {
                     <strong className="text-emerald-600">R$ {(10 * COMMISSION_PER_PLAN).toFixed(2).replace('.', ',')} por mês</strong>
                   </p>
                   <p className="text-xs text-muted-foreground mt-2 pt-2 border-t border-emerald-500/15">
-                    💰 O pagamento via Pix é liberado quando suas comissões aprovadas somarem <strong className="text-emerald-600">R$10,00</strong> — o valor acumula normalmente entre meses até atingir o mínimo.
+                    💰 A comissão é aprovada assim que o seu indicado paga, e o Pix sai todo <strong className="text-emerald-600">dia 01</strong> do mês seguinte, quando o saldo chega a <strong className="text-emerald-600">R$10,00</strong> (acumula entre meses). A partir da 11ª venda no mês, a comissão sobe para <strong className="text-emerald-600">25%</strong>.
                   </p>
                 </div>
               </div>
@@ -550,7 +553,7 @@ export default function Promoter() {
         </div>
 
         <PromoterAssetsNotice />
-        {stats && <PromoterPerformance stats={stats} history={history} />}
+        {stats && <PromoterPerformance stats={stats} history={history} hoje={extras.hoje} faixa={extras.faixa} desafio={extras.desafio} />}
 
         {/* Share invite */}
         {inviteUrl && (
@@ -690,9 +693,8 @@ export default function Promoter() {
               <DollarSign className="w-4 h-4 text-emerald-500" />
               Resumo financeiro
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
-                { label: 'Pendente de aprovação', cents: stats.pendingCents, color: 'text-yellow-600', border: 'border-yellow-400/30 bg-yellow-500/5' },
                 { label: 'Aprovado (aguard. pagto)', cents: stats.approvedCents, color: 'text-blue-600', border: 'border-blue-400/30 bg-blue-500/5' },
                 { label: 'Já pago via Pix', cents: stats.paidCents, color: 'text-emerald-600', border: 'border-emerald-400/30 bg-emerald-500/5' },
               ].map((item) => (
@@ -709,9 +711,9 @@ export default function Promoter() {
             <div className={`flex items-start gap-2 text-xs rounded-xl px-4 py-3 border ${stats.approvedCents >= stats.minPayoutCents ? 'text-emerald-700 bg-emerald-500/10 border-emerald-400/30' : 'text-blue-700 bg-blue-500/5 border-blue-400/20'}`}>
               <Wallet className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               {stats.approvedCents >= stats.minPayoutCents ? (
-                <span>Seu saldo aprovado ({formatBRL(stats.approvedCents)}) já atingiu o mínimo de <strong>{formatBRL(stats.minPayoutCents)}</strong> e está na fila para pagamento via Pix.</span>
+                <span>Seu saldo aprovado ({formatBRL(stats.approvedCents)}) já atingiu o mínimo de <strong>{formatBRL(stats.minPayoutCents)}</strong>. O Pix sai no <strong>dia 01</strong> do mês que vem.</span>
               ) : (
-                <span>O pagamento via Pix é liberado quando suas comissões aprovadas somarem <strong>{formatBRL(stats.minPayoutCents)}</strong> (acumulado entre meses). Faltam <strong>{formatBRL(Math.max(0, stats.minPayoutCents - stats.approvedCents))}</strong>.</span>
+                <span>O Pix sai todo <strong>dia 01</strong> para quem tem <strong>{formatBRL(stats.minPayoutCents)}</strong> aprovados (acumulado entre meses). Faltam <strong>{formatBRL(Math.max(0, stats.minPayoutCents - stats.approvedCents))}</strong>.</span>
               )}
             </div>
           </div>
@@ -878,7 +880,13 @@ export default function Promoter() {
                       <img src={resolveServerUrl(m.imageUrl)} alt="Imagem do suporte" className="max-h-72 rounded-lg" />
                     </a>
                   )}
-                  {m.message && <p>{m.message}</p>}
+                  {m.message && (
+                    <p className="whitespace-pre-wrap break-words">
+                      {separarLinks(m.message).map((parte, i) => parte.href
+                        ? <a key={i} href={parte.href} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">{parte.texto}</a>
+                        : <span key={i}>{parte.texto}</span>)}
+                    </p>
+                  )}
                   <p className={`text-[10px] mt-0.5 ${m.senderType === 'promoter' ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground'}`}>
                     {formatDate(m.createdAt)}
                   </p>

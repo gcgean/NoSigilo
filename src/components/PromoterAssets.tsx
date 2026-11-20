@@ -24,6 +24,8 @@ export default function PromoterAssets({ admin = false }: { admin?: boolean }) {
   const [files, setFiles] = useState<File[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [date, setDate] = useState('');
+  const [usarEm, setUsarEm] = useState('');
+  const [usarAte, setUsarAte] = useState('');
   const file = files[0];
   const [preview, setPreview] = useState('');
   const [inputKey, setInputKey] = useState(0);
@@ -68,7 +70,7 @@ export default function PromoterAssets({ admin = false }: { admin?: boolean }) {
   const days = [...new Set(assets.map((asset) => diaDaPublicacao(asset.createdAt)))];
   const filteredAssets = visibleAssets.filter((asset) => !date || diaDaPublicacao(asset.createdAt) === date);
   const clearForm = () => {
-    setEditing(null); setTitle(''); setCaption(''); setDestination('community');
+    setEditing(null); setTitle(''); setCaption(''); setDestination('community'); setUsarEm(''); setUsarAte('');
     setFiles([]); setUploadedMediaId(''); setProgress(0); setInputKey((k) => k + 1);
   };
   const markSeen = async () => {
@@ -87,7 +89,7 @@ export default function PromoterAssets({ admin = false }: { admin?: boolean }) {
     if ((!files.length && !editing) || !title.trim() || busy) return;
     setBusy('publish');
     try {
-      const data = { title: title.trim(), caption: caption.trim(), destination };
+      const data = { title: title.trim(), caption: caption.trim(), destination, usarEm, usarAte };
       if (editing) {
         await promoterService.updateAsset(editing, data);
       } else {
@@ -139,8 +141,13 @@ export default function PromoterAssets({ admin = false }: { admin?: boolean }) {
     {admin && <PromoterAssetsEngagement />}
     {admin ? <div id="promoter-asset-form" className="glass rounded-2xl p-5 space-y-4">
       <h2 className="font-semibold">{editing ? 'Editar material' : 'Publicar fotos e vídeos'}</h2>
-      <label className="block text-sm space-y-2"><span>Título</span><Input value={title} maxLength={100} onChange={(e) => setTitle(e.target.value)} /></label>
+      <label className="block text-sm space-y-2"><span>Título (o que é e onde postar)</span><Input value={title} maxLength={100} placeholder="Ex.: Reels — casal n'A Casa · Story — comunidade liberal" onChange={(e) => setTitle(e.target.value)} />{/^https?:\/\//i.test(title.trim()) && <span className="block text-xs text-amber-600">Use um título curto que diga o que é o material. O link do promotor entra sozinho.</span>}</label>
       <label className="block text-sm space-y-2"><span>Legenda sugerida (o link individual será adicionado pelo promotor)</span><textarea className="w-full rounded-xl border bg-background p-3" rows={3} maxLength={2000} value={caption} onChange={(e) => setCaption(e.target.value)} /></label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-sm space-y-2"><span>Postar no dia (opcional)</span><Input type="date" value={usarEm} onChange={(e) => setUsarEm(e.target.value)} /></label>
+        <label className="block text-sm space-y-2"><span>Postar até as (opcional)</span><Input type="time" value={usarAte} onChange={(e) => setUsarAte(e.target.value)} /></label>
+      </div>
+      <p className="text-xs text-muted-foreground">Os promotores recebem push e mensagem no chat uns minutos depois de você publicar, com o dia e a hora certos para postar.</p>
       <label className="block text-sm space-y-2"><span>Destino do convite</span><select className="block w-full rounded-xl border bg-background p-3" value={destination} onChange={(e) => setDestination(e.target.value as 'community' | 'casa')}><option value="community">Comunidade</option><option value="casa">A Casa</option></select></label>
       {!editing && <label className="block text-sm space-y-2"><span>Selecione um ou mais arquivos. Foto: JPG, PNG ou WebP até 10 MB. Vídeo: MP4, MOV ou WebM até 100 MB.</span><input key={inputKey} disabled={!!busy} className="block w-full min-w-0" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" onChange={(e) => {
         const selected = Array.from(e.target.files ?? []);
@@ -174,9 +181,9 @@ export default function PromoterAssets({ admin = false }: { admin?: boolean }) {
         <div className="grid gap-5 sm:grid-cols-2">
       {filteredAssets.filter((asset) => diaDaPublicacao(asset.createdAt) === day).map((asset) => <article key={asset.id} className="glass rounded-2xl overflow-hidden min-w-0">
         {asset.processing ? <div role="status" className="h-60 grid place-items-center bg-secondary/30 p-6 text-center">Vídeo em processamento. Será liberado automaticamente quando estiver pronto.</div> : asset.mimeType.startsWith('video/') ? <video src={resolveServerUrl(asset.url)} controls playsInline preload="metadata" aria-label={asset.title} className="w-full h-80 object-contain bg-black/20" /> : <img src={resolveServerUrl(asset.url)} alt={asset.title} loading="lazy" className="w-full h-80 object-contain bg-black/20" />}
-        <div className="p-4 space-y-3"><h2 className="font-semibold break-words">{asset.title}</h2>{admin && asset.archivedAt && <span className="text-xs font-semibold text-muted-foreground">Arquivado em {diaDaPublicacao(asset.archivedAt).split('-').reverse().join('/')}</span>}{!admin && asset.isNew && <span className="inline-block rounded-full bg-primary/15 text-primary px-3 py-1 text-xs font-semibold">Novo</span>}<p className="text-xs text-muted-foreground">{new Date(asset.createdAt).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })} · {asset.destination === 'casa' ? 'A Casa' : 'Comunidade'}</p><p className="text-sm whitespace-pre-wrap break-words">{asset.caption}</p>
+        <div className="p-4 space-y-3"><h2 className="font-semibold break-words">{asset.title}</h2>{admin && asset.archivedAt && <span className="text-xs font-semibold text-muted-foreground">Arquivado em {diaDaPublicacao(asset.archivedAt).split('-').reverse().join('/')}</span>}{!admin && asset.isNew && <span className="inline-block rounded-full bg-primary/15 text-primary px-3 py-1 text-xs font-semibold">Novo</span>}{asset.quandoPostar && <span className="ml-2 inline-block rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 px-3 py-1 text-xs font-semibold">📅 Postar {asset.quandoPostar}</span>}<p className="text-xs text-muted-foreground">{new Date(asset.createdAt).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })} · {asset.destination === 'casa' ? 'A Casa' : 'Comunidade'}</p><p className="text-sm whitespace-pre-wrap break-words">{asset.caption}</p>
           {admin ? <div className="flex flex-wrap gap-2"><Button disabled={!!busy} variant="outline" onClick={() => {
-            clearForm(); setEditing(asset.id); setTitle(asset.title); setCaption(asset.caption); setDestination(asset.destination);
+            clearForm(); setEditing(asset.id); setTitle(asset.title); setCaption(asset.caption); setDestination(asset.destination); setUsarEm(asset.usarEm || ''); setUsarAte(asset.usarAte || '');
             document.getElementById('promoter-asset-form')?.scrollIntoView({ block: 'start' });
           }}>Editar</Button><Button disabled={!!busy} variant="outline" onClick={async () => { setBusy(asset.id); try { if (asset.archivedAt) await promoterService.restoreAsset(asset.id); else await promoterService.removeAsset(asset.id); await load(); } catch { fail(); } finally { setBusy(''); } }}>{asset.archivedAt ? 'Restaurar na central' : 'Arquivar'}</Button></div> : <>
             {invite && <input aria-label={`Seu link para ${asset.title}`} readOnly value={linkFor(asset)} onFocus={(e) => e.currentTarget.select()} className="w-full min-w-0 rounded-lg border bg-background p-3 text-xs" />}

@@ -26,6 +26,7 @@ export default function InviteLanding() {
 
   useEffect(() => {
     if (!token) { setInvalid(true); setLoading(false); return; }
+    void authService.registrarVisitaDoConvite(token);
     authService
       .getInviteInfo(token)
       .then((data) => {
