@@ -644,6 +644,9 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   casa_desafio: { points: 5, dailyCap: 10 },
   casa_duelo: { points: 10, dailyCap: 3 },
   casa_relampago: { points: 10, dailyCap: 3 },
+  // Convidou pelo cartão d'A Casa e o amigo (conta nova, criada nas últimas 12h pelo
+  // link) entrou na Casa: 20 tokens por amigo, até 20 por dia (21/11/2026).
+  casa_convite_chegou: { points: 20, dailyCap: 20 },
 };
 
 // Só perfis de mulheres e casais recebem tokens por postagem feita.

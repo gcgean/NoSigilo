@@ -30,6 +30,7 @@ import MapaDaCasa, { type CabineDoMapa } from '@/components/MapaDaCasa';
 import TokenBadge from '@/components/TokenBadge';
 import ComprarTokens from '@/components/ComprarTokens';
 import FeedbackDaCasa from '@/components/FeedbackDaCasa';
+import ConviteDeAmigosDaCasa, { CHAVE_CONVITE_NUNCA } from '@/components/ConviteDeAmigosDaCasa';
 import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas, SugestoesDeMencao, TextoComMencoes } from '@/components/ChatDaCasaUi';
 import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -359,6 +360,9 @@ export default function Casa() {
   // Comprar tokens sem sair da Casa (abre sozinho quando o saldo não dá).
   const [comprarAberto, setComprarAberto] = useState(false);
   const [feedbackAberto, setFeedbackAberto] = useState(false);
+  // Cartão "Chama a galera" (21/11/2026): automático depois de 5 min na Casa, 1x por
+  // noite (a menos que a pessoa marque "não mostrar mais"), e pelo botão ➕ Convidar.
+  const [conviteAmigos, setConviteAmigos] = useState<null | 'auto' | 'botao'>(null);
   const [mostraProximo, setMostraProximo] = useState(false);
   const [lembrete, setLembrete] = useState(false);
   // Brincadeira que a pessoa dispensou: o cartão do topo some (ela pode votar na mensagem da Lola).
@@ -424,6 +428,28 @@ export default function Casa() {
   // pulseira, "Quero brincar" e o convite de assinatura esperam a vez.
   const recebidoAgora: 'convite' | 'conviteCabine' | 'decisao' | 'proposta' | 'drink' | 'cruzados' | null =
     convite ? 'convite' : conviteCabine ? 'conviteCabine' : decisao ? 'decisao' : propostaRecebida ? 'proposta' : drinkRecebido ? 'drink' : cruzados ? 'cruzados' : null;
+  // Gatilho do cartão de convite: 5 min depois de entrar numa sala, sem nada aberto
+  // por cima (cabine, convite, tutorial, pulseira); uma vez por noite.
+  const entrouNaCasaEm = useRef<number | null>(null);
+  if (estado && entrouNaCasaEm.current === null) entrouNaCasaEm.current = Date.now();
+  const livreParaConvite = !!estado && !cabineAberta && !recebidoAgora && tourPasso === null && !escolhendoPulseira && !feedbackAberto && conviteAmigos === null;
+  const livreParaConviteRef = useRef(livreParaConvite);
+  livreParaConviteRef.current = livreParaConvite;
+  useEffect(() => {
+    const chaveNoite = `nosigilo:casa-convite-amigos:${new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)}`;
+    let espera = 5 * 60_000;
+    try { espera = Number(localStorage.getItem('nosigilo:casa-convite-espera-ms')) || espera; } catch { /* sem storage */ }
+    const t = setInterval(() => {
+      if (!entrouNaCasaEm.current || Date.now() - entrouNaCasaEm.current < espera || !livreParaConviteRef.current) return;
+      try {
+        if (localStorage.getItem(CHAVE_CONVITE_NUNCA) === '1' || localStorage.getItem(chaveNoite) === '1') { clearInterval(t); return; }
+        localStorage.setItem(chaveNoite, '1');
+      } catch { /* sem storage: mostra mesmo assim, uma vez nesta visita */ }
+      clearInterval(t);
+      setConviteAmigos('auto');
+    }, 5_000);
+    return () => clearInterval(t);
+  }, []);
   const modoRevelacao = useRef(false);
   const segundosRevelacao = useSegundosAte(revelarAte > Date.now() ? new Date(revelarAte).toISOString() : undefined);
   const fimDaLista = useRef<HTMLDivElement>(null);
@@ -1349,17 +1375,7 @@ export default function Casa() {
         {estado.sala_anonima && estado.eu.podeFalar && !estado.eu.revelado && (
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
-        <button type="button" className="shrink-0 whitespace-nowrap rounded-full border border-white/20 px-3 py-1.5 text-xs" title="Convide alguém para entrar com você" onClick={async () => {
-          const url = new URL('/casa', window.location.origin);
-          url.searchParams.set('sala', estado.sala.id);
-          const text = `Vem entrar comigo n’A Casa! Estou na sala ${estado.sala.nome}: ${url.href}`;
-          try {
-            if (navigator.share) await navigator.share({ text });
-            else { await navigator.clipboard.writeText(text); toast({ title: 'Convite copiado' }); }
-          } catch (error) {
-            if (!(error instanceof DOMException && error.name === 'AbortError')) toast({ title: 'Não foi possível compartilhar o convite', variant: 'destructive' });
-          }
-        }} aria-label="Convidar">➕<span className="hidden sm:inline"> Convidar</span></button>
+        <button type="button" className="shrink-0 whitespace-nowrap rounded-full border border-white/20 px-3 py-1.5 text-xs" title="Convide amigos e ganhe tokens" onClick={() => setConviteAmigos('botao')} aria-label="Convidar">➕<span className="hidden sm:inline"> Convidar</span></button>
         {minhasCabines.length > 0 && (
           <button type="button" onClick={() => setListaDeCabines(true)} className="relative rounded-full border border-rose-400/60 bg-rose-600/30 px-2 py-1.5 text-xs" aria-label="Minhas cabines" title="Minhas cabines">
             🚪
@@ -2379,6 +2395,7 @@ export default function Casa() {
 
       {sala}
       <FeedbackDaCasa aberto={feedbackAberto} onFechar={() => setFeedbackAberto(false)} />
+      <ConviteDeAmigosDaCasa aberto={conviteAmigos !== null} automatico={conviteAmigos === 'auto'} onFechar={() => setConviteAmigos(null)} />
 
       <Dialog open={recebidoAgora === 'convite'} onOpenChange={(v) => !v && void responderConvite(false)}>
         <DialogContent className="z-[9999] max-w-xs">

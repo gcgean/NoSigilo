@@ -225,7 +225,7 @@ export type DependenciasDaCasa = {
   getIo: () => SocketIOServer | undefined;
   temPremium: (userId: string) => Promise<boolean>;
   motivoContatoBloqueado: (de: string, para: string) => Promise<string | null>;
-  premiar: (userId: string, acao: 'casa_entrada' | 'casa_casal_cedo' | 'casa_mulher_noite' | 'casa_quiz' | 'casa_desafio' | 'casa_duelo' | 'casa_relampago', refId: string) => Promise<void>;
+  premiar: (userId: string, acao: 'casa_entrada' | 'casa_casal_cedo' | 'casa_mulher_noite' | 'casa_quiz' | 'casa_desafio' | 'casa_duelo' | 'casa_relampago' | 'casa_convite_chegou', refId: string) => Promise<void>;
   /** Passa tokens de uma pessoa para outra (revelação paga). false = saldo insuficiente. */
   transferirTokens: (de: string, para: string, valor: number, refId: string) => Promise<boolean>;
   /** Tira tokens de alguém (desafio sugerido: fica guardado até cumprir). false = saldo insuficiente. */
@@ -3020,6 +3020,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       registrarEvento(sala.id, 'entrou', userId);
       avisarPresentes(sala);
       void deps.premiar(userId, 'casa_entrada', `casa-${noite.chave}`).catch(() => {});
+      void premiarQuemConvidou(userId, p.nome).catch((e) => console.error('[casa] convite chegou', e));
       if (p.cat === 'mulher' && perfil.verificado) {
         void mulheresAtivo().then((ativo) => (ativo ? deps.premiar(userId, 'casa_mulher_noite', `casa-mulher-${noite.chave}`) : undefined)).catch(() => {});
       }
@@ -3808,7 +3809,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
           drinks: conta(ehDrink), drinksTokens: -soma(ehDrink),
           revelacoes: conta(ehRevelacao), revelacoesTokens: -soma(ehRevelacao),
           desafiosCumpridos: conta((t) => t.action_type === 'casa_desafio_recebido'), desafiosTokens: soma((t) => t.action_type === 'casa_desafio_recebido'),
-          premiosDaCasa: soma((t) => ['casa_entrada', 'casa_casal_cedo', 'casa_mulher_noite', 'casa_quiz', 'casa_desafio', 'casa_duelo', 'casa_relampago'].includes(t.action_type)),
+          premiosDaCasa: soma((t) => ['casa_entrada', 'casa_casal_cedo', 'casa_mulher_noite', 'casa_quiz', 'casa_desafio', 'casa_duelo', 'casa_relampago', 'casa_convite_chegou'].includes(t.action_type)),
         },
       });
     }
@@ -4576,6 +4577,50 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     if (!c || (!c.membros.has(userId) && !c.espectadores.has(userId))) { res.status(404).json({ error: 'fora' }); return; }
     if (c.espectadores.has(userId)) c.espectadores.set(userId, Date.now());
     res.json({ cabine: cabinePublica(c, userId) });
+  });
+
+  // ─── Convite de amigos pelo cartão d'A Casa (21/11/2026) ──────────────────
+  // Link /acasa?invite=… (não mostra nome nem foto de quem convidou). Quando o amigo
+  // (conta criada pelo link nas últimas 12h) entra na Casa, quem convidou ganha
+  // 20 tokens, uma vez por amigo, e recebe o aviso na hora.
+  const premiarQuemConvidou = async (convidadoId: string, nomeConvidado: string) => {
+    const desde = new Date(Date.now() - 12 * 3_600_000).toISOString();
+    const row = (await db.queryOne(
+      `SELECT il.inviter_user_id AS quem FROM invite_link_entries e JOIN invite_links il ON il.id = e.invite_link_id
+        WHERE e.invitee_user_id = ? AND e.created_at >= ? AND COALESCE(e.validation_status, '') <> 'failed' LIMIT 1`,
+      [convidadoId, desde],
+    )) as any;
+    const quem = row?.quem ? String(row.quem) : '';
+    if (!quem || quem === convidadoId) return;
+    const ref = `casa-convite-${convidadoId}`;
+    const pago = async () => !!(await db.queryOne(
+      "SELECT 1 AS x FROM token_transactions WHERE user_id = ? AND action_type = 'casa_convite_chegou' AND ref_id = ? LIMIT 1",
+      [quem, ref],
+    ));
+    if (await pago()) return;
+    await deps.premiar(quem, 'casa_convite_chegou', ref);
+    if (!(await pago())) return; // passou do teto do dia
+    emitirPara(quem, 'casa.aviso', { texto: `🔥 ${nomeConvidado} chegou n'A Casa pelo seu convite! +20 tokens` });
+    void deps.push(quem, { title: "🔥 Seu convite chegou n'A Casa!", body: `${nomeConvidado} entrou pelo seu link. +20 tokens pra você 😈`, url: '/casa', tag: 'casa-convite-chegou' }).catch(() => {});
+  };
+  app.get('/api/casa/meu-convite', deps.requireAuth, async (req, res) => {
+    const userId = userDe(req);
+    let token = String(((await db.queryOne(
+      "SELECT invite_token FROM invite_links WHERE inviter_user_id = ? AND status = 'created' ORDER BY created_at DESC LIMIT 1",
+      [userId],
+    )) as any)?.invite_token || '');
+    if (!token) {
+      const agora = new Date().toISOString();
+      token = Array.from({ length: 10 }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join('');
+      await db.run(
+        'INSERT INTO invite_links (id, inviter_user_id, invite_token, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [randomUUID(), userId, token, 'created', agora, agora],
+      );
+      await db.persist();
+    }
+    const promotor = ((await db.queryOne('SELECT status FROM promoters WHERE user_id = ? LIMIT 1', [userId])) as any)?.status === 'active';
+    const perfil = await carregarPerfil(userId);
+    res.json({ link: `https://nosigilo.net/acasa?invite=${encodeURIComponent(token)}`, promotor, dePortugal: perfil?.uf === 'PT', tokensPorAmigo: 20 });
   });
 
   // Em 20/11 foram 563 avisos de sistema (era 198), a maioria "fulano está espiando
