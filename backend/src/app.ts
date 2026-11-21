@@ -15154,6 +15154,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     const leitor = leitorDaLinha(eu);
+    // Cadastro sem UF (20/11/2026: 77 perfis de Fortaleza sem estado) não via o
+    // "resto do estado": a UF sai da cidade, pela UF mais comum dela no site.
+    if (!String(leitor.state || '').trim() && String(leitor.city || '').trim()) {
+      const uf = (await queryOne(
+        db,
+        `SELECT UPPER(TRIM(state)) AS uf, COUNT(*) AS n FROM users
+          WHERE LOWER(TRIM(city)) = LOWER(TRIM(?)) AND TRIM(COALESCE(state, '')) <> ''
+          GROUP BY UPPER(TRIM(state)) ORDER BY n DESC LIMIT 1`,
+        [leitor.city]
+      )) as any;
+      if (uf?.uf) leitor.state = String(uf.uf);
+    }
     const perfis = await perfisNovosDesde(db, new Date(Date.now() - DIAS_NA_ABA * 24 * 60 * 60 * 1000).toISOString());
     // Estado inteiro, ordenado por cidade, até 50 km e resto do estado.
     const candidatos = novosParaLeitor(leitor, perfis, await bloqueiosEntre(db, [userId]), true).slice(0, 400);
