@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SeloExpirando, expiraEmBreve } from '@/components/SeloExpirando';
 import NomePerfil from '@/components/NomePerfil';
+import { BotaoDeMusica, SeloDaMusica, useTrechoDaMusica, type MusicaEscolhida, type MusicaDoStory } from '@/components/MusicaDoStory';
 import { ehFotoHeic, heicParaJpeg, FOTO_NAO_ABRE } from '@/utils/mediaCompression';
 import { createPortal } from 'react-dom';
 import {
@@ -174,6 +175,7 @@ type MyStory = {
   id: string; mediaUrl: string | null; mimeType: string;
   text?: string | null; background?: string | null; textOverlay?: TextOverlay | null;
   audience?: StoryAudience;
+  musica?: MusicaDoStory | null;
   createdAt: string; expiresAt: string;
   viewCount: number; commentCount: number; likeCount: number;
 };
@@ -182,6 +184,7 @@ type FeedStory = {
   id: string; mediaUrl: string | null; mimeType: string;
   text?: string | null; background?: string | null; textOverlay?: TextOverlay | null;
   audience?: StoryAudience;
+  musica?: MusicaDoStory | null;
   createdAt: string; expiresAt: string; viewed: boolean;
   likeCount: number; likedByMe: boolean; myReaction?: string | null;
   isVideoLocked?: boolean;
@@ -657,6 +660,11 @@ function StoryViewer({
 
   // Mantém o ref em sincronia (o loop de animação lê o ref, não o estado).
   useEffect(() => { pausedRef.current = pausaEfetiva; }, [pausaEfetiva]);
+  // Música d'A Casa no story: toca com som (quem abriu o story já tocou na tela);
+  // o botão de som do topo liga/desliga. Se o navegador barrar, aparece "toque para ouvir".
+  const [somMusica, setSomMusica] = useState(true);
+  const musicaAgora = !story.mimeType.startsWith('video/') && story.mediaUrl !== undefined ? story.musica ?? null : null;
+  const trecho = useTrechoDaMusica(musicaAgora, story.id, { pausado: pausaEfetiva, ligado: somMusica });
   // Pausa/retoma o vídeo (segurar, digitando ou app em segundo plano).
   useEffect(() => {
     const v = videoRef.current;
@@ -801,7 +809,8 @@ function StoryViewer({
   // + onEnded). Não-assinante não auto-avança (fica na amostra até tocar).
   useEffect(() => {
     if (story.mimeType.startsWith('video/')) return; // vídeo: progresso pelo player
-    const DURATION = 5000;
+    // Com música, a foto/texto fica o trecho inteiro (15s), como no Instagram.
+    const DURATION = story.musica ? Math.max(5, story.musica.duracao) * 1000 : 5000;
     let raf = 0;
     let acc = 0;                       // ms acumulados (não avança enquanto pausado)
     let last = performance.now();
@@ -817,7 +826,7 @@ function StoryViewer({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [story.id, story.mimeType, go]);
+  }, [story.id, story.mimeType, story.musica, go]);
 
   // Registrar view
   useEffect(() => {
@@ -1035,6 +1044,16 @@ function StoryViewer({
             {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
           </button>
         )}
+        {musicaAgora && (
+          <button
+            type="button"
+            onClick={() => { if (trecho.bloqueado) { setSomMusica(true); trecho.destravar(); } else setSomMusica((v) => !v); }}
+            className="text-white/80 hover:text-white p-1"
+            aria-label={!somMusica || trecho.bloqueado ? 'Ouvir a música' : 'Silenciar a música'}
+          >
+            {!somMusica || trecho.bloqueado ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          </button>
+        )}
         {story.author.id !== myUserId && (
           <div className="relative">
             <button
@@ -1132,6 +1151,19 @@ function StoryViewer({
         {story.mediaUrl && story.text ? (
           <div className="pointer-events-none absolute inset-0 z-[5]">
             <StoryTextOverlay text={story.text} overlay={story.textOverlay} />
+          </div>
+        ) : null}
+
+        {/* Música d'A Casa: selo leva para A Casa; se o som foi barrado, toque para ouvir. */}
+        {musicaAgora ? (
+          <div className="absolute left-0 right-0 top-3 z-[6] flex flex-col items-center gap-2" onPointerDown={(e) => e.stopPropagation()}>
+            <SeloDaMusica musica={musicaAgora} onAbrir={() => navigate('/casa')} />
+            {trecho.bloqueado && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); setSomMusica(true); trecho.destravar(); }}
+                className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-black">
+                🔇 Toque para ouvir a música
+              </button>
+            )}
           </div>
         ) : null}
 
@@ -1668,6 +1700,14 @@ export default function Stories() {
   const [amostra,      setAmostra]      = useState<FeedStory[] | null>(null);
   const [previewIdx,   setPreviewIdx]   = useState<number | null>(null); // preview own stories
   const [ownMuted, setOwnMuted] = useState(true); // som ao revisar os próprios stories
+  const [musicaEscolhida, setMusicaEscolhida] = useState<MusicaEscolhida | null>(null); // música d'A Casa do story sendo criado
+  // Revisando o próprio story com música: toca o trecho também.
+  const storyRevisado = previewIdx !== null ? myStories[previewIdx] ?? null : null;
+  const trechoRevisado = useTrechoDaMusica(
+    storyRevisado && !storyRevisado.mimeType.startsWith('video/') ? storyRevisado.musica ?? null : null,
+    storyRevisado?.id ?? '',
+    { pausado: false, ligado: true },
+  );
   const [statsStoryId, setStatsStoryId] = useState<string | null>(null);
   const [statsOpen,    setStatsOpen]    = useState(false);
   const [deleting,     setDeleting]     = useState<string | null>(null); // storyId being deleted
@@ -2000,6 +2040,7 @@ export default function Stories() {
     setEditorUrl(null);
     setEditorIsVideo(false);
     setOvText('');
+    setMusicaEscolhida(null);
   };
 
   const handlePublishMedia = async () => {
@@ -2011,6 +2052,7 @@ export default function Stories() {
       await storiesService.create(String(media.id), {
         ...(text ? { text, textOverlay: { x: ovX, y: ovY, color: ovColor, size: ovSize } } : {}),
         audience: audiencia,
+        musica: !editorIsVideo && musicaEscolhida ? { id: musicaEscolhida.id, inicio: musicaEscolhida.inicio } : null,
       });
       toast({
         title: '✨ Story publicado!',
@@ -2065,7 +2107,7 @@ export default function Stories() {
     if (!text) return;
     setUploading(true);
     try {
-      await storiesService.createText(text, storyBg, { audience: audiencia });
+      await storiesService.createText(text, storyBg, { audience: audiencia, musica: musicaEscolhida ? { id: musicaEscolhida.id, inicio: musicaEscolhida.inicio } : null });
       toast({
         title: '✨ Story publicado!',
         description: audiencia === 'favorites'
@@ -2076,6 +2118,7 @@ export default function Stories() {
       });
       setAudiencia('all');
       setTextOpen(false);
+      setMusicaEscolhida(null);
       setStoryText('');
       setStoryBg(STORY_BACKGROUNDS[0].id);
       await load();
@@ -2502,6 +2545,16 @@ export default function Stories() {
               ) : (
                 <img key={s.id} src={resolveServerUrl(s.mediaUrl || '')} alt="" className="h-full w-full object-cover" />
               )}
+              {s.musica && !s.mimeType.startsWith('video/') ? (
+                <div className="absolute left-0 right-0 top-3 z-[6] flex flex-col items-center gap-2">
+                  <SeloDaMusica musica={s.musica} />
+                  {trechoRevisado.bloqueado && (
+                    <button type="button" onClick={trechoRevisado.destravar} className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-black">
+                      🔇 Toque para ouvir a música
+                    </button>
+                  )}
+                </div>
+              ) : null}
               {/* O autor também vê o texto que escreveu por cima da mídia. */}
               {s.mediaUrl && s.text ? (
                 <div className="pointer-events-none absolute inset-0 z-[5]">
@@ -2637,6 +2690,7 @@ export default function Stories() {
             {ovText.trim() ? (
               <p className="text-center text-[11px] text-white/50">✋ Arraste o texto sobre a mídia para posicionar</p>
             ) : null}
+            {!editorIsVideo && <BotaoDeMusica musica={musicaEscolhida} onMudar={setMusicaEscolhida} tema="escuro" />}
             {seletorDeAudiencia('escuro')}
             <div className="flex flex-wrap items-center justify-between gap-3">
               {/* tamanho da fonte */}
@@ -2714,6 +2768,7 @@ export default function Stories() {
               ))}
             </div>
 
+            <div className="mb-3"><BotaoDeMusica musica={musicaEscolhida} onMudar={setMusicaEscolhida} tema="claro" /></div>
             <div className="mb-3">{seletorDeAudiencia('claro')}</div>
 
             <Button

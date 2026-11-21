@@ -2374,10 +2374,12 @@ export const storiesService = {
       // So vai quando a audiencia e 'favorites': o backend regrava a lista com
       // o que foi escolhido na hora de postar.
       favoriteIds?: string[];
+      musica?: { id: string; inicio: number } | null;
     },
   ) => {
     const res = await apiClient.post('/stories', {
       mediaId,
+      ...(opts?.musica ? { musica: opts.musica } : {}),
       ...(opts?.text ? { text: opts.text } : {}),
       ...(opts?.text && opts?.textOverlay ? { textOverlay: opts.textOverlay } : {}),
       ...(opts?.audience === 'favorites' ? { audience: 'favorites', favoriteIds: opts.favoriteIds ?? [] } : opts?.audience === 'compatible' ? { audience: 'compatible' } : {}),
@@ -2387,14 +2389,19 @@ export const storiesService = {
   createText: async (
     text: string,
     background: string,
-    opts?: { audience?: StoryAudience; favoriteIds?: string[] },
+    opts?: { audience?: StoryAudience; favoriteIds?: string[]; musica?: { id: string; inicio: number } | null },
   ) => {
     const res = await apiClient.post('/stories', {
       text,
       background,
+      ...(opts?.musica ? { musica: opts.musica } : {}),
       ...(opts?.audience === 'favorites' ? { audience: 'favorites', favoriteIds: opts.favoriteIds ?? [] } : opts?.audience === 'compatible' ? { audience: 'compatible' } : {}),
     });
     return res.data as { id: string; expiresAt: string };
+  },
+  musicas: async () => {
+    const res = await apiClient.get('/stories/musicas');
+    return res.data as { trecho: number; musicas: Array<{ id: string; titulo: string; url: string; duracao: number }> };
   },
   getFavorites: async () => {
     const res = await apiClient.get('/story-favorites');

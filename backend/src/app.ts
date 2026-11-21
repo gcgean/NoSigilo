@@ -8774,6 +8774,30 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     return new Date(new Date(createdAt).getTime() + 24 * 60 * 60 * 1000).toISOString();
   }
 
+  // ─── Música no story (21/11/2026) ─────────────────────────────────────────
+  // Só as músicas da Rádio d'A Casa (playlist em system_settings 'casa_playlist';
+  // vinhetas, abertura e fechamento ficam de fora). O story toca um trecho de 15s.
+  const TRECHO_MUSICA_STORY = 15;
+  async function musicasParaStory() {
+    const row = (await queryOne(db, "SELECT value FROM system_settings WHERE key = 'casa_playlist' LIMIT 1", [])) as any;
+    const lista = (safeJsonParse(row?.value) ?? []) as any[];
+    return (Array.isArray(lista) ? lista : [])
+      .filter((f) => f && (!f.tipo || f.tipo === 'musica') && Number(f.duracao) > TRECHO_MUSICA_STORY && /^[0-9a-f-]{36}\.(mp3|m4a|aac|ogg)$/i.test(String(f.arquivo || '')))
+      .map((f) => ({ id: String(f.id), titulo: String(f.titulo || 'Rádio d\'A Casa'), arquivo: String(f.arquivo), duracao: Number(f.duracao) }));
+  }
+  function musicaDoStory(raw: unknown) {
+    const m = safeJsonParse(typeof raw === 'string' ? raw : null) as any;
+    if (!m?.arquivo) return null;
+    return { titulo: String(m.titulo || ''), url: `/api/casa/musica/${String(m.arquivo)}`, inicio: Number(m.inicio) || 0, duracao: TRECHO_MUSICA_STORY };
+  }
+  app.get('/api/stories/musicas', requireAuth(env, db), async (_req, res) => {
+    const musicas = await musicasParaStory();
+    res.json({
+      trecho: TRECHO_MUSICA_STORY,
+      musicas: musicas.map((f) => ({ id: f.id, titulo: f.titulo, url: `/api/casa/musica/${f.arquivo}`, duracao: f.duracao })),
+    });
+  });
+
   // GET /api/stories/me — meus stories ativos (múltiplos)
   app.get('/api/stories/me', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
@@ -8781,7 +8805,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const rows = (await queryAll(
       db,
       `SELECT s.id, s.media_id, s.text, s.background, s.text_overlay, s.audience, s.created_at, s.expires_at, s.destaque_ate,
-              m.filename, m.mime_type
+              s.musica_json, m.filename, m.mime_type
        FROM stories s
        LEFT JOIN media m ON m.id = s.media_id
        WHERE s.user_id = ? AND s.expires_at > ?
@@ -8804,6 +8828,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         background: s.background ? String(s.background) : null,
         textOverlay: s.text_overlay ? (safeJsonParse(s.text_overlay) as any) : null,
         audience: storyAudience(s.audience),
+        musica: musicaDoStory(s.musica_json),
         createdAt: String(s.created_at),
         expiresAt: String(s.expires_at),
         destaqueAte: s.destaque_ate && new Date(String(s.destaque_ate)).getTime() > Date.now() ? String(s.destaque_ate) : null,
@@ -8878,7 +8903,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const rows = (await queryAll(
       db,
       `SELECT s.id, s.user_id, s.media_id, s.text, s.background, s.text_overlay, s.audience, s.created_at, s.expires_at,
-              m.filename, m.mime_type,
+              s.musica_json, m.filename, m.mime_type,
               u.name, u.gender, u.birth_date, u.partner_birth_date,
               u.city, u.state, u.bio,
               u.fetiches_json, u.intentions_json, u.looking_for_json AS autor_procura,
@@ -9038,6 +9063,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         // Chega aqui so o que o viewer pode ver; o campo serve para a estrela
         // verde, que diz "voce esta nos favoritos de quem postou".
         audience: storyAudience(r.audience),
+        musica: conteudoLiberado ? musicaDoStory(r.musica_json) : null,
         createdAt: String(r.created_at),
         expiresAt: String(r.expires_at),
         viewed: Number(r.is_viewed) === 1,
@@ -9390,6 +9416,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       if (!media) { res.status(404).json({ error: 'media_not_found' }); return; }
     }
 
+    // Música da Rádio d'A Casa (opcional): só id de faixa da playlist, trecho dentro da música.
+    let musicaJson: string | null = null;
+    const pedidaMusica = req.body?.musica as { id?: string; inicio?: number } | undefined;
+    if (pedidaMusica?.id) {
+      const faixa = (await musicasParaStory()).find((f) => f.id === String(pedidaMusica.id));
+      if (!faixa) { res.status(400).json({ error: 'musica_invalida', message: 'Essa música não está mais na Rádio d\'A Casa. Escolha outra.' }); return; }
+      const inicio = Math.min(Math.max(0, Math.floor(Number(pedidaMusica.inicio) || 0)), Math.floor(faixa.duracao - TRECHO_MUSICA_STORY));
+      musicaJson = JSON.stringify({ id: faixa.id, titulo: faixa.titulo, arquivo: faixa.arquivo, inicio });
+    }
+
     // O composer manda a seleção junto com o post (dá para mexer na lista na
     // hora, como no Instagram). Só regrava quando o campo vem: post público
     // não deve apagar a lista que a pessoa montou antes.
@@ -9422,8 +9458,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const storyText = (isText || hasOverlay) ? text : null;
     await run(
       db,
-      'INSERT INTO stories (id, user_id, media_id, text, background, text_overlay, audience, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, userId, mediaId || '', storyText, isText ? (background || 'sunset') : null, textOverlayJson, paraFavoritos ? 'favorites' : paraCompativeis ? 'compatible' : 'all', now, expiresAt],
+      'INSERT INTO stories (id, user_id, media_id, text, background, text_overlay, audience, musica_json, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, userId, mediaId || '', storyText, isText ? (background || 'sunset') : null, textOverlayJson, paraFavoritos ? 'favorites' : paraCompativeis ? 'compatible' : 'all', musicaJson, now, expiresAt],
     );
     await persist();
     // Só mulheres e casais ganham tokens por story.
