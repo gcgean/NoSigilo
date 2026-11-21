@@ -2640,14 +2640,12 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     if (!achou) return null;
     // Contato: só bloqueia a mensagem e avisa (sem contar aviso nem expulsar).
     if (achou.cat === 'contato') return `💋 Lola: ${achou.aviso}`;
+    // 21/11/2026 (regra do dono): ninguém sai da Casa sem denúncia; só bloqueia a mensagem.
     const n = (avisosDaNoite.get(userId) ?? 0) + 1;
     avisosDaNoite.set(userId, n);
     contadoresDaNoite.avisos++;
-    if (n >= 2) {
-      await expulsar(userId, nome, 'Pix/dinheiro na sala (2º aviso)', texto, salaId);
-      return 'Você foi retirado(a) da Casa nesta noite por repetir o que a Lola pediu para não fazer.';
-    }
-    return `💋 Lola: ${achou.aviso} (1º aviso; no próximo você sai da Casa)`;
+    if (n === 2) void deps.alertar(`⚠️ A Casa: ${nome} insistiu em Pix/dinheiro (2ª vez, mensagem bloqueada).\nSala: ${salaId}\nMensagem: "${texto.slice(0, 200)}"`).catch(() => {});
+    return `💋 Lola: ${achou.aviso}`;
   };
 
   // Últimas falas antes da mensagem (para a IA entender, por ex., a pergunta que ela responde).
@@ -2657,34 +2655,40 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       .filter((x) => x.tipo === 'pessoa' || x.tipo === 'lola')
       .map((x) => `${x.autor?.nome ?? 'Lola'}: ${x.texto.slice(0, 140)}`).join('\n');
   };
-  /** Depois de publicar: a IA olha menor de idade, coerção e ofensa. */
-  const moderarDepois = (userId: string, nome: string, texto: string, salaId: string, remover: () => void, contexto = '') => {
+  /**
+   * Depois de publicar, a IA só AVISA o admin (menor/coerção). Desde 21/11/2026 (regra
+   * do dono: a IA expulsava gente por engano) ela não remove mensagem nem pessoa sozinha;
+   * quem sai da Casa é quem foi denunciado por outro usuário (ver julgarDenuncia).
+   */
+  const moderarDepois = (nome: string, texto: string, salaId: string, contexto = '') => {
     if (texto.length < 6) return;
     void (async () => {
       const veredito = await julgarComIa(texto, contexto);
-      if (veredito === null) {
-        if (SUSPEITA_MENOR.test(texto)) void deps.alertar(`⚠️ A Casa: possível menção a menor de idade (IA indisponível, confira).\n${nome}: "${texto.slice(0, 200)}"\nSala: ${salaId}`).catch(() => {});
-        return;
+      const claro = SUSPEITA_MENOR.test(texto) || SUSPEITA_MENOR.test(contexto);
+      if (veredito === 'coercao' || (veredito === 'menor' && claro) || (veredito === null && SUSPEITA_MENOR.test(texto))) {
+        const oque = veredito === 'coercao' ? 'possível ameaça / falta de consentimento' : 'possível menção a menor de idade';
+        void deps.alertar(`⚠️ A Casa: ${oque} (ninguém foi retirado; confira).\n${nome}: "${texto.slice(0, 200)}"\nSala: ${salaId}`).catch(() => {});
       }
-      if (veredito === 'ok') return;
-      remover();
-      // Sem nenhum sinal claro de menor na mensagem nem na conversa (ex.: "6 anos" =
-      // tempo de casados; "ele está tentando enfiar o pau dele" foi expulso em
-      // 20/11/2026): não expulsa sozinha; tira a mensagem e pede para o admin conferir.
-      if (veredito === 'menor' && !SUSPEITA_MENOR.test(texto) && !SUSPEITA_MENOR.test(contexto)) {
-        void deps.alertar(`⚠️ A Casa: a IA viu possível menção a menor, sem sinal claro na conversa (ninguém foi retirado; confira).
-${nome}: "${texto.slice(0, 200)}"
-Sala: ${salaId}`).catch(() => {});
-        return;
-      }
-      if (veredito === 'menor') { await expulsar(userId, nome, 'Menção a menor de idade', texto, salaId); return; }
-      if (veredito === 'coercao') { await expulsar(userId, nome, 'Ameaça / falta de consentimento', texto, salaId); return; }
-      const n = (avisosDaNoite.get(userId) ?? 0) + 1;
-      avisosDaNoite.set(userId, n);
-      contadoresDaNoite.avisos++;
-      if (n >= 2) await expulsar(userId, nome, 'Ofensa (2º aviso)', texto, salaId);
-      else emitirPara(userId, 'casa.aviso', { texto: '💋 Lola: aqui a regra é respeito. Sua mensagem foi removida (1º aviso; no próximo você sai da Casa).' });
     })();
+  };
+
+  /** Denúncia: a Lola lê a conversa do denunciado e retira da Casa se confirmar. */
+  const julgarDenuncia = async (alvo: { id: string; nome: string; nomeReal: string; idPublico: string }, sala: Sala, motivo: string) => {
+    if (estaExpulso(alvo.id)) return 'já estava fora da Casa';
+    const doAlvo = sala.mensagens.filter((m) => m.tipo === 'pessoa' && m.autor?.id === alvo.idPublico).slice(-6);
+    if (doAlvo.length === 0) return 'sem mensagens dele(a) para analisar (ninguém foi retirado)';
+    const primeira = sala.mensagens.findIndex((m) => m.id === doAlvo[0].id);
+    const conversa = sala.mensagens.slice(Math.max(0, primeira - 6))
+      .filter((x) => x.tipo === 'pessoa' || x.tipo === 'lola')
+      .map((x) => `${x.autor?.nome ?? 'Lola'}: ${x.texto.slice(0, 140)}`).join('\n');
+    const texto = `${alvo.nome} foi denunciado(a) por: ${motivo}\nMensagens de ${alvo.nome}:\n${doAlvo.map((m) => m.texto.slice(0, 140)).join('\n')}`;
+    const veredito = await julgarComIa(texto, conversa);
+    if (veredito === null) return 'IA indisponível (ninguém foi retirado; confira)';
+    if (veredito === 'ok') return 'achou normal (ninguém foi retirado)';
+    if (veredito === 'menor' && !SUSPEITA_MENOR.test(texto) && !SUSPEITA_MENOR.test(conversa)) return 'viu possível menor sem sinal claro (ninguém foi retirado; confira)';
+    const porque = veredito === 'menor' ? 'Menção a menor de idade' : veredito === 'coercao' ? 'Ameaça / falta de consentimento' : 'Ofensa';
+    await expulsar(alvo.id, alvo.nomeReal, `Denunciado(a) e confirmado pela Lola: ${porque}`, doAlvo.map((m) => m.texto).join(' | '), sala.nome);
+    return `retirou da Casa (${porque})`;
   };
 
   const removerMsgDaSala = (sala: Sala, msgId: string) => {
@@ -3363,7 +3367,7 @@ Sala: ${salaId}`).catch(() => {});
     for (const alvoId of contatos) if (!(await contatoPermitido(res, p.id, alvoId))) return;
     for (const alvoId of contatos) await registrarIniciativa(p.id, alvoId);
     const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
-    moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id), contextoDe(sala.mensagens, publicada.id));
+    moderarDepois(p.nome, texto, sala.nome, contextoDe(sala.mensagens, publicada.id));
     void avisarMarcados(sala, p, texto);
     if (respondida) void avisarRespondido(sala, p, respondida);
     if (respondida) oiFoiRespondido(sala, respondida.id, p.id);
@@ -3634,8 +3638,9 @@ Sala: ${salaId}`).catch(() => {});
     const quem = ((await db.queryOne('SELECT name, email FROM users WHERE id = ?', [userId])) as any) ?? {};
     const denunciado = ((await db.queryOne('SELECT email FROM users WHERE id = ?', [alvo.id])) as any)?.email ?? '?';
     registrarEvento(sala.id, 'denuncia', userId, alvo.id);
-    void deps.alertar(`🚩 A Casa — denúncia na sala ${sala.nome}\nDenunciado: ${alvo.nomeReal} (${denunciado})${alvo.nome !== alvo.nomeReal ? ` [aparece como ${alvo.nome}]` : ''}\nPor: ${quem.name ?? p?.nome ?? '?'} (${quem.email ?? '?'})\nMotivo: ${motivo}${ultimas ? `\nÚltimas mensagens:\n${ultimas}` : ''}`).catch(() => {});
     res.json({ ok: true });
+    const resultado = await julgarDenuncia(alvo, sala, motivo).catch(() => 'erro ao analisar (confira)');
+    void deps.alertar(`🚩 A Casa — denúncia na sala ${sala.nome}\nDenunciado: ${alvo.nomeReal} (${denunciado})${alvo.nome !== alvo.nomeReal ? ` [aparece como ${alvo.nome}]` : ''}\nPor: ${quem.name ?? p?.nome ?? '?'} (${quem.email ?? '?'})\nMotivo: ${motivo}\nLola: ${resultado}${ultimas ? `\nÚltimas mensagens:\n${ultimas}` : ''}`).catch(() => {});
   });
 
   // ─── Admin: painel ao vivo da Casa ─────────────────────────────────────────
@@ -4580,10 +4585,7 @@ Sala: ${salaId}`).catch(() => {});
     const antesDoCalor = c.calor;
     aquecer(c, PALAVRAS_QUENTES.test(texto) ? 5 : 1);
     if (c.calor !== antesDoCalor) avisarCabine(c);
-    moderarDepois(userId, m.nome, texto, 'cabine', () => {
-      c.mensagens = c.mensagens.filter((x) => x.id !== publicada.id);
-      for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) emitirPara(id, 'casa.cabine.mensagem.removida', { cabineId: c.id, id: publicada.id });
-    }, contextoDe(c.mensagens, publicada.id));
+    moderarDepois(m.nome, texto, 'cabine', contextoDe(c.mensagens, publicada.id));
     res.json({ ok: true });
   });
 
