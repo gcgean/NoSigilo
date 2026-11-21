@@ -17592,8 +17592,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       {
         userId: parsed.data.profileUserId,
         type: 'testimonial.pending',
-        title: 'Novo depoimento pendente',
-        description: `${authorName} enviou um depoimento para o seu perfil.`,
+        title: 'Você recebeu uma recomendação ⭐',
+        description: `${authorName} recomendou você. Toque para ler e aceitar: se aceitar, ela fica pública no seu perfil.`,
         dataJson: { testimonialId: id, authorId: req.auth!.userId, authorName },
       }
     );
@@ -17628,8 +17628,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       {
         userId: String(t.author_user_id),
         type: parsed.data.accept ? 'testimonial.approved' : 'testimonial.rejected',
-        title: parsed.data.accept ? 'Depoimento aprovado' : 'Depoimento recusado',
-        description: parsed.data.accept ? `${ownerName} aprovou seu depoimento.` : `${ownerName} recusou seu depoimento.`,
+        title: parsed.data.accept ? 'Recomendação aceita ⭐' : 'Recomendação recusada',
+        description: parsed.data.accept ? `${ownerName} aceitou sua recomendação: ela já aparece no perfil.` : `${ownerName} preferiu não publicar sua recomendação.`,
         dataJson: { testimonialId, profileUserId: req.auth!.userId, profileUserName: ownerName },
       }
     );

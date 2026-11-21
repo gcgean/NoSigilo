@@ -44,7 +44,7 @@ import BandeiraPortugal from '@/components/BandeiraPortugal';
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string; broken?: boolean };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
 type ProfileVisitItem = { id: string; createdAt: string; visitsCount?: number; visitor: { id: string; name: string; avatar?: string | null } };
-type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
+type Testimonial = { id: string; content: string; status: string; createdAt: string; media?: Array<{ id: string; url: string; mimeType: string }>; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
 type PrivatePhotoAccessItem = {
   id: string;
   status: 'pending' | 'approved' | 'denied';
@@ -487,6 +487,7 @@ export default function Profile() {
   // As recomendações aprovadas já vinham do servidor (status 'all') mas nunca
   // eram exibidas no próprio perfil — só as pendentes, para aceitar/recusar.
   const approvedTestimonials = testimonials.filter((t) => String(t.status) === 'approved');
+  const pendingTestimonials = testimonials.filter((t) => String(t.status) === 'pending');
   const [privatePhotoRequests, setPrivatePhotoRequests] = useState<PrivatePhotoAccessItem[]>([]);
   const [isLoadingPrivatePhotoRequests, setIsLoadingPrivatePhotoRequests] = useState(false);
   const [busyPrivatePhotoRequestId, setBusyPrivatePhotoRequestId] = useState<string | null>(null);
@@ -546,6 +547,7 @@ export default function Profile() {
     if (!location.hash) return;
     const id = location.hash.replace('#', '');
     if (!id) return;
+    if (id === 'testimonials') setActiveTab('testimonials');
     window.setTimeout(() => {
       const el = document.getElementById(id);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1132,9 +1134,9 @@ export default function Profile() {
       setNotifications((prev) =>
         prev.filter((n) => !(n.type === 'testimonial.pending' && String(n.data?.testimonialId || '') === String(t.id)))
       );
-      toast({ title: accept ? 'Depoimento aprovado' : 'Depoimento recusado' });
+      toast({ title: accept ? 'Recomendação aceita' : 'Recomendação recusada', description: accept ? 'Ela já aparece no seu perfil para todo mundo.' : 'Ela não vai aparecer no seu perfil.' });
     } catch {
-      toast({ title: 'Falha ao atualizar depoimento', description: 'Tente novamente.', variant: 'destructive' });
+      toast({ title: 'Não foi possível responder a recomendação', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
       setBusyTestimonialId(null);
     }
@@ -1765,38 +1767,18 @@ export default function Profile() {
           </div>
         ) : null}
 
-        {testimonials.some((t) => String(t.status) === 'pending') ? (
-          <div id="testimonials" className="glass rounded-2xl p-4 sm:p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">Depoimentos pendentes</h2>
-            <div className="space-y-3">
-              {testimonials
-                .filter((t) => String(t.status) === 'pending')
-                .slice(0, 10)
-                .map((t) => (
-                  <div key={t.id} className="rounded-xl border p-4 bg-secondary/10">
-                    <button
-                      type="button"
-                      className="font-medium mb-1 hover:underline"
-                      onClick={() => navigate(getUserProfileHref(t.author.id, user?.id, '/profile'))}
-                    >
-                      {t.author.name}
-                    </button>
-                    {formatProfileIdentityLine(t.author) ? (
-                      <div className="text-xs text-muted-foreground mb-2">{formatProfileIdentityLine(t.author)}<BandeiraPortugal state={t.author?.state} /></div>
-                    ) : null}
-                    <div className="text-sm text-muted-foreground whitespace-pre-wrap">{t.content}</div>
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
-                      <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={busyTestimonialId === t.id} onClick={() => void respondTestimonial(t, true)}>
-                        Aceitar
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={busyTestimonialId === t.id} onClick={() => void respondTestimonial(t, false)}>
-                        Recusar
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
+        {pendingTestimonials.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => setActiveTab('testimonials')}
+            className="glass mb-6 flex w-full items-center gap-3 rounded-2xl p-4 text-left"
+          >
+            <Star className="h-6 w-6 shrink-0 text-primary" />
+            <span className="flex-1 text-sm">
+              <span className="font-semibold">{pendingTestimonials.length === 1 ? '1 recomendação esperando' : `${pendingTestimonials.length} recomendações esperando`} você aceitar</span>
+              <span className="block text-muted-foreground">Toque para ler e aceitar ou recusar.</span>
+            </span>
+          </button>
         ) : (
           <div className="glass rounded-2xl p-6 text-center text-sm text-muted-foreground">
             Nenhuma visita ou aviso novo por enquanto.
@@ -1808,7 +1790,7 @@ export default function Profile() {
         <div className="mb-4 grid grid-cols-3 gap-2">
           {([
             { aba: 'mural', rotulo: 'Mural', Icone: MessageSquareQuote, n: 0 },
-            { aba: 'testimonials', rotulo: 'Recomendações', Icone: Star, n: approvedTestimonials.length },
+            { aba: 'testimonials', rotulo: 'Recomendações', Icone: Star, n: pendingTestimonials.length },
             { aba: 'avisos', rotulo: 'Avisos', Icone: Eye, n: unreadNotifications.length + profileVisits.length },
           ] as const).map(({ aba, rotulo, Icone, n }) => (
             <button
@@ -2125,6 +2107,46 @@ export default function Profile() {
         </TabsContent>
 
         <TabsContent value="testimonials">
+          {pendingTestimonials.length > 0 && (
+            <div id="testimonials" className="glass mb-4 rounded-2xl border border-primary/40 p-4 sm:p-6">
+              <h2 className="text-lg font-semibold">Esperando você aceitar ({pendingTestimonials.length})</h2>
+              <p className="mb-4 text-sm text-muted-foreground">Se aceitar, a recomendação fica pública no seu perfil, com o texto e as fotos. Se recusar, ninguém vê.</p>
+              <div className="space-y-3">
+                {pendingTestimonials.map((t) => (
+                  <div key={t.id} className="rounded-xl border bg-secondary/10 p-4">
+                    <button
+                      type="button"
+                      className="mb-1 font-medium hover:underline"
+                      onClick={() => navigate(getUserProfileHref(t.author.id, user?.id, '/profile'))}
+                    >
+                      {t.author.name}
+                    </button>
+                    {formatProfileIdentityLine(t.author) ? (
+                      <div className="mb-2 text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}<BandeiraPortugal state={t.author?.state} /></div>
+                    ) : null}
+                    <div className="whitespace-pre-wrap break-words text-sm">{t.content}</div>
+                  {(t.media ?? []).filter((m) => m.mimeType.startsWith('image/')).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(t.media ?? []).filter((m) => m.mimeType.startsWith('image/')).map((m) => (
+                        <a key={m.id} href={resolveServerUrl(m.url)} target="_blank" rel="noreferrer">
+                          <img src={resolveServerUrl(m.url)} alt="" className="h-20 w-20 rounded-lg object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                    <div className="mt-3 flex gap-2">
+                      <Button size="sm" className="min-h-11 flex-1 bg-gradient-primary hover:opacity-90 sm:flex-none" disabled={busyTestimonialId === t.id} onClick={() => void respondTestimonial(t, true)}>
+                        Aceitar
+                      </Button>
+                      <Button size="sm" variant="outline" className="min-h-11 flex-1 sm:flex-none" disabled={busyTestimonialId === t.id} onClick={() => void respondTestimonial(t, false)}>
+                        Recusar
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {approvedTestimonials.length === 0 ? (
             <div className="glass rounded-xl p-8 text-center">
               <Star className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
@@ -2147,6 +2169,15 @@ export default function Profile() {
                     <div className="text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}<BandeiraPortugal state={t.author?.state} /></div>
                   ) : null}
                   <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{t.content}</p>
+                  {(t.media ?? []).filter((m) => m.mimeType.startsWith('image/')).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(t.media ?? []).filter((m) => m.mimeType.startsWith('image/')).map((m) => (
+                        <a key={m.id} href={resolveServerUrl(m.url)} target="_blank" rel="noreferrer">
+                          <img src={resolveServerUrl(m.url)} alt="" className="h-20 w-20 rounded-lg object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </article>
               ))}
             </div>

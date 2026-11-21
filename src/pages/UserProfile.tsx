@@ -974,7 +974,7 @@ export default function UserProfile() {
     if (!userId) return;
     const content = testimonialDraft.trim();
     if (content.length < 10) {
-      toast({ title: 'Depoimento muito curto', description: 'Escreva pelo menos 10 caracteres.', variant: 'destructive' });
+      toast({ title: 'Recomendação muito curta', description: 'Escreva pelo menos 10 caracteres.', variant: 'destructive' });
       return;
     }
     setIsSendingTestimonial(true);
@@ -988,9 +988,9 @@ export default function UserProfile() {
       setTestimonialDraft('');
       setTestimonialPhotos([]);
       setTestimonialPhotoPreview([]);
-      toast({ title: 'Depoimento enviado', description: 'O usuário precisa aprovar para aparecer no perfil.' });
+      toast({ title: 'Recomendação enviada ⭐', description: 'Avisamos o perfil. Ela aparece publicamente assim que ele aceitar.' });
     } catch {
-      toast({ title: 'Falha ao enviar depoimento', description: 'Tente novamente.', variant: 'destructive' });
+      toast({ title: 'Não foi possível enviar a recomendação', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsSendingTestimonial(false);
     }
@@ -1881,10 +1881,11 @@ export default function UserProfile() {
                   <AvatarFallback>{String(me?.name || 'U')[0]}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 space-y-2">
+                  <p className="text-sm font-semibold">Recomendar {profile?.name || 'este perfil'}</p>
                   <Textarea
                     value={testimonialDraft}
                     onChange={(e) => setTestimonialDraft(e.target.value)}
-                    placeholder="Conte como foi sua experiência..."
+                    placeholder="Conte como foi conhecer esse perfil: é de confiança? Como foi a experiência? (pode pôr fotos)"
                     rows={3}
                     className="resize-none"
                   />
