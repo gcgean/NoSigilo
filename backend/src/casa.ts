@@ -1152,7 +1152,7 @@ Responda com UMA palavra:
 - ofensa: xingamento com raiva ou desprezo dirigido a alguém da sala (fora do clima de sexo), racismo, homofobia, gordofobia, transfobia.
 - ok: todo o resto.
 Putaria faz parte da Casa (20/11/2026, regra do dono): "puta", "putinha", "vadia", "safada", "cachorra", "piranha", "corno", "cornão", "gostosa", "vagabunda" e parecidos ditos com tesão, provocação, fantasia, dominação ou cuckold são "ok", mesmo dirigidos a alguém (ex.: "fode gostoso essa puta", "vem cá sua vadia", "teu marido é corno manso"). Só é "ofensa" quando é briga de verdade: raiva, desprezo pela pessoa, mandar sair, falar mal da aparência para humilhar, ou preconceito.
-Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números como "6 anos" respondendo há quanto tempo o casal está junto, casado ou pratica swing NÃO são idade de pessoa: são "ok". Só é "menor" se a idade for de uma pessoa abaixo de 18 anos.`,
+Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números como "6 anos" respondendo há quanto tempo o casal está junto, casado ou pratica swing NÃO são idade de pessoa: são "ok". Só é "menor" se a idade for de uma pessoa abaixo de 18 anos. Diminutivo de parte do corpo ou carinho ("cuzinho", "bucetinha", "peitinho", "rabinho", "gatinha") é linguagem sexual de adulto, NÃO indica menor: é "ok". Ex.: "um amigo rasgou o cuzinho dela na minha frente" é "ok".`,
             },
             { role: 'user', content: contexto ? `Conversa antes (só contexto, não julgue):\n${contexto.slice(-800)}\n\nMensagem a julgar: ${texto.slice(0, 400)}` : texto.slice(0, 400) },
           ],
