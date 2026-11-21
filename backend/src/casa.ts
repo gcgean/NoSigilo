@@ -2667,10 +2667,11 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       }
       if (veredito === 'ok') return;
       remover();
-      // Mensagem curta sem sinal claro de menor (ex.: "6 anos" = tempo de casados): não expulsa
-      // sozinha; tira a mensagem e pede para o admin conferir.
-      if (veredito === 'menor' && texto.length < 30 && !SUSPEITA_MENOR.test(texto)) {
-        void deps.alertar(`⚠️ A Casa: a IA viu possível menção a menor, mas a mensagem é curta e ambígua (ninguém foi retirado; confira).
+      // Sem nenhum sinal claro de menor na mensagem nem na conversa (ex.: "6 anos" =
+      // tempo de casados; "ele está tentando enfiar o pau dele" foi expulso em
+      // 20/11/2026): não expulsa sozinha; tira a mensagem e pede para o admin conferir.
+      if (veredito === 'menor' && !SUSPEITA_MENOR.test(texto) && !SUSPEITA_MENOR.test(contexto)) {
+        void deps.alertar(`⚠️ A Casa: a IA viu possível menção a menor, sem sinal claro na conversa (ninguém foi retirado; confira).
 ${nome}: "${texto.slice(0, 200)}"
 Sala: ${salaId}`).catch(() => {});
         return;
