@@ -2325,7 +2325,7 @@ export type StoryMine = {
 // 'favorites' num story do feed significa "voce esta nos favoritos de quem
 // postou" — o backend so entrega o story restrito a quem pode ve-lo, entao o
 // campo aqui serve so para desenhar a estrela verde.
-export type StoryAudience = 'all' | 'favorites';
+export type StoryAudience = 'all' | 'favorites' | 'compatible';
 
 export type StoryFavoriteCandidate = {
   id: string; name: string; avatar: string | null;

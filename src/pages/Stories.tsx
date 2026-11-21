@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import {
   Camera, Eye, MessageCircle, Trash2, X, Send, Heart,
   Lock, Crown, Sparkles, ImageIcon, Volume2, VolumeX,
-  Star, Pin, Search, Check, Globe, MoreHorizontal, EyeOff, Flag,
+  Star, Pin, Search, Check, Globe, MoreHorizontal, EyeOff, Flag, Users,
 } from 'lucide-react';
 import DenunciaStoryPainel from '@/components/DenunciaStoryPainel';
 import { Button } from '@/components/ui/button';
@@ -1896,6 +1896,7 @@ export default function Stories() {
     const escuro = tema === 'escuro';
     const opcoes = [
       { id: 'all'       as const, rotulo: 'Todos',     icone: <Globe className="h-3.5 w-3.5" /> },
+      { id: 'compatible' as const, rotulo: 'Só compatíveis', icone: <Users className="h-3.5 w-3.5" /> },
       { id: 'favorites' as const, rotulo: favCount > 0 ? `Favoritos (${favCount})` : 'Favoritos', icone: <SeloFavoritos className="h-4 w-4" /> },
     ];
     return (
@@ -2000,7 +2001,9 @@ export default function Stories() {
         title: '✨ Story publicado!',
         description: audiencia === 'favorites'
           ? `Só os seus ${favCount} favoritos veem. Expira em 24 horas.`
-          : 'Expira em 24 horas.',
+          : audiencia === 'compatible'
+            ? 'Só perfis compatíveis com você veem. Expira em 24 horas.'
+            : 'Expira em 24 horas.',
       });
       setAudiencia('all');
       closeEditor();
@@ -2049,7 +2052,9 @@ export default function Stories() {
         title: '✨ Story publicado!',
         description: audiencia === 'favorites'
           ? `Só os seus ${favCount} favoritos veem. Expira em 24 horas.`
-          : 'Expira em 24 horas.',
+          : audiencia === 'compatible'
+            ? 'Só perfis compatíveis com você veem. Expira em 24 horas.'
+            : 'Expira em 24 horas.',
       });
       setAudiencia('all');
       setTextOpen(false);
@@ -2081,9 +2086,12 @@ export default function Stories() {
   };
 
   const handleDelete = async (storyId: string) => {
+    if (!window.confirm('Apagar este story? Ninguém mais vai ver.')) return;
     setDeleting(storyId);
     try {
       await storiesService.remove(storyId);
+      setPreviewIdx(null);
+      toast({ title: 'Story apagado' });
       await load();
     } catch {
       toast({ title: 'Erro ao remover', variant: 'destructive' });
@@ -2188,6 +2196,7 @@ export default function Stories() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                   {/* Para eu saber, de relance, qual dos meus stories é restrito. */}
                   {s.audience === 'favorites' && <SeloFavoritos className="absolute left-1.5 top-1.5 h-5 w-5" />}
+                  {s.audience === 'compatible' && <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">Compatíveis</span>}
                   <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center gap-2">
                     <span className="flex items-center gap-0.5 text-[10px] text-white/80">
                       <Eye className="h-3 w-3" />{s.viewCount}
@@ -2210,7 +2219,7 @@ export default function Stories() {
                   </button>
                 )}
                 {/* Ações: stats + apagar */}
-                <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute top-1.5 right-1.5 flex gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                   <button
                     type="button"
                     onClick={() => { setStatsStoryId(s.id); setStatsOpen(true); }}
@@ -2488,6 +2497,9 @@ export default function Stories() {
               </button>
               <button type="button" onClick={() => { setPreviewIdx(null); setStatsStoryId(s.id); setStatsOpen(true); }} className="flex items-center gap-1.5 text-sm text-white/80 hover:text-white">
                 <MessageCircle className="h-4 w-4" /> {s.commentCount}
+              </button>
+              <button type="button" disabled={deleting === s.id} onClick={() => void handleDelete(s.id)} className="flex min-h-11 items-center gap-1.5 text-sm text-red-300 hover:text-red-200 disabled:opacity-40">
+                <Trash2 className="h-4 w-4" /> Apagar
               </button>
             </div>
           </div>

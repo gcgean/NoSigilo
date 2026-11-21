@@ -3326,7 +3326,7 @@ export async function runAvisoStoriesNovos(db: DbHandle, env: Env) {
     db,
     `SELECT s.user_id, u.gender, UPPER(TRIM(COALESCE(u.state, ''))) AS uf
        FROM stories s JOIN users u ON u.id = s.user_id
-      WHERE s.expires_at > ? AND (s.audience IS NULL OR s.audience <> 'favorites')
+      WHERE s.expires_at > ? AND (s.audience IS NULL OR s.audience NOT IN ('favorites', 'compatible'))
         AND COALESCE(u.is_showcase, 0) = 0 AND COALESCE(u.is_banned, 0) = 0`,
     [agoraIso]
   )) as any[];
@@ -8690,8 +8690,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // 'favorites' = story restrito a lista de favoritos do autor. Qualquer outro
   // valor (inclusive NULL, que e o que todo story anterior a migracao 084 tem)
   // e publico.
-  function storyAudience(raw: unknown): 'all' | 'favorites' {
-    return String(raw || '') === 'favorites' ? 'favorites' : 'all';
+  // 'compatible' (21/11/2026): só perfis compatíveis veem — o gênero de quem vê
+  // está no "procuro" do autor e o do autor no "procuro" de quem vê.
+  function storyAudience(raw: unknown): 'all' | 'favorites' | 'compatible' {
+    const v = String(raw || '');
+    return v === 'favorites' || v === 'compatible' ? v : 'all';
   }
 
   // Regrava a lista de favoritos do dono inteira (o cliente manda o estado
@@ -8747,7 +8750,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // bloqueado, ou bloqueou, não vê, não curte e não comenta. Antes o
     // comentário passava e o dono recebia "comentou no seu story".
     if (await isUserBlocked({ db }, { viewerId, targetId: String(story.user_id) })) return 'forbidden';
-    if (storyAudience(story.audience) !== 'favorites') return undefined;
+    const aud = storyAudience(story.audience);
+    if (aud === 'compatible') {
+      const pessoas = (await queryAll(db, 'SELECT id, gender, looking_for_json FROM users WHERE id IN (?, ?)', [String(story.user_id), viewerId])) as any[];
+      const autor = pessoas.find((x) => String(x.id) === String(story.user_id));
+      const leitor = pessoas.find((x) => String(x.id) === viewerId);
+      const ok = !!autor && !!leitor && radarProfilesAreCompatible(
+        { gender: autor.gender, lookingFor: safeJsonParse(autor.looking_for_json) ?? [] },
+        { gender: leitor.gender, lookingFor: safeJsonParse(leitor.looking_for_json) ?? [] },
+      );
+      return ok ? undefined : 'forbidden';
+    }
+    if (aud !== 'favorites') return undefined;
     const permitido = (await queryOne(
       db,
       'SELECT 1 AS ok FROM story_favorites WHERE owner_id = ? AND favorite_id = ? LIMIT 1',
@@ -8867,7 +8881,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               m.filename, m.mime_type,
               u.name, u.gender, u.birth_date, u.partner_birth_date,
               u.city, u.state, u.bio,
-              u.fetiches_json, u.intentions_json,
+              u.fetiches_json, u.intentions_json, u.looking_for_json AS autor_procura,
               u.lat, u.lon, u.last_seen_at,
               (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename,
               (CASE WHEN sv.story_id IS NOT NULL THEN 1 ELSE 0 END) as is_viewed,
@@ -8914,6 +8928,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const bloqueadosStories = await idsComBloqueio(db, userId);
     const filtradosPorInteresse = rows.filter((r: any) => {
       if (bloqueadosStories.has(String(r.user_id))) return false;
+      // Story "só compatíveis": o autor também precisa procurar o meu tipo de perfil.
+      if (storyAudience(r.audience) === 'compatible' && !matchesLookingFor(safeJsonParse(r.autor_procura) ?? [], me?.gender)) return false;
       if (myLookingFor.length === 0) return true;
       return matchesLookingFor(myLookingFor, r.gender);
     });
@@ -9351,6 +9367,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Qualquer outro valor cai em público — o padrão nunca é o restrito, para
     // não acontecer de alguém postar achando que está no ar para todos.
     const paraFavoritos = String(req.body?.audience || '') === 'favorites';
+    const paraCompativeis = String(req.body?.audience || '') === 'compatible';
 
     if (!mediaId && !isText) { res.status(400).json({ error: 'mediaId_or_text_required' }); return; }
     if (text.length > 280) { res.status(400).json({ error: 'text_too_long', message: 'O texto deve ter no máximo 280 caracteres.' }); return; }
@@ -9406,7 +9423,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     await run(
       db,
       'INSERT INTO stories (id, user_id, media_id, text, background, text_overlay, audience, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, userId, mediaId || '', storyText, isText ? (background || 'sunset') : null, textOverlayJson, paraFavoritos ? 'favorites' : 'all', now, expiresAt],
+      [id, userId, mediaId || '', storyText, isText ? (background || 'sunset') : null, textOverlayJson, paraFavoritos ? 'favorites' : paraCompativeis ? 'compatible' : 'all', now, expiresAt],
     );
     await persist();
     // Só mulheres e casais ganham tokens por story.
@@ -9443,7 +9460,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       void avisarSeguidoresDoStory(userId, id).catch((e) => console.error('[stories] aviso de story novo', e));
     }
 
-    res.json({ id, expiresAt, audience: paraFavoritos ? 'favorites' : 'all' });
+    res.json({ id, expiresAt, audience: paraFavoritos ? 'favorites' : paraCompativeis ? 'compatible' : 'all' });
   });
 
   // GET /api/story-favorites — a lista de favoritos e os perfis entre os quais
