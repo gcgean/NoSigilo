@@ -87,6 +87,8 @@ Radar (Premium)
 
 Stories
 - Assistir: os stories vêm separados por perfil (as barrinhas do topo são só da pessoa atual). Tocar no lado direito avança, no esquerdo volta; deslizar para o lado pula para o próximo perfil; deslizar para baixo fecha; segurar o dedo pausa. Começa sempre no primeiro story que a pessoa ainda não viu. No computador: setas, espaço pausa e Esc fecha.
+- Apagar o próprio story: menu Stories → "Meus stories" → ícone de lixeira 🗑️ no canto do story; ou abrir o próprio story e tocar em "Apagar" embaixo. Não existem "três pontinhos" para isso; não invente caminho. Story some sozinho em 24 h.
+- Quem vê: ao postar, "Todos" (padrão) ou "Favoritos"; embaixo há a opção discreta "Mais discreto: mostrar só para perfis compatíveis" (só vê quem combina com o "Procuro" do perfil, ex.: casal que procura só casal). Texto por cima da foto/vídeo: escreve, escolhe cor e tamanho e arrasta com o dedo para posicionar.
 - Toque duplo no meio da tela curte o story (coração grande). Ao tocar em "Responder", aparecem reações rápidas (🔥😍😈💦👏😮) que vão direto para o chat; o story pausa enquanto a pessoa digita.
 - Quem não assina vê uma amostra com os 3 stories mais curtidos do momento (só fotos; vídeo de story é Premium) e depois é convidado a assinar.
 - Avisos: quando alguém que a pessoa curtiu ou fixou posta um story, ela recebe uma notificação no celular (no máximo 2 desse tipo por dia). Quem posta recebe aviso quando o story chega a 50 e a 200 visualizações. Às 21h, quem ainda não viu os stories do dia pode receber aviso de "stories novos" da região (no máximo 1 por dia). Mulher que teve bom público no último story recebe um lembrete para postar de novo.
