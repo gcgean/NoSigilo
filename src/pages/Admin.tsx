@@ -44,6 +44,7 @@ import AdminRitmo from '@/components/AdminRitmo';
 import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
 import AdminVerificacoes from '@/components/AdminVerificacoes';
+import { separarLinks } from '@/utils/linksDoSuporte';
 import PerfilNaCasa from '@/components/PerfilNaCasa';
 
 type AdminPhoto = {
@@ -5609,7 +5610,13 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
                     <img src={resolveServerUrl(m.imageUrl)} alt="Imagem enviada" className="max-h-64 rounded-lg" />
                   </a>
                 )}
-                {m.message && <p>{m.message}</p>}
+                {m.message && (
+                  <p className="whitespace-pre-wrap break-words">
+                    {separarLinks(m.message).map((parte, i) => parte.href
+                      ? <a key={i} href={parte.href} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">{parte.texto}</a>
+                      : <span key={i}>{parte.texto}</span>)}
+                  </p>
+                )}
                 <p className={`text-[10px] mt-0.5 ${m.senderType === 'admin' ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground'}`}>{formatDateAdmin(m.createdAt)}</p>
               </div>
             </div>
