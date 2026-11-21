@@ -2333,8 +2333,10 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [chave, 'enviado', new Date().toISOString()]);
     return true;
   };
-  const lembrarReservas = async (noite: { chave: string; tema: 'sexta' | 'sabado'; forcada: boolean; teste: boolean } | null) => {
-    if (!noite) {
+  const lembrarReservas = async (noite: { chave: string; tema: 'sexta' | 'sabado'; forcada: boolean; teste: boolean; portugal?: boolean } | null) => {
+    // Durante a noite de Portugal (até 22h de Brasília) também: senão o aviso
+    // das 21:45 da noite do Brasil nunca saía (20/11/2026).
+    if (!noite || noite.portugal) {
       const daqui15 = noiteDoHorario(new Date(Date.now() + 15 * 60_000));
       if (!daqui15 || !(await umaVez(`casa_lembrete15:${daqui15.chave}`))) return;
       const t = await temaDaFesta(daqui15.chave, daqui15.tema);
