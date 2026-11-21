@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SeloExpirando, expiraEmBreve } from '@/components/SeloExpirando';
 import NomePerfil from '@/components/NomePerfil';
-import { BotaoDeMusica, SeloDaMusica, useTrechoDaMusica, type MusicaEscolhida, type MusicaDoStory } from '@/components/MusicaDoStory';
+import { EscolherMusica, SeloDaMusica, useTrechoDaMusica, type MusicaEscolhida, type MusicaDoStory } from '@/components/MusicaDoStory';
 import { ehFotoHeic, heicParaJpeg, FOTO_NAO_ABRE } from '@/utils/mediaCompression';
 import { createPortal } from 'react-dom';
 import {
   Camera, Eye, MessageCircle, Trash2, X, Send, Heart,
   Lock, Crown, Sparkles, ImageIcon, Volume2, VolumeX,
-  Star, Pin, Search, Check, Globe, MoreHorizontal, EyeOff, Flag,
+  Star, Pin, Search, Check, Globe, MoreHorizontal, EyeOff, Flag, Music2,
 } from 'lucide-react';
 import DenunciaStoryPainel from '@/components/DenunciaStoryPainel';
 import { Button } from '@/components/ui/button';
@@ -1701,6 +1701,8 @@ export default function Stories() {
   const [previewIdx,   setPreviewIdx]   = useState<number | null>(null); // preview own stories
   const [ownMuted, setOwnMuted] = useState(true); // som ao revisar os próprios stories
   const [musicaEscolhida, setMusicaEscolhida] = useState<MusicaEscolhida | null>(null); // música d'A Casa do story sendo criado
+  const [editandoTexto, setEditandoTexto] = useState(false); // editor: escrevendo o texto (modo Aa)
+  const [musicaAberta, setMusicaAberta] = useState(false);   // editor: lista de músicas aberta
   // Revisando o próprio story com música: toca o trecho também.
   const storyRevisado = previewIdx !== null ? myStories[previewIdx] ?? null : null;
   const trechoRevisado = useTrechoDaMusica(
@@ -1737,6 +1739,8 @@ export default function Stories() {
   // Editor de mídia — texto por cima da foto/vídeo (estilo Instagram)
   const [editorFile,    setEditorFile]    = useState<File | null>(null);
   const [editorUrl,     setEditorUrl]     = useState<string | null>(null);
+  // Story de texto abre já escrevendo (como o "Criar" do Instagram).
+  useEffect(() => { if (textOpen && !editorUrl) setEditandoTexto(true); }, [textOpen, editorUrl]);
   const [editorIsVideo, setEditorIsVideo] = useState(false);
   const [ovText,  setOvText]  = useState('');
   const [ovColor, setOvColor] = useState<string>(OVERLAY_COLORS[0]);
@@ -1927,75 +1931,6 @@ export default function Stories() {
     }
   }, [loading, feed, feedVisivel, filtro, myStories, handleOpenStory, isPremium, montarAmostra]);
 
-  // Escolha da audiência, igual nos dois composers. Fica junto do botão de
-  // publicar de propósito: é a última coisa que a pessoa lê antes de postar.
-  //
-  // "Favoritos" com a lista vazia não é bloqueado aqui — o toque abre a
-  // seleção. Desabilitar o botão sem dizer por quê seria pior.
-  const seletorDeAudiencia = (tema: 'escuro' | 'claro') => {
-    const escuro = tema === 'escuro';
-    const opcoes = [
-      { id: 'all'       as const, rotulo: 'Todos',     icone: <Globe className="h-3.5 w-3.5" /> },
-      { id: 'favorites' as const, rotulo: favCount > 0 ? `Favoritos (${favCount})` : 'Favoritos', icone: <SeloFavoritos className="h-4 w-4" /> },
-    ];
-    // "Só compatíveis" fica discreto, de propósito (pedido do dono, 21/11/2026):
-    // o padrão é Todos; é para o casal/mulher mais reservado(a) que só quer ser
-    // visto(a) por quem combina com o "Procuro" do perfil (ex.: só casais).
-    const discreto = audiencia === 'compatible';
-    return (
-      <div className="flex flex-col items-center gap-1.5">
-      <div className="flex items-center justify-center gap-2">
-        {opcoes.map((o) => {
-          const ativo = audiencia === o.id || (o.id === 'all' && discreto);
-          return (
-            <button
-              key={o.id}
-              type="button"
-              onClick={() => {
-                setAudiencia(o.id);
-                if (o.id === 'favorites' && favCount === 0) setFavOpen(true);
-              }}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-                ativo
-                  ? (o.id === 'favorites'
-                      ? 'border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]'
-                      : 'border-primary bg-primary/15 text-primary')
-                  : escuro
-                    ? 'border-white/20 text-white/60 hover:text-white'
-                    : 'border-border text-muted-foreground hover:text-foreground',
-              )}
-              aria-pressed={ativo}
-            >
-              {o.icone}
-              {o.rotulo}
-            </button>
-          );
-        })}
-        {audiencia === 'favorites' && (
-          <button
-            type="button"
-            onClick={() => setFavOpen(true)}
-            className={cn('text-xs underline underline-offset-2', escuro ? 'text-white/60 hover:text-white' : 'text-muted-foreground hover:text-foreground')}
-          >
-            editar
-          </button>
-        )}
-      </div>
-      {audiencia !== 'favorites' && (
-        <button
-          type="button"
-          onClick={() => setAudiencia(discreto ? 'all' : 'compatible')}
-          className={cn('text-[11px]', escuro ? 'text-white/50 hover:text-white/80' : 'text-muted-foreground/80 hover:text-foreground')}
-          aria-pressed={discreto}
-        >
-          {discreto ? '☑ Só perfis compatíveis com o meu "Procuro" veem' : '☐ Mais discreto: mostrar só para perfis compatíveis'}
-        </button>
-      )}
-      </div>
-    );
-  };
-
   const handleUpload = async (escolhido: File) => {
     if (!escolhido) return;
     let file = escolhido;
@@ -2043,7 +1978,7 @@ export default function Stories() {
     setMusicaEscolhida(null);
   };
 
-  const handlePublishMedia = async () => {
+  const handlePublishMedia = async (aud: StoryAudience = audiencia) => {
     if (!editorFile) return;
     setUploading(true);
     try {
@@ -2051,14 +1986,14 @@ export default function Stories() {
       const text = ovText.trim();
       await storiesService.create(String(media.id), {
         ...(text ? { text, textOverlay: { x: ovX, y: ovY, color: ovColor, size: ovSize } } : {}),
-        audience: audiencia,
+        audience: aud,
         musica: !editorIsVideo && musicaEscolhida ? { id: musicaEscolhida.id, inicio: musicaEscolhida.inicio } : null,
       });
       toast({
         title: '✨ Story publicado!',
-        description: audiencia === 'favorites'
+        description: aud === 'favorites'
           ? `Só os seus ${favCount} favoritos veem. Expira em 24 horas.`
-          : audiencia === 'compatible'
+          : aud === 'compatible'
             ? 'Só perfis compatíveis com você veem. Expira em 24 horas.'
             : 'Expira em 24 horas.',
       });
@@ -2102,17 +2037,17 @@ export default function Stories() {
   };
   const onOvPointerUp = () => { draggingOv.current = false; };
 
-  const handleCreateText = async () => {
+  const handleCreateText = async (aud: StoryAudience = audiencia) => {
     const text = storyText.trim();
     if (!text) return;
     setUploading(true);
     try {
-      await storiesService.createText(text, storyBg, { audience: audiencia, musica: musicaEscolhida ? { id: musicaEscolhida.id, inicio: musicaEscolhida.inicio } : null });
+      await storiesService.createText(text, storyBg, { audience: aud, musica: musicaEscolhida ? { id: musicaEscolhida.id, inicio: musicaEscolhida.inicio } : null });
       toast({
         title: '✨ Story publicado!',
-        description: audiencia === 'favorites'
+        description: aud === 'favorites'
           ? `Só os seus ${favCount} favoritos veem. Expira em 24 horas.`
-          : audiencia === 'compatible'
+          : aud === 'compatible'
             ? 'Só perfis compatíveis com você veem. Expira em 24 horas.'
             : 'Expira em 24 horas.',
       });
@@ -2624,166 +2559,201 @@ export default function Stories() {
         />
       )}
 
-      {/* Editor de mídia — texto por cima da foto/vídeo (estilo Instagram) */}
-      {editorUrl && (
-        <div
-          className="fixed inset-0 z-[9997] flex flex-col bg-black/95"
-          style={{
-        paddingTop: recuoSuperior(bottomInset),
-        paddingBottom: recuoInferior(bottomInset),
-      }}
-        >
-          {/* topo */}
-          <div className="flex shrink-0 items-center justify-between p-4">
-            <button type="button" onClick={() => { if (!uploading) closeEditor(); }} disabled={uploading} className="text-white/80 hover:text-white">
-              <X className="h-6 w-6" />
-            </button>
-            <span className="text-sm text-white/70">Adicione um texto</span>
-            <button
-              type="button"
-              onClick={() => void handlePublishMedia()}
-              disabled={uploading}
-              className="rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
-            >
-              {uploading ? 'Publicando...' : 'Publicar'}
-            </button>
-          </div>
+      {/* Editor de story estilo Instagram (21/11/2026): mídia em tela cheia,
+          ferramentas no canto direito (Aa = texto, 🎵 = música), texto escrito
+          por cima da foto e, embaixo, "Seu story" e "Favoritos" para publicar. */}
+      {(editorUrl || textOpen) && createPortal((() => {
+        const deTexto = !editorUrl;
+        const texto = deTexto ? storyText : ovText;
+        const setTexto = (v: string) => (deTexto ? setStoryText(v.slice(0, 280)) : setOvText(v.slice(0, 280)));
+        const fechar = () => {
+          if (uploading) return;
+          setEditandoTexto(false);
+          setMusicaAberta(false);
+          if (deTexto) { setTextOpen(false); setStoryText(''); setStoryBg(STORY_BACKGROUNDS[0].id); setMusicaEscolhida(null); }
+          else closeEditor();
+        };
+        const publicar = (aud: StoryAudience) => {
+          if (uploading) return;
+          if (aud === 'favorites' && favCount === 0) { setFavOpen(true); return; }
+          if (deTexto && !storyText.trim()) { setEditandoTexto(true); return; }
+          setEditandoTexto(false);
+          if (deTexto) void handleCreateText(aud); else void handlePublishMedia(aud);
+        };
+        const fonte = deTexto ? Math.max(20, editorBoxW * 0.085) : Math.max(12, editorBoxW * OVERLAY_SIZE_FRAC[ovSize]);
+        const idxFundo = Math.max(0, STORY_BACKGROUNDS.findIndex((b) => b.id === storyBg));
+        const ferramenta = 'flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur hover:bg-black/60';
+        return (
+          <div
+            className="fixed inset-0 z-[9997] flex flex-col bg-black"
+            style={{ paddingTop: recuoSuperior(bottomInset), paddingBottom: recuoInferior(bottomInset) }}
+          >
+            <div className="relative mx-auto flex w-full max-w-md flex-1 items-center justify-center overflow-hidden">
+              <div
+                ref={medirCaixaDoEditor}
+                className="relative aspect-[9/16] max-h-full w-full touch-none overflow-hidden bg-black sm:rounded-2xl"
+                style={deTexto ? { background: backgroundCss(storyBg) } : undefined}
+              >
+                {!deTexto && (editorIsVideo
+                  ? <video src={editorUrl!} className="h-full w-full object-cover" autoPlay muted loop playsInline />
+                  : <img src={editorUrl!} alt="" className="h-full w-full object-cover" />)}
 
-          {/* preview com overlay ao vivo */}
-          <div className="relative mx-auto flex w-full max-w-sm flex-1 items-center justify-center overflow-hidden px-4">
-            <div ref={medirCaixaDoEditor} className="relative aspect-[9/16] max-h-full w-full touch-none overflow-hidden rounded-2xl bg-black">
-              {editorIsVideo ? (
-                <video src={editorUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline />
-              ) : (
-                <img src={editorUrl} alt="" className="h-full w-full object-cover" />
-              )}
-              {ovText.trim() ? (
-                <div
-                  className="absolute cursor-move touch-none select-none"
-                  style={{ left: `${ovX}%`, top: `${ovY}%`, transform: 'translate(-50%, -50%)', width: 'max-content', maxWidth: '86%' }}
-                  onPointerDown={onOvPointerDown}
-                  onPointerMove={onOvPointerMove}
-                  onPointerUp={onOvPointerUp}
-                  onPointerCancel={onOvPointerUp}
-                >
-                  <p
-                    className="text-center font-bold leading-snug break-words [text-shadow:_0_2px_8px_rgba(0,0,0,0.85)]"
-                    style={{ color: ovColor, fontSize: Math.max(12, editorBoxW * OVERLAY_SIZE_FRAC[ovSize]) }}
-                  >
-                    {ovText}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          {/* controles */}
-          <div className="shrink-0 space-y-3 p-4">
-            {/* 16px: com letra menor o Safari do iPhone dá zoom ao tocar e corta a tela (relato de 18/10/2026). */}
-            <textarea
-              value={ovText}
-              onChange={(e) => setOvText(e.target.value.slice(0, 280))}
-              placeholder="Escreva um texto sobre a mídia (opcional)"
-              rows={2}
-              className="w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-[16px] text-white placeholder:text-white/40 outline-none focus:ring-2 focus:ring-primary/50"
-            />
-            {ovText.trim() ? (
-              <p className="text-center text-[11px] text-white/50">✋ Arraste o texto sobre a mídia para posicionar</p>
-            ) : null}
-            {!editorIsVideo && <BotaoDeMusica musica={musicaEscolhida} onMudar={setMusicaEscolhida} tema="escuro" />}
-            {seletorDeAudiencia('escuro')}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              {/* tamanho da fonte */}
-              <div className="flex items-center gap-1">
-                {(['sm', 'md', 'lg', 'xl'] as const).map((s, i) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setOvSize(s)}
-                    aria-label={`Tamanho ${s}`}
-                    className={cn('flex h-8 w-8 items-center justify-center rounded-full font-bold leading-none transition-colors', ovSize === s ? 'bg-primary text-white' : 'bg-white/10 text-white/70 hover:bg-white/20')}
-                    style={{ fontSize: 11 + i * 3 }}
-                  >
-                    A
+                {/* Story de texto: o texto fica no meio; tocar edita. */}
+                {deTexto && !editandoTexto && (
+                  <button type="button" onClick={() => setEditandoTexto(true)} className="absolute inset-0 flex items-center justify-center px-8 text-center">
+                    <span className="font-bold leading-snug text-white break-words" style={{ fontSize: fonte }}>
+                      {storyText.trim() || <span className="text-white/60">Toque para escrever</span>}
+                    </span>
                   </button>
-                ))}
+                )}
+
+                {/* Foto/vídeo: texto arrastável; tocar (sem arrastar) volta a editar. */}
+                {!deTexto && !editandoTexto && ovText.trim() ? (
+                  <div
+                    className="absolute cursor-move touch-none select-none"
+                    style={{ left: `${ovX}%`, top: `${ovY}%`, transform: 'translate(-50%, -50%)', width: 'max-content', maxWidth: '86%' }}
+                    onPointerDown={onOvPointerDown}
+                    onPointerMove={onOvPointerMove}
+                    onPointerUp={onOvPointerUp}
+                    onPointerCancel={onOvPointerUp}
+                    onDoubleClick={() => setEditandoTexto(true)}
+                  >
+                    <p className="text-center font-bold leading-snug break-words [text-shadow:_0_2px_8px_rgba(0,0,0,0.85)]" style={{ color: ovColor, fontSize: fonte }}>
+                      {ovText}
+                    </p>
+                  </div>
+                ) : null}
+
+                {/* Figurinha da música (toca para trocar) */}
+                {musicaEscolhida && !editandoTexto && (
+                  <div className="absolute left-0 right-0 top-16 z-[6] flex justify-center">
+                    <button type="button" onClick={() => setMusicaAberta(true)}
+                      className="inline-flex max-w-[75%] items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-black shadow">
+                      <Music2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{musicaEscolhida.titulo}</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Topo: fechar à esquerda, ferramentas à direita */}
+                {!editandoTexto && (
+                  <>
+                    <button type="button" onClick={fechar} disabled={uploading} aria-label="Fechar" className={cn(ferramenta, 'absolute left-3 top-3 z-10')}>
+                      <X className="h-6 w-6" />
+                    </button>
+                    <div className="absolute right-3 top-3 z-10 flex flex-col items-center gap-3">
+                      <button type="button" onClick={() => setEditandoTexto(true)} aria-label="Texto" title="Texto" className={ferramenta}>
+                        <span className="text-[17px] font-bold leading-none">Aa</span>
+                      </button>
+                      {!editorIsVideo && (
+                        <button type="button" onClick={() => setMusicaAberta(true)} aria-label="Música" title="Música da Casa" className={cn(ferramenta, musicaEscolhida && 'ring-2 ring-white')}>
+                          <Music2 className="h-5 w-5" />
+                        </button>
+                      )}
+                      {deTexto && (
+                        <button type="button" onClick={() => setStoryBg(STORY_BACKGROUNDS[(idxFundo + 1) % STORY_BACKGROUNDS.length].id)}
+                          aria-label="Trocar fundo" title="Trocar fundo" className={ferramenta}>
+                          <span className="h-6 w-6 rounded-full border-2 border-white" style={{ background: backgroundCss(STORY_BACKGROUNDS[(idxFundo + 1) % STORY_BACKGROUNDS.length].id) }} />
+                        </button>
+                      )}
+                    </div>
+                    {!deTexto && !ovText.trim() && !musicaEscolhida && (
+                      <p className="pointer-events-none absolute bottom-3 left-0 right-0 text-center text-xs text-white/70 [text-shadow:_0_1px_4px_rgba(0,0,0,0.9)]">Toque em Aa para escrever e em 🎵 para pôr música</p>
+                    )}
+                    {!deTexto && ovText.trim() ? (
+                      <p className="pointer-events-none absolute bottom-3 left-0 right-0 text-center text-xs text-white/70 [text-shadow:_0_1px_4px_rgba(0,0,0,0.9)]">Arraste o texto para posicionar</p>
+                    ) : null}
+                  </>
+                )}
+
+                {/* Escrevendo: texto grande no meio, cor e tamanho por cima do teclado */}
+                {editandoTexto && (
+                  <div className="absolute inset-0 z-20 flex flex-col bg-black/55">
+                    <div className="flex items-center justify-between gap-2 p-3">
+                      {!deTexto ? (
+                        <div className="flex items-center gap-1">
+                          {(['sm', 'md', 'lg', 'xl'] as const).map((s, i) => (
+                            <button key={s} type="button" onClick={() => setOvSize(s)} aria-label={`Tamanho ${s}`}
+                              className={cn('flex h-9 w-9 items-center justify-center rounded-full font-bold leading-none', ovSize === s ? 'bg-white text-black' : 'bg-white/15 text-white')}
+                              style={{ fontSize: 11 + i * 3 }}>A</button>
+                          ))}
+                        </div>
+                      ) : <span />}
+                      <button type="button" onClick={() => setEditandoTexto(false)} className="rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-black">Concluir</button>
+                    </div>
+                    <div className="flex flex-1 items-center justify-center px-6" onClick={() => setEditandoTexto(false)}>
+                      {/* 16px+: com letra menor o Safari do iPhone dá zoom ao tocar. */}
+                      <textarea
+                        autoFocus
+                        value={texto}
+                        onChange={(e) => setTexto(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        placeholder="Escreva algo…"
+                        rows={3}
+                        aria-label="Texto do story"
+                        className="w-full resize-none bg-transparent text-center font-bold leading-snug outline-none placeholder:text-white/50 [text-shadow:_0_2px_8px_rgba(0,0,0,0.6)]"
+                        style={{ color: deTexto ? '#ffffff' : ovColor, fontSize: Math.max(18, fonte) }}
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-2 p-3">
+                      {deTexto
+                        ? STORY_BACKGROUNDS.map((bg) => (
+                          <button key={bg.id} type="button" onClick={() => setStoryBg(bg.id)} title={bg.label} aria-label={`Fundo ${bg.label}`}
+                            className={cn('h-8 w-8 rounded-full border-2', storyBg === bg.id ? 'scale-110 border-white' : 'border-white/30')}
+                            style={{ background: bg.css }} />
+                        ))
+                        : OVERLAY_COLORS.map((c) => (
+                          <button key={c} type="button" onClick={() => setOvColor(c)} aria-label={`Cor ${c}`}
+                            className={cn('h-8 w-8 rounded-full border-2', ovColor === c ? 'scale-110 border-white' : 'border-white/30')}
+                            style={{ background: c }} />
+                        ))}
+                      <span className="w-full text-center text-[11px] text-white/50">{texto.length}/280</span>
+                    </div>
+                  </div>
+                )}
+
+                {uploading && (
+                  <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60">
+                    <div className="h-10 w-10 animate-spin rounded-full border-4 border-white border-t-transparent" />
+                  </div>
+                )}
               </div>
-              {/* cor */}
-              <div className="flex gap-1.5">
-                {OVERLAY_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setOvColor(c)}
-                    className={cn('h-7 w-7 rounded-full ring-2 ring-offset-2 ring-offset-black transition-all', ovColor === c ? 'scale-110 ring-white' : 'ring-transparent')}
-                    style={{ background: c }}
-                    aria-label={`Cor ${c}`}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Composer de story de texto */}
-      {textOpen && (
-        <div className="fixed inset-0 z-[9996] flex items-center justify-center bg-black/70 p-4" onClick={() => !uploading && setTextOpen(false)}>
-          <div className="w-full max-w-md rounded-3xl border border-border bg-background p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-semibold">Story de texto</h3>
-              <button type="button" onClick={() => setTextOpen(false)} disabled={uploading}><X className="h-5 w-5" /></button>
             </div>
 
-            {/* Preview */}
-            <div
-              className="mb-4 flex aspect-[9/16] max-h-72 w-full items-center justify-center overflow-hidden rounded-2xl px-6 text-center"
-              style={{ background: backgroundCss(storyBg) }}
-            >
-              <p className="text-xl font-bold leading-snug text-white break-words">
-                {storyText.trim() || 'Escreva algo...'}
-              </p>
-            </div>
-
-            <textarea
-              value={storyText}
-              onChange={(e) => setStoryText(e.target.value.slice(0, 280))}
-              placeholder="O que você quer dizer?"
-              rows={3}
-              className="w-full resize-none rounded-xl border border-border bg-secondary/40 px-3 py-2 text-[16px] outline-none focus:ring-2 focus:ring-primary/40"
-            />
-            <div className="mb-3 mt-1 text-right text-[11px] text-muted-foreground">{storyText.length}/280</div>
-
-            {/* Paleta de fundos */}
-            <div className="mb-4 flex flex-wrap gap-2">
-              {STORY_BACKGROUNDS.map((bg) => (
+            {/* Embaixo: publicar, como "Seu story" e "Amigos próximos" do Instagram */}
+            {!editandoTexto && (
+              <div className="mx-auto w-full max-w-md shrink-0 space-y-2 px-3 pb-3 pt-2">
                 <button
-                  key={bg.id}
                   type="button"
-                  onClick={() => setStoryBg(bg.id)}
-                  title={bg.label}
-                  className={cn('h-8 w-8 rounded-full ring-2 ring-offset-2 ring-offset-background transition-all', storyBg === bg.id ? 'ring-primary scale-110' : 'ring-transparent')}
-                  style={{ background: bg.css }}
-                />
-              ))}
-            </div>
+                  onClick={() => setAudiencia(audiencia === 'compatible' ? 'all' : 'compatible')}
+                  className="block w-full text-center text-[11px] text-white/50 hover:text-white/80"
+                  aria-pressed={audiencia === 'compatible'}
+                >
+                  {audiencia === 'compatible' ? '☑ Só perfis compatíveis com o meu "Procuro" veem' : '☐ Mais discreto: mostrar só para perfis compatíveis'}
+                </button>
+                <div className="flex gap-2">
+                  <button type="button" disabled={uploading} onClick={() => publicar(audiencia === 'compatible' ? 'compatible' : 'all')}
+                    className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full bg-white px-3 text-sm font-semibold text-black disabled:opacity-50">
+                    {user?.avatar
+                      ? <img src={resolveServerUrl(user.avatar)} alt="" className="h-7 w-7 rounded-full object-cover" />
+                      : <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/10 text-xs font-bold">{user?.name?.charAt(0) ?? '?'}</span>}
+                    Seu story
+                  </button>
+                  <button type="button" disabled={uploading} onClick={() => publicar('favorites')}
+                    className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#22c55e] px-3 text-sm font-semibold text-white disabled:opacity-50">
+                    <SeloFavoritos className="h-5 w-5" />
+                    {favCount > 0 ? `Favoritos (${favCount})` : 'Favoritos'}
+                  </button>
+                </div>
+              </div>
+            )}
 
-            <div className="mb-3"><BotaoDeMusica musica={musicaEscolhida} onMudar={setMusicaEscolhida} tema="claro" /></div>
-            <div className="mb-3">{seletorDeAudiencia('claro')}</div>
-
-            <Button
-              className="w-full gap-2 bg-gradient-to-r from-primary to-violet-600"
-              disabled={uploading || !storyText.trim()}
-              onClick={() => void handleCreateText()}
-            >
-              {uploading
-                ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                : <Sparkles className="h-4 w-4" />}
-              {uploading ? 'Publicando...' : 'Publicar story'}
-            </Button>
+            {musicaAberta && (
+              <EscolherMusica atual={musicaEscolhida} onFechar={() => setMusicaAberta(false)} onEscolher={(m) => { setMusicaEscolhida(m); setMusicaAberta(false); }} />
+            )}
           </div>
-        </div>
-      )}
+        );
+      })(), document.body)}
 
       <FavoritesPicker
         open={favOpen}

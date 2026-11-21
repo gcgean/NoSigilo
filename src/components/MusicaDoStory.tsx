@@ -100,7 +100,7 @@ export function BotaoDeMusica({ musica, onMudar, tema }: { musica: MusicaEscolhi
 
 type Faixa = { id: string; titulo: string; url: string; duracao: number };
 
-function EscolherMusica({ atual, onFechar, onEscolher }: { atual: MusicaEscolhida | null; onFechar: () => void; onEscolher: (m: MusicaEscolhida) => void }) {
+export function EscolherMusica({ atual, onFechar, onEscolher }: { atual: MusicaEscolhida | null; onFechar: () => void; onEscolher: (m: MusicaEscolhida) => void }) {
   const [faixas, setFaixas] = useState<Faixa[] | null>(null);
   const [trecho, setTrecho] = useState(15);
   const [sel, setSel] = useState<string | null>(atual?.id ?? null);
