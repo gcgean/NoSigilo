@@ -21,10 +21,14 @@ export default function FeedbackDaCasa({ aberto, onFechar }: { aberto: boolean; 
   const [tipo, setTipo] = useState<(typeof TIPOS)[number]['id']>('ideia');
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
+  // 21/11/2026: 17 de 18 mensagens por aqui eram curtas e para a sala ("Sexo",
+  // "Porno", "Quero ver"). Texto curto não sai: a pessoa é levada de volta ao chat.
+  const [pareceChat, setPareceChat] = useState(false);
 
   const enviar = async () => {
     const t = texto.trim();
     if (t.length < 3) { toast({ title: 'Escreva um pouquinho mais 😉' }); return; }
+    if (t.length < 20 || t.split(/\s+/).length < 4) { setPareceChat(true); return; }
     const rotulo = TIPOS.find((x) => x.id === tipo)!;
     setEnviando(true);
     try {
@@ -56,12 +60,19 @@ export default function FeedbackDaCasa({ aberto, onFechar }: { aberto: boolean; 
         </div>
         <textarea
           value={texto}
-          onChange={(e) => setTexto(e.target.value)}
+          onChange={(e) => { setTexto(e.target.value); setPareceChat(false); }}
           maxLength={1000}
           rows={4}
           placeholder={tipo === 'problema' ? 'Conta o que aconteceu e em qual sala…' : tipo === 'gostei' ? 'O que você mais curtiu?' : 'O que faltou para sua noite ser melhor?'}
           className="w-full rounded-xl border bg-background px-3 py-2 text-base"
         />
+        {pareceChat && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+            <p className="font-semibold">Isso parece mensagem para o pessoal da sala 😉</p>
+            <p className="mt-1 text-muted-foreground">Aqui só a equipe lê. Para conversar, use o chat da sala. Se é sugestão mesmo, conta com mais detalhes (pelo menos uma frase).</p>
+            <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => { setPareceChat(false); onFechar(); }}>Voltar para o chat da sala</Button>
+          </div>
+        )}
         <Button className="w-full bg-gradient-to-r from-rose-600 to-fuchsia-600" disabled={enviando} onClick={() => void enviar()}>
           {enviando ? 'Enviando…' : 'Enviar'}
         </Button>
