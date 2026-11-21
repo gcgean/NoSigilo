@@ -58,7 +58,7 @@ type SalaResumo = {
 };
 type TemaDaNoite = { id: string; nome: string; descricao: string; dress: string | null };
 type Info = {
-  aberta: boolean; tema: TemaDaNoite | null; proximoTema?: TemaDaNoite | null; horario: string;
+  aberta: boolean; noitePortugal?: boolean; tema: TemaDaNoite | null; proximoTema?: TemaDaNoite | null; horario: string;
   souAdmin: boolean; podeFalar: boolean; teste?: boolean; abertaAte: string | null; salas: SalaResumo[];
   reservado: boolean; reservas: number; proximaAbertura: string | null;
   pessoasAgora?: number;
@@ -342,6 +342,7 @@ export default function Casa() {
   const { user } = useAuth();
   // Perfil de Portugal (UF PT): tem a noite de Portugal, às 22h de Lisboa.
   const perfilDePortugal = ehPortugal(user?.state);
+  const noiteDoBrasilAberta = !!info?.aberta && !info?.noitePortugal;
   const cameraRef = useRef<HTMLInputElement>(null);
   const [revelarAte, setRevelarAte] = useState<number>(0);
   const [escolhendoPulseira, setEscolhendoPulseira] = useState(false);
@@ -2195,7 +2196,9 @@ export default function Casa() {
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
           <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
           <p className="mt-3 text-base text-white/85">
-            {perfilDePortugal ? (
+            {/* Com a noite do Brasil aberta, todo mundo (inclusive perfil de
+                Portugal) vê só o texto do Brasil (20/11/2026, pedido do dono). */}
+            {perfilDePortugal && !noiteDoBrasilAberta ? (
               <>
                 A casa de swing online do NoSigilo. <b>Noite de Portugal: sexta e sábado às 22h, até à 1h (hora de Lisboa)</b>, só com perfis de Portugal:
                 salas ao vivo com casais, mulheres e singles, brincadeiras quentes e cabine a dois. Depois ainda dá para seguir na noite do Brasil,
@@ -2204,7 +2207,7 @@ export default function Casa() {
             ) : (
               <>
                 A casa de swing online do NoSigilo. Toda <b>sexta às 22h, até 1h, e sábado às 22h, até 2h</b>
-                {user?.dePortugal ? <> (horário de Brasília; <b>{horarioDaCasaEmLisboa()}</b>)</> : null}: salas ao vivo com casais, mulheres e singles,
+                {user?.dePortugal && !noiteDoBrasilAberta ? <> (horário de Brasília; <b>{horarioDaCasaEmLisboa()}</b>)</> : null}: salas ao vivo com casais, mulheres e singles,
                 brincadeiras quentes e cabine a dois.
               </>
             )}
