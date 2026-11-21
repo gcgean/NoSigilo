@@ -2380,7 +2380,7 @@ export const storiesService = {
       mediaId,
       ...(opts?.text ? { text: opts.text } : {}),
       ...(opts?.text && opts?.textOverlay ? { textOverlay: opts.textOverlay } : {}),
-      ...(opts?.audience === 'favorites' ? { audience: 'favorites', favoriteIds: opts.favoriteIds ?? [] } : {}),
+      ...(opts?.audience === 'favorites' ? { audience: 'favorites', favoriteIds: opts.favoriteIds ?? [] } : opts?.audience === 'compatible' ? { audience: 'compatible' } : {}),
     });
     return res.data as { id: string; expiresAt: string };
   },
@@ -2392,7 +2392,7 @@ export const storiesService = {
     const res = await apiClient.post('/stories', {
       text,
       background,
-      ...(opts?.audience === 'favorites' ? { audience: 'favorites', favoriteIds: opts.favoriteIds ?? [] } : {}),
+      ...(opts?.audience === 'favorites' ? { audience: 'favorites', favoriteIds: opts.favoriteIds ?? [] } : opts?.audience === 'compatible' ? { audience: 'compatible' } : {}),
     });
     return res.data as { id: string; expiresAt: string };
   },

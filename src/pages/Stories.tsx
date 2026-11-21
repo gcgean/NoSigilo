@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import {
   Camera, Eye, MessageCircle, Trash2, X, Send, Heart,
   Lock, Crown, Sparkles, ImageIcon, Volume2, VolumeX,
-  Star, Pin, Search, Check, Globe, MoreHorizontal, EyeOff, Flag, Users,
+  Star, Pin, Search, Check, Globe, MoreHorizontal, EyeOff, Flag,
 } from 'lucide-react';
 import DenunciaStoryPainel from '@/components/DenunciaStoryPainel';
 import { Button } from '@/components/ui/button';
@@ -1703,7 +1703,7 @@ export default function Stories() {
   const [ovX,     setOvX]     = useState(50);   // posição X do texto em % (arrastável)
   const [ovY,     setOvY]     = useState(50);   // posição Y do texto em %
   const [ovSize,  setOvSize]  = useState<'sm' | 'md' | 'lg' | 'xl'>('md');
-  const editorBoxRef = useRef<HTMLDivElement>(null);       // caixa de preview da mídia
+  const editorBoxRef = useRef<HTMLDivElement | null>(null); // caixa de preview da mídia
   const [editorBoxW, setEditorBoxW] = useState(0);         // largura medida (fonte proporcional)
   const draggingOv = useRef(false);
 
@@ -1896,13 +1896,17 @@ export default function Stories() {
     const escuro = tema === 'escuro';
     const opcoes = [
       { id: 'all'       as const, rotulo: 'Todos',     icone: <Globe className="h-3.5 w-3.5" /> },
-      { id: 'compatible' as const, rotulo: 'Só compatíveis', icone: <Users className="h-3.5 w-3.5" /> },
       { id: 'favorites' as const, rotulo: favCount > 0 ? `Favoritos (${favCount})` : 'Favoritos', icone: <SeloFavoritos className="h-4 w-4" /> },
     ];
+    // "Só compatíveis" fica discreto, de propósito (pedido do dono, 21/11/2026):
+    // o padrão é Todos; é para o casal/mulher mais reservado(a) que só quer ser
+    // visto(a) por quem combina com o "Procuro" do perfil (ex.: só casais).
+    const discreto = audiencia === 'compatible';
     return (
+      <div className="flex flex-col items-center gap-1.5">
       <div className="flex items-center justify-center gap-2">
         {opcoes.map((o) => {
-          const ativo = audiencia === o.id;
+          const ativo = audiencia === o.id || (o.id === 'all' && discreto);
           return (
             <button
               key={o.id}
@@ -1937,6 +1941,17 @@ export default function Stories() {
             editar
           </button>
         )}
+      </div>
+      {audiencia !== 'favorites' && (
+        <button
+          type="button"
+          onClick={() => setAudiencia(discreto ? 'all' : 'compatible')}
+          className={cn('text-[11px]', escuro ? 'text-white/50 hover:text-white/80' : 'text-muted-foreground/80 hover:text-foreground')}
+          aria-pressed={discreto}
+        >
+          {discreto ? '☑ Só perfis compatíveis com o meu "Procuro" veem' : '☐ Mais discreto: mostrar só para perfis compatíveis'}
+        </button>
+      )}
       </div>
     );
   };
@@ -2016,16 +2031,19 @@ export default function Stories() {
   };
 
   // Mede a largura da caixa de preview do editor (para a fonte proporcional do overlay).
-  useEffect(() => {
-    if (!editorUrl) return;
-    const el = editorBoxRef.current;
+  // Ref de callback: a caixa aparece depois do editorUrl; com useEffect([editorUrl])
+  // a medida saía 0 e o texto ficava sempre em 12px, sem mudar com o tamanho (21/11/2026).
+  const editorBoxObs = useRef<ResizeObserver | null>(null);
+  const medirCaixaDoEditor = useCallback((el: HTMLDivElement | null) => {
+    editorBoxObs.current?.disconnect();
+    editorBoxObs.current = null;
+    editorBoxRef.current = el;
     if (!el) return;
     const update = () => setEditorBoxW(el.clientWidth);
     update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [editorUrl]);
+    editorBoxObs.current = new ResizeObserver(update);
+    editorBoxObs.current.observe(el);
+  }, []);
 
   // Arrastar o texto livremente pela mídia (pointer = mouse + toque).
   const onOvPointerDown = (e: React.PointerEvent) => {
@@ -2484,6 +2502,12 @@ export default function Stories() {
               ) : (
                 <img key={s.id} src={resolveServerUrl(s.mediaUrl || '')} alt="" className="h-full w-full object-cover" />
               )}
+              {/* O autor também vê o texto que escreveu por cima da mídia. */}
+              {s.mediaUrl && s.text ? (
+                <div className="pointer-events-none absolute inset-0 z-[5]">
+                  <StoryTextOverlay text={s.text} overlay={s.textOverlay} />
+                </div>
+              ) : null}
               <button type="button" className="absolute left-0 top-0 h-full w-1/3" onClick={() => goOwn(-1)} />
               <button type="button" className="absolute right-0 top-0 h-full w-1/3" onClick={() => goOwn(1)} />
             </div>
@@ -2574,7 +2598,7 @@ export default function Stories() {
 
           {/* preview com overlay ao vivo */}
           <div className="relative mx-auto flex w-full max-w-sm flex-1 items-center justify-center overflow-hidden px-4">
-            <div ref={editorBoxRef} className="relative aspect-[9/16] max-h-full w-full touch-none overflow-hidden rounded-2xl bg-black">
+            <div ref={medirCaixaDoEditor} className="relative aspect-[9/16] max-h-full w-full touch-none overflow-hidden rounded-2xl bg-black">
               {editorIsVideo ? (
                 <video src={editorUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline />
               ) : (
