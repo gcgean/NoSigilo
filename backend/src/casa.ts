@@ -1095,14 +1095,32 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   // jogos e moderação continuam com lola(); o que é só "animação" passa por aqui.
   const LOLA_EXTRA_JANELA_MS = 15 * 60_000;
   const LOLA_EXTRA_MAX = 4;
-  const lolaTemVez = (sala: Sala) => {
+  // 21/11/2026 (análise da noite de 20/11: 692 falas da Lola x 1.342 de gente, no
+  // Salão quase 1 para 1, e mesmo assim silêncios de 8-9 min): sala animada = muita
+  // gente falando agora, e aí a Lola não se mete; sala quieta = ninguém fala há
+  // 2 min, e aí ela pode puxar assunto mesmo já tendo falado bastante na janela.
+  const SALA_ANIMADA_MSGS = 10;
+  const falasDeGenteRecentes = (sala: Sala, ms: number) => {
     const agora = Date.now();
+    return sala.mensagens.filter((m) => (m.tipo === 'pessoa' || m.tipo === 'midia') && agora - Date.parse(m.criadoEm) < ms).length;
+  };
+  const salaAnimada = (sala: Sala) => falasDeGenteRecentes(sala, 5 * 60_000) >= SALA_ANIMADA_MSGS;
+  const salaQuieta = (sala: Sala) => falasDeGenteRecentes(sala, 2 * 60_000) === 0;
+  const lolaTemVez = (sala: Sala) => {
+    if (salaAnimada(sala)) return false;
+    const agora = Date.now();
+    const ultimas = sala.mensagens.slice(-2);
+    const roboFalouPorUltimo = ultimas.length === 2 && ultimas.every((m) => m.tipo === 'lola' || m.tipo === 'anfitriao' || m.tipo === 'sistema');
+    if (salaQuieta(sala)) {
+      // Na quietude ela pode falar, mas não em sequência: 4 min desde a última fala de robô.
+      const ultimaRobo = [...sala.mensagens].reverse().find((m) => m.tipo === 'lola' || m.tipo === 'anfitriao');
+      return !ultimaRobo || agora - Date.parse(ultimaRobo.criadoEm) > 4 * 60_000;
+    }
     const recentes = sala.mensagens.filter((m) => agora - Date.parse(m.criadoEm) < LOLA_EXTRA_JANELA_MS);
     const daLola = recentes.filter((m) => m.tipo === 'lola' || m.tipo === 'anfitriao').length;
     if (daLola >= LOLA_EXTRA_MAX) return false;
     // Duas falas seguidas de robô já é muito: espera alguém falar.
-    const ultimas = sala.mensagens.slice(-2);
-    return !(ultimas.length === 2 && ultimas.every((m) => m.tipo === 'lola' || m.tipo === 'anfitriao' || m.tipo === 'sistema'));
+    return !roboFalouPorUltimo;
   };
   const lolaExtra = (sala: Sala, texto: string) => (lolaTemVez(sala) ? lola(sala, texto) : null);
 
@@ -1717,8 +1735,8 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     if (!ANFITRIOES_LIGADOS || sala.anonima || sala.jogo) return;
     const fal = falantes(sala);
     if (fal.length === 0) return;
-    if (agora - (ultimoAnfitriao.get(sala.id) ?? 0) < 7 * 60_000) return;
-    if (agora - Math.max(0, ...fal.map((p) => p.ultimaMsg)) < 3 * 60_000) return;
+    if (agora - (ultimoAnfitriao.get(sala.id) ?? 0) < 4 * 60_000) return;
+    if (agora - Math.max(0, ...fal.map((p) => p.ultimaMsg)) < 2 * 60_000) return;
     const ultima = sala.mensagens[sala.mensagens.length - 1];
     if (ultima && (ultima.tipo === 'lola' || ultima.tipo === 'anfitriao') && agora - Date.parse(ultima.criadoEm) < 90_000) return;
     if (!lolaTemVez(sala)) return;
@@ -2141,6 +2159,8 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
         // Lola fala menos quando ninguém está conversando: sem fala de gente em 6 min, adia a brincadeira.
         const ultimaFalaDeGente = Math.max(0, ...[...sala.presentes.values()].map((x) => x.ultimaMsg));
         if (agora - ultimaFalaDeGente > 6 * 60_000) sala.proximoJogoEm = agora + 3 * 60_000;
+        // Sala animada: a conversa já está rolando, brincadeira só atrapalha.
+        else if (salaAnimada(sala)) sala.proximoJogoEm = agora + 5 * 60_000;
         else await iniciarJogo(sala);
       }
       if (!sala.jogo) provocarQuieto(sala, agora);
@@ -2350,6 +2370,21 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     }
     if (noite.forcada || noite.teste) return;
     const passou = Date.now() - inicioDaNoite(noite.chave, noite.tema);
+    // 21/11/2026: em 20/11 só 92 de 511 reservas entraram. Aviso "já abriu" 5 min
+    // depois de abrir (22h05), só push, para quem reservou e ainda não entrou.
+    if (passou >= 5 * 60_000 && passou < 15 * 60_000 && (await umaVez(`casa_lembrete5:${noite.chave}`))) {
+      const naoEntraram = (await db.queryAll(
+        "SELECT r.user_id FROM casa_reservas r WHERE r.noite = ? AND r.lembrete = 1 AND NOT EXISTS (SELECT 1 FROM casa_eventos e WHERE e.noite = r.noite AND e.user_id = r.user_id AND e.tipo IN ('entrou', 'espiou'))",
+        [noite.chave],
+      )) as any[];
+      const tf = await temaDaFesta(noite.chave, noite.tema);
+      for (const r of naoEntraram) {
+        await deps.push(String(r.user_id), { title: '🚪 A Casa já abriu!', body: `A ${tf.nome} começou agora e o seu lugar está reservado. Entra enquanto a sala enche 😈`, url: '/casa', tag: 'casa-abriu' }).catch(() => {});
+        await new Promise((res) => setTimeout(res, 60));
+      }
+      console.log(`[casa] aviso "já abriu" para ${naoEntraram.length} reserva(s)`);
+      return;
+    }
     if (passou < 20 * 60_000 || passou > 40 * 60_000) return;
     if (!(await umaVez(`casa_lembrete20:${noite.chave}`))) return;
     const pessoas = naCasaAgora();
@@ -2977,7 +3012,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       // (antes 30 s/2 min, e o chat virava lista de chegadas).
       const intervaloRecepcao = 5 * 60_000;
       const jaRecebido = recebidosNaNoite.has(`${noite.chave}:${userId}`);
-      if ((p.cat === 'casal' || p.cat === 'mulher') && !jaRecebido && falantes(sala).length >= 2 && Date.now() - (ultimaRecepcao.get(sala.id) ?? 0) > intervaloRecepcao) {
+      if ((p.cat === 'casal' || p.cat === 'mulher') && !jaRecebido && falantes(sala).length >= 2 && !salaAnimada(sala) && Date.now() - (ultimaRecepcao.get(sala.id) ?? 0) > intervaloRecepcao) {
         recebidosNaNoite.add(`${noite.chave}:${userId}`);
         ultimaRecepcao.set(sala.id, Date.now());
         lola(sala, sortear(sala.homensLivres ? RECEBE_CUCKOLD : p.cat === 'casal' ? RECEBE_CASAL : RECEBE_MULHER).replace('{nome}', p.nome));
@@ -3443,7 +3478,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     oiFoiRespondido(sala, msg.id, p.id);
     emitirParaSala(sala, 'casa.reacao', { sala: sala.id, mensagemId: msg.id, reacoes: msg.reacoes });
     const total = Object.values(msg.reacoes).reduce((n, ids) => n + ids.length, 0);
-    if (total >= 3 && msg.tipo === 'pessoa' && msg.autor && !comentadas.has(msg.id) && Date.now() - (ultimoComentario.get(sala.id) ?? 0) > 60_000) {
+    if (total >= 3 && msg.tipo === 'pessoa' && msg.autor && !comentadas.has(msg.id) && !salaAnimada(sala) && Date.now() - (ultimoComentario.get(sala.id) ?? 0) > 60_000) {
       comentadas.add(msg.id);
       ultimoComentario.set(sala.id, Date.now());
       lola(sala, sortear(COMENTA_QUENTE).replace('{nome}', msg.autor.nome));
@@ -4543,6 +4578,9 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     res.json({ cabine: cabinePublica(c, userId) });
   });
 
+  // Em 20/11 foram 563 avisos de sistema (era 198), a maioria "fulano está espiando
+  // pela porta" repetido (até 24x a mesma pessoa): agora no máximo 1 a cada 15 min.
+  const ultimoAvisoEspiando = new Map<string, number>();
   app.post('/api/casa/cabine/:id/espiar', deps.requireAuth, async (req, res) => {
     const c = cabineDe(req);
     const userId = userDe(req);
@@ -4556,7 +4594,11 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     for (const m of c.membros.keys()) if (await bloqueados(userId, m)) { res.status(404).json({ error: 'fora' }); return; }
     if (!c.membros.has(userId) && !c.espectadores.has(userId)) {
       c.espectadores.set(userId, Date.now());
-      msgCabine(c, { tipo: 'sistema', texto: `👀 ${p.nome} está espiando pela porta` });
+      const chaveAviso = `${c.id}:${userId}`;
+      if (Date.now() - (ultimoAvisoEspiando.get(chaveAviso) ?? 0) > 15 * 60_000) {
+        ultimoAvisoEspiando.set(chaveAviso, Date.now());
+        msgCabine(c, { tipo: 'sistema', texto: `👀 ${p.nome} está espiando pela porta` });
+      }
       avisarCabine(c);
     }
     res.json({ cabine: cabinePublica(c, userId) });
