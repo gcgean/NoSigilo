@@ -716,6 +716,7 @@ export default function Landing() {
             <Link to="/terms">Termos</Link>
             <Link to="/privacy">Privacidade</Link>
             <Link to="/guidelines">Diretrizes</Link>
+            <a href="https://www.instagram.com/nosigilo.net/" target="_blank" rel="noopener noreferrer">Instagram @nosigilo.net</a>
             {subscriptionsEnabled ? <Link to="/subscriptions">Planos</Link> : null}
           </nav>
           <p>© {new Date().getFullYear()} NoSigilo.net</p>

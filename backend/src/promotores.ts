@@ -97,7 +97,11 @@ ${c.linkCasa}
 Já separei materiais prontos para você postar, com legenda e botão de copiar:
 ${lista}
 
-Central de divulgação: nosigilo.net/promoter/artes
+👉 Central de divulgação:
+https://nosigilo.net/promoter/artes
+
+📸 Siga @nosigilo.net no Instagram e reposte os nossos Reels e stories com o seu link:
+https://www.instagram.com/nosigilo.net/
 
 Como funciona o pagamento: a comissão é aprovada assim que o seu indicado paga, e o Pix sai todo dia 01 do mês seguinte, quando o seu saldo chega a R$ 10.`;
   }
@@ -106,7 +110,8 @@ Como funciona o pagamento: a comissão é aprovada assim que o seu indicado paga
 
 Escolha um material na Central, toque em "Compartilhar" e coloque o seu link no adesivo de link do story. Story com link à noite, perto das 21h, costuma trazer mais gente.
 
-Abrir a Central de divulgação: nosigilo.net/promoter/artes
+👉 Abrir a Central de divulgação:
+https://nosigilo.net/promoter/artes
 
 E fique de olho no desafio da semana: quem trouxer mais cadastros até domingo ganha R$ 30 🏆`;
   }
@@ -120,7 +125,8 @@ ${resumo}
 
 No seu painel você acompanha visitas, cadastros e vendas do dia, e a sua posição no desafio da semana.
 
-Ver meu painel: nosigilo.net/promoter
+👉 Ver meu painel:
+https://nosigilo.net/promoter
 
 Lembrete: a partir da 11ª venda no mês, a sua comissão sobe de 20% para 25%.`;
   }
@@ -149,7 +155,12 @@ export function textoMaterialNovo(nome: string, materiais: Array<{ titulo: strin
 ${linhas}${extra}
 
 Legenda pronta e o seu link já estão lá, é só copiar e postar.
-Abrir a Central de divulgação: nosigilo.net/promoter/artes`;
+
+👉 Abrir a Central de divulgação:
+https://nosigilo.net/promoter/artes
+
+📸 Também dá para repostar do nosso Instagram (@nosigilo.net):
+https://www.instagram.com/nosigilo.net/`;
 }
 
 /** "01/12": o dia 01 do mês seguinte a `agora`, em Brasília (quando sai o Pix). */

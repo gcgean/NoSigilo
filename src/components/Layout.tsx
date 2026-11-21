@@ -951,6 +951,10 @@ export default function Layout() {
                     ) : null}
                   </DropdownMenuItem>
                 ) : null}
+                <DropdownMenuItem onClick={() => window.open('https://www.instagram.com/nosigilo.net/', '_blank', 'noopener,noreferrer')}>
+                  <Camera className="mr-2 h-4 w-4 text-pink-500" />
+                  Siga no Instagram
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
