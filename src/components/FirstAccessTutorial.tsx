@@ -1,6 +1,5 @@
-import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,7 +22,6 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/contexts/AuthContext';
 import { FIRST_ACCESS_TOUR_EVENT } from '@/components/firstAccessTutorialEvents';
 import './FirstAccessTutorial.css';
 
@@ -163,30 +161,15 @@ const FEATURE_RAIL = [
 ];
 
 export default function FirstAccessTutorial() {
-  const { user } = useAuth();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
-  // Dentro d'A Casa o tutorial não abre: cobria a mensagem de quem acabou de
-  // reservar e a noite ao vivo. Fica para a próxima tela que a pessoa abrir.
-  const naCasa = pathname.startsWith('/casa');
   const [open, setOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [modo, setModo] = useState<'resumo' | 'tour'>('resumo');
   const passos = modo === 'resumo' ? [RESUMO] : TOUR_STEPS;
 
-  useEffect(() => {
-    if (!user?.id || naCasa || outrasJanelasEsperam(user.id)) return;
-    const key = `nosigilo:welcome-tutorial-date:${user.id}`;
-    try {
-      if (localStorage.getItem(key)) return;
-      localStorage.setItem(key, new Date().toISOString().slice(0, 10));
-    } catch {
-      // O tutorial continua funcionando mesmo se o storage estiver indisponível.
-    }
-    setStepIndex(0);
-    setModo('resumo');
-    setOpen(true);
-  }, [user?.id, naCasa]);
+  // 22/11/2026: a tela de boas-vindas não abre mais sozinha no primeiro acesso (o dono
+  // achou com "cara de IA" e ela cobria o que a pessoa veio ver). O tour continua em
+  // "Conheça a plataforma" (menu e botão de ajuda).
 
   useEffect(() => {
     const handler = () => {

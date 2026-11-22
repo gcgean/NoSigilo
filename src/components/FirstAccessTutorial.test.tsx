@@ -10,9 +10,6 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
 }));
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { id: mocks.userId } }),
-}));
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mocks.navigate,
@@ -29,14 +26,10 @@ describe('FirstAccessTutorial', () => {
     cleanup();
   });
 
-  it('abre automaticamente no primeiro acesso do usuário', async () => {
+  it('não abre sozinho no primeiro acesso (22/11/2026)', async () => {
     render(<FirstAccessTutorial />);
-
-    expect(await screen.findByRole('dialog', { name: 'Boas-vindas à comunidade NoSigilo' })).toBeTruthy();
-    expect(localStorage.getItem(`nosigilo:welcome-tutorial-date:${mocks.userId}`)).toBeTruthy();
-    // Primeira entrada: uma tela só, sem contador de etapas.
-    expect(screen.getByRole('button', { name: /Começar a explorar/ })).toBeTruthy();
-    expect(screen.queryByText(/de 6/)).toBeNull();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('dialog', { name: 'Boas-vindas à comunidade NoSigilo' })).toBeNull();
   });
 
   it('reabre o mesmo tutorial pelo evento usado em Conheça a plataforma', async () => {
