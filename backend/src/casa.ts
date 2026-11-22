@@ -1890,6 +1890,44 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     lola(salao, sortear(CHAMADAS_PARA_SALA[quentes[0].id as SalaTematica]));
   };
 
+  // 22/11/2026: em 21/11 o Salão ficou 16 min sem ninguém falar (00h35-00h51) enquanto o
+  // Cuckold e a Suruba bombavam, e a chamada antiga só saía junto com brincadeira (que
+  // não começa em sala parada). Agora: Salão sem fala de gente há 4 min, com gente lá
+  // dentro, e outra sala com conversa rolando: a Lola chama no Salão e cada um que pode
+  // entrar lá recebe o aviso com o botão "Ir". No máximo a cada 15 min.
+  let ultimaLevadaDoSalao = 0;
+  const podeIrPara = (destino: Sala, cat: Presente['cat']) => {
+    if (cat !== 'homem') return true;
+    if (destino.semHomens || destino.id === 'glory') return false;
+    return destino.homensLivres || contagem(destino).homem < limiteDeHomens(destino);
+  };
+  const levarSalaoProFogo = (agora: number, noite: { chave: string; forcada: boolean; portugal?: boolean }) => {
+    const salao = salas.get('salao');
+    if (!salao || agora - ultimaLevadaDoSalao < 15 * 60_000) return;
+    const noSalao = falantes(salao);
+    if (noSalao.length === 0 || falasDeGenteRecentes(salao, 4 * 60_000) > 0) return;
+    const destino = [...salas.values()]
+      .filter((x) => x.id !== 'salao' && !x.anonima && !guardada(x) && !trancada(x, noite))
+      .map((x) => ({ x, falas: falasDeGenteRecentes(x, 5 * 60_000) }))
+      .filter((d) => d.falas >= 6 && falantes(d.x).length >= 3)
+      .sort((a, b) => b.falas - a.falas)[0]?.x;
+    if (!destino) return;
+    ultimaLevadaDoSalao = agora;
+    const nome = `${destino.emoji} ${destino.nome}`;
+    const n = falantes(destino).length;
+    // Mensagem na sala só quando todo mundo do Salão pode ir (senão vira frustração).
+    if (noSalao.every((x) => podeIrPara(destino, x.cat))) {
+      lola(salao, `🔥 A festa agora está no ${nome}! Tem ${n} pessoas conversando lá. Bora? 😈`);
+    }
+    let chamados = 0;
+    for (const x of [...noSalao]) {
+      if (!podeIrPara(destino, x.cat)) continue;
+      chamados++;
+      emitirPara(x.id, 'casa.chamada.sala', { sala: destino.id, nome, pessoas: n });
+    }
+    console.log(`[casa] Salão parado: chamou ${chamados} pessoa(s) para ${destino.id}`);
+  };
+
   const iniciarJogo = async (sala: Sala, forcado?: string) => {
     if (sala.iniciando) return;
     sala.iniciando = true;
@@ -2144,7 +2182,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       const br = agoraBrasilia();
       const minuto = new Date().getUTCMinutes();
       const chaveShow = `${noite.chave}:${sala.id}`;
-      if (br.hora === 23 && minuto >= 55 && !showAvisado.has(chaveShow)) {
+      if (br.hora === 23 && minuto >= 55 && !showAvisado.has(chaveShow) && !guardada(sala)) {
         showAvisado.add(chaveShow);
         lola(sala, '🎆 Daqui a 5 minutos começa o SHOW DA MEIA-NOITE! Marquem "Quero brincar" e preparem a câmera 😈');
       }
@@ -2172,6 +2210,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     if (noite) anunciarRanking(noite.chave);
     if (noite && !noite.teste) destravarSeEncheu(noite);
     if (noite) equilibrarSalas(agora);
+    if (noite) levarSalaoProFogo(agora, noite);
     void lembrarReservas(noite).catch((err) => console.error('[casa] lembrete de reserva falhou', err));
     void sorteioDaCasa(noite).catch((err) => console.error('[casa] sorteio falhou', err));
     void convidarParaOTema().catch((err) => console.error('[casa] convite do tema falhou', err));
@@ -2900,6 +2939,22 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     return rows.map((r) => String(r.mensagem_id));
   };
 
+  // 22/11/2026: "Não entendi nada. Fiquei com vergonha por não saber responder e
+  // interagir" (nota 1 em 21/11). Quem nunca entrou numa noite de verdade recebe a dica
+  // da Lola com frases prontas. Noite de teste não conta.
+  const primeiraNoiteCache = new Map<string, boolean>();
+  const ehPrimeiraNoite = async (userId: string) => {
+    const chave = `${chaveDaNoite}:${userId}`;
+    const cache = primeiraNoiteCache.get(chave);
+    if (cache !== undefined) return cache;
+    const veio = !!(await db.queryOne(
+      "SELECT 1 AS x FROM casa_eventos WHERE user_id = ? AND tipo = 'entrou' AND noite <> ? AND noite NOT LIKE 'teste-%' LIMIT 1",
+      [userId, chaveDaNoite],
+    ));
+    if (primeiraNoiteCache.size > 5000) primeiraNoiteCache.clear();
+    primeiraNoiteCache.set(chave, !veio);
+    return !veio;
+  };
   const estadoPara = async (sala: Sala, userId: string, p: Presente | null) => ({
     midiasVistas: await midiasQueVi(sala, userId),
     sala: { id: sala.id, nome: sala.nome, emoji: sala.emoji, descricao: sala.descricao, nivel: sala.nivel, fundo: await fundoPublico(sala.id) },
@@ -2907,7 +2962,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     presentes: resumoPresentes(sala, userId).presentes,
     espiando: resumoPresentes(sala, userId).espiando,
     jogo: jogoPublico(sala.jogo, userId),
-    eu: { podeFalar: !!p?.podeFalar, querBrincar: !!p?.querBrincar, espiando: !p, pulseira: p?.pulseira ?? null, idPublico: p?.idPublico ?? null, revelado: !!p && p.nome === p.nomeReal },
+    eu: { podeFalar: !!p?.podeFalar, querBrincar: !!p?.querBrincar, espiando: !p, pulseira: p?.pulseira ?? null, idPublico: p?.idPublico ?? null, revelado: !!p && p.nome === p.nomeReal, primeiraNoite: p?.podeFalar ? await ehPrimeiraNoite(userId) : false },
     sala_anonima: sala.anonima,
   });
 

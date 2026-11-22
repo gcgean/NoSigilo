@@ -80,7 +80,7 @@ type Jogo = {
 type Estado = {
   sala: { id: string; nome: string; emoji: string; descricao: string; nivel: string; fundo?: FotoDeFundo | null };
   mensagens: Msg[]; presentes: Pessoa[]; espiando: number; jogo: Jogo | null;
-  eu: { podeFalar: boolean; querBrincar: boolean; espiando: boolean; pulseira: Pulseira | null; idPublico: string | null; revelado: boolean };
+  eu: { podeFalar: boolean; querBrincar: boolean; espiando: boolean; pulseira: Pulseira | null; idPublico: string | null; revelado: boolean; primeiraNoite?: boolean };
   sala_anonima?: boolean;
   midiasVistas: string[];
 };
@@ -119,6 +119,14 @@ const TITULO_JOGO: Record<Jogo['tipo'], string> = {
 };
 // Respostas de um toque para quem ainda não falou nada (a timidez trava a 1ª mensagem).
 const QUEBRA_GELO = ['Boa noite 🔥', 'Primeira vez aqui 😳', 'Casal de onde? 👀', 'Quem tá on? 😈'];
+// Primeira noite na Casa (22/11/2026): a Lola explica como começar e dá 3 frases prontas.
+const CHAVE_DICA_PRIMEIRA = 'nosigilo:casa-dica-primeira-v1';
+const FRASES_DA_PRIMEIRA: Record<Categoria, string[]> = {
+  casal: ['Boa noite, gente! Casal novo por aqui 😊', 'Primeira vez da gente na Casa, sejam gentis 😅', 'Oi! Quem mais é casal por aqui? 👀'],
+  mulher: ['Oi, gente! Primeira vez aqui 😊', 'Cheguei! Me contem como funciona 😅', 'Boa noite! Quem tá on? 🔥'],
+  homem: ['Boa noite, pessoal! Primeira vez aqui 😊', 'Cheguei agora, como tá a noite? 🔥', 'Boa noite! Vim conhecer, com respeito 🤝'],
+  outros: ['Oi, gente! Primeira vez aqui 😊', 'Cheguei! Me contem como funciona 😅', 'Boa noite! Quem tá on? 🔥'],
+};
 const CHAVE_TOUR = 'nosigilo:casa-tour-v1';
 const TOUR = [
   { emoji: '🍸', titulo: 'Bem-vindo(a) à Casa', texto: 'É uma boate virtual: cada sala é um ambiente. Converse no chat, mande foto ou vídeo e reaja às mensagens. Toque na foto de alguém no topo para ver o que dá pra fazer.' },
@@ -363,6 +371,13 @@ export default function Casa() {
   // Cartão "Chama a galera" (21/11/2026): automático depois de 5 min na Casa, 1x por
   // noite (a menos que a pessoa marque "não mostrar mais"), e pelo botão ➕ Convidar.
   const [conviteAmigos, setConviteAmigos] = useState<null | 'auto' | 'botao'>(null);
+  const [dicaPrimeiraFechada, setDicaPrimeiraFechada] = useState(() => {
+    try { return localStorage.getItem(CHAVE_DICA_PRIMEIRA) === '1'; } catch { return false; }
+  });
+  const fecharDicaPrimeira = () => {
+    setDicaPrimeiraFechada(true);
+    try { localStorage.setItem(CHAVE_DICA_PRIMEIRA, '1'); } catch { /* modo restrito */ }
+  };
   const [mostraProximo, setMostraProximo] = useState(false);
   const [lembrete, setLembrete] = useState(false);
   // Brincadeira que a pessoa dispensou: o cartão do topo some (ela pode votar na mensagem da Lola).
@@ -646,6 +661,16 @@ export default function Casa() {
       setConvite(c);
       registrarAviso({ emoji: '🚪', texto: `${c.de.nome} te chamou pra cabine`, acao: () => setConvite(c), rotuloAcao: 'Responder', de: c.de });
     };
+    // Salão parado e outra sala animada: a Lola chama com o botão "Ir" (22/11/2026).
+    const aoChamadaSala = (d: { sala: string; nome: string; pessoas: number }) => {
+      tocarAviso(true, 'match');
+      registrarAviso({ emoji: '🔥', texto: `A festa agora está no ${d.nome}`, acao: () => void entrar(d.sala), rotuloAcao: 'Ir' });
+      toast({
+        title: `🔥 A festa agora está no ${d.nome}!`,
+        description: `${d.pessoas} pessoas conversando lá agora 😈`,
+        action: <ToastAction altText="Ir para a sala" onClick={() => void entrar(d.sala)}>Ir</ToastAction>,
+      });
+    };
     const aoConviteSala = (d: { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; sala: string; nome: string }) => {
       tocarAviso(true, 'match');
       registrarAviso({ emoji: '🎟️', texto: `${d.de.nome} te chamou para o ${d.nome} (sem fila)`, acao: () => void entrar(d.sala), rotuloAcao: 'Entrar', de: d.de });
@@ -760,12 +785,12 @@ export default function Casa() {
     const aoDigitando = (d: { sala: string; id: string; nome: string }) => { if (estadoRef.current?.sala.id === d.sala) digitandoRef.current.chegou(d.id, d.nome); };
     on('casa.digitando', aoDigitando);
     on('casa.cabine.decidir', aoDecidir); on('casa.mensagem', aoMsg); on('casa.reacao', aoReacao); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
-    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.cabine.esquentar', aoEsquentarCabine); on('casa.convite.sala', aoConviteSala); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
+    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.cabine.esquentar', aoEsquentarCabine); on('casa.convite.sala', aoConviteSala); on('casa.chamada.sala', aoChamadaSala); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
     return () => {
       off('casa.faixa', aoFaixa);
       off('casa.digitando', aoDigitando);
       off('casa.cabine.decidir', aoDecidir); off('casa.mensagem', aoMsg); off('casa.reacao', aoReacao); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
-      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.cabine.esquentar', aoEsquentarCabine); off('casa.convite.sala', aoConviteSala); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
+      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.cabine.esquentar', aoEsquentarCabine); off('casa.convite.sala', aoConviteSala); off('casa.chamada.sala', aoChamadaSala); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
     };
   }, [on, off, toast, navigate, carregar, entrar]);
 
@@ -1680,7 +1705,33 @@ export default function Casa() {
           </div>
         );
       })()}
-      {estado.eu.podeFalar && !texto && !respondendo && !estado.mensagens.some((m) => m.tipo === 'pessoa' && m.autor?.id === estado.eu.idPublico) && (
+      {(() => {
+        const jaFalei = estado.mensagens.some((m) => m.tipo === 'pessoa' && m.autor?.id === estado.eu.idPublico);
+        if (!estado.eu.podeFalar || !estado.eu.primeiraNoite || dicaPrimeiraFechada || jaFalei || texto || respondendo) return null;
+        if (tourPasso !== null || escolhendoPulseira || perguntaBrincar === estado.sala.id) return null;
+        const eu = estado.presentes.find((x) => x.id === estado.eu.idPublico);
+        const cat: Categoria = eu?.cat ?? 'outros';
+        const voces = cat === 'casal';
+        return (
+          <div className="mx-3 mb-1 rounded-2xl rounded-bl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2 shadow" data-testid="dica-primeira-noite">
+            <div className="flex items-start justify-between gap-2">
+              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-100">💋 Lola · só pra {voces ? 'vocês' : 'você'}</p>
+              <button type="button" onClick={fecharDicaPrimeira} aria-label="Fechar dica" className="-mr-1 -mt-0.5 px-1 text-sm text-fuchsia-100/80">✕</button>
+            </div>
+            <p className="text-sm leading-snug">
+              {eu?.nome ? `${eu.nome}, ` : ''}primeira vez aqui? Relaxa, todo mundo começou assim 😉 É só dar um oi. Toca numa frase e ela vai pra sala:
+            </p>
+            <div className="mt-2 flex flex-col gap-1.5">
+              {FRASES_DA_PRIMEIRA[cat].map((f) => (
+                <button key={f} type="button" onClick={() => { fecharDicaPrimeira(); void enviar(f); }}
+                  className="rounded-xl bg-white px-3 py-2 text-left text-sm font-semibold text-rose-700">{f}</button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-snug text-fuchsia-100/90">Quando eu puxar uma brincadeira, é só tocar num dos botões dela. E pra conversar com alguém, toque na foto da pessoa 😈</p>
+          </div>
+        );
+      })()}
+      {estado.eu.podeFalar && !texto && !respondendo && !(estado.eu.primeiraNoite && !dicaPrimeiraFechada) && !estado.mensagens.some((m) => m.tipo === 'pessoa' && m.autor?.id === estado.eu.idPublico) && (
         <div className="flex gap-1.5 overflow-x-auto px-3 pb-1.5 [scrollbar-width:none]">
           {QUEBRA_GELO.map((t) => (
             <button key={t} type="button" onClick={() => void enviar(t)}
