@@ -2229,6 +2229,11 @@ function canalDaOrigem(o: PrimeiroToque | null, signupSource: string | null): st
   if (o?.utmCampaign === 'instagram-vem') return 'Instagram (página /vem)';
   // Chegou pela página pública d'A Casa (/a-casa marca utm_campaign=a-casa):
   // conta como A Casa, com o canal de onde veio entre parênteses.
+  // Chegou pela página pública das Novelinhas (/historias marca utm_campaign=novelinhas).
+  if (o?.utmCampaign === 'novelinhas') {
+    const base = canalDaOrigem({ ...o, utmCampaign: undefined }, signupSource);
+    return base === 'Direto' ? 'Novelinhas' : `Novelinhas (${base})`;
+  }
   if (o?.utmCampaign === 'a-casa') {
     const base = canalDaOrigem({ ...o, utmCampaign: undefined }, signupSource);
     return base === 'Direto' ? 'A Casa' : `A Casa (${base})`;
@@ -6144,6 +6149,46 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ assets: rows.map((r) => ({ id: String(r.id), title: String(r.title), caption: String(r.caption || ''), destination: r.destination, createdAt: String(r.created_at), quandoPostar: quandoPostar(r.usar_em, r.usar_ate), url: '/uploads/' + r.filename, mimeType: String(r.mime_type || '') })) });
   });
 
+  // ─── Novelinhas (22/11/2026): histórias narradas em episódios ───────────────
+  // Sem conta: só o trecho (trailer) e o convite para cadastrar. Com conta: o
+  // episódio inteiro. O arquivo completo tem nome aleatório e só vai para quem
+  // está logado. Página pública /historias e área /novelinhas no app.
+  app.get('/api/novelinhas', async (req, res) => {
+    const userId = decodeOptionalUserId(env, req);
+    const rows = (await queryAll(db,
+      `SELECT n.*, c.filename AS capa, v.filename AS video, t.filename AS trailer
+         FROM novelinhas n
+         LEFT JOIN media c ON c.id = n.capa_media_id
+         LEFT JOIN media v ON v.id = n.video_media_id
+         LEFT JOIN media t ON t.id = n.trailer_media_id
+        WHERE n.publicado = 1 ORDER BY n.ordem ASC, n.created_at ASC`)) as any[];
+    const vistos = userId
+      ? new Set(((await queryAll(db, 'SELECT novelinha_id FROM novelinha_views WHERE user_id = ?', [userId])) as any[]).map((r) => String(r.novelinha_id)))
+      : new Set<string>();
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      logado: !!userId,
+      episodios: rows.map((r, i) => ({
+        numero: i + 1,
+        slug: String(r.slug),
+        titulo: String(r.titulo),
+        descricao: String(r.descricao || ''),
+        duracaoSeg: Number(r.duracao_seg || 0),
+        capa: r.capa ? `/uploads/${r.capa}` : null,
+        trailer: r.trailer ? `/uploads/${r.trailer}` : null,
+        video: userId && r.video ? `/uploads/${r.video}` : null,
+        assistido: vistos.has(String(r.id)),
+      })),
+    });
+  });
+  app.post('/api/novelinhas/:slug/assistiu', requireAuth(env, db), async (req, res) => {
+    const ep = (await queryOne(db, 'SELECT id FROM novelinhas WHERE slug = ? AND publicado = 1', [String(req.params.slug)])) as any;
+    if (!ep) { res.status(404).json({ error: 'not_found' }); return; }
+    await run(db, 'INSERT INTO novelinha_views (user_id, novelinha_id, created_at) VALUES (?, ?, ?) ON CONFLICT(user_id, novelinha_id) DO NOTHING', [req.auth!.userId, String(ep.id), nowIso()]);
+    await persist();
+    res.json({ ok: true });
+  });
+
   // Central compartilhada: somente admins publicam; promotores acessam com sua conta.
   app.get('/api/promoter/assets', requireAuth(env, db), async (req, res) => {
     const account = await queryOne(db, 'SELECT is_admin FROM users WHERE id = ?', [req.auth!.userId]) as any;
@@ -7615,6 +7660,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     'ig_abriu', 'ig_casal', 'ig_mulher', 'ig_homem',
     // Página do link da descrição do YouTube (/youtube).
     'yt_abriu', 'yt_casal', 'yt_mulher', 'yt_homem',
+    // Novelinhas: página pública /historias (trecho) e convite para cadastrar.
+    'nv_abriu', 'nv_play', 'nv_trailer_fim', 'nv_cadastro',
     'nome_sugerido', 'email_corrigido',
     // Tela de primeiros passos, logo depois da conta criada.
     'pp_abriu', 'pp_cidade', 'pp_curte', 'pp_foto', 'pp_pulou_foto', 'pp_fim',

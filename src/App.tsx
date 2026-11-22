@@ -36,6 +36,7 @@ const Login = lazy(() => import("./pages/Login"));
 const Instalar = lazy(() => import("./pages/Instalar"));
 const Vem = lazy(() => import("./pages/Vem"));
 const Youtube = lazy(() => import("./pages/Youtube"));
+const Novelinhas = lazy(() => import("./pages/Novelinhas"));
 const Register = lazy(() => import("./pages/Register"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -124,6 +125,7 @@ const App = () => (
                     <Route path="/instalar" element={<Instalar />} />
                     <Route path="/vem" element={<Vem />} />
                     <Route path="/youtube" element={<Youtube />} />
+                    <Route path="/historias" element={<Novelinhas publica />} />
                     {/* Botão "Renovar com Pix" dos e-mails: sem login, link assinado. */}
                     <Route path="/renovar" element={<Renovar />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -151,6 +153,7 @@ const App = () => (
                       <Route path="/chat" element={<Chat />} />
                       <Route path="/search" element={<Search />} />
                       <Route path="/reels" element={<Reels />} />
+                      <Route path="/novelinhas" element={<Novelinhas />} />
                       <Route path="/videos" element={<SearchVideos />} />
                       <Route path="/notifications" element={<Notifications />} />
                       <Route path="/post/:postId" element={<PostView />} />

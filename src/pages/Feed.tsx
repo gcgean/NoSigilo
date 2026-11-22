@@ -2662,15 +2662,15 @@ export default function Feed() {
                 <div className="mx-1 h-5 w-px shrink-0 bg-white/10" />
               )}
 
-              {/* Rap — navigation shortcut */}
+              {/* Novelinhas (22/11/2026): no lugar do atalho "Rap", que já está no menu como Vídeos. */}
               {feedFilter !== 'experiences' && (
                 <button
                   type="button"
-                  onClick={() => navigate('/reels')}
+                  onClick={() => navigate('/novelinhas')}
                   className="flex shrink-0 items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium text-muted-foreground ring-1 ring-white/10 transition-all duration-200 hover:bg-white/5 hover:text-foreground hover:ring-white/20"
                 >
                   <Clapperboard className="h-3.5 w-3.5" />
-                  Rap
+                  Novelinhas
                 </button>
               )}
 

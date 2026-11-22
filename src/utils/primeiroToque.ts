@@ -52,7 +52,7 @@ export function capturaPrimeiroToque(): void {
       utmSource: busca.get('utm_source') || (paginaDoInstagram ? 'instagram' : paginaDoYoutube ? 'youtube' : undefined),
       utmMedium: busca.get('utm_medium') || undefined,
       // Página pública d'A Casa conta como campanha própria (canal "A Casa" no admin).
-      utmCampaign: paginaDoInstagram ? 'instagram-vem' : busca.get('utm_campaign') || (/^\/a-?casa/.test(window.location.pathname) ? 'a-casa' : undefined),
+      utmCampaign: paginaDoInstagram ? 'instagram-vem' : busca.get('utm_campaign') || (/^\/a-?casa/.test(window.location.pathname) ? 'a-casa' : /^\/historias/.test(window.location.pathname) ? 'novelinhas' : undefined),
       app: appDoNavegador(navigator.userAgent || ''),
       em: new Date().toISOString(),
     };
