@@ -34,8 +34,10 @@ export function capturaPrimeiroToque(): void {
     // A página do link do Instagram vale mesmo para quem já tinha outra origem: é o
     // teste dela que queremos medir (canal "Instagram (página /vem)" no admin).
     const paginaDoInstagram = /^\/vem(\/|$)/.test(window.location.pathname);
+    // Mesma regra para a página do link da descrição do YouTube (22/11/2026).
+    const paginaDoYoutube = /^\/youtube(\/|$)/.test(window.location.pathname);
     const guardado = localStorage.getItem(CHAVE);
-    if (guardado && !paginaDoInstagram) {
+    if (guardado && !paginaDoInstagram && !paginaDoYoutube) {
       const antigo = JSON.parse(guardado) as PrimeiroToque;
       if (antigo?.em && Date.now() - new Date(antigo.em).getTime() < VALIDADE_MS) return;
     }
@@ -47,7 +49,7 @@ export function capturaPrimeiroToque(): void {
     } catch { /* referrer inválido: segue sem */ }
     const toque: PrimeiroToque = {
       ref,
-      utmSource: busca.get('utm_source') || (paginaDoInstagram ? 'instagram' : undefined),
+      utmSource: busca.get('utm_source') || (paginaDoInstagram ? 'instagram' : paginaDoYoutube ? 'youtube' : undefined),
       utmMedium: busca.get('utm_medium') || undefined,
       // Página pública d'A Casa conta como campanha própria (canal "A Casa" no admin).
       utmCampaign: paginaDoInstagram ? 'instagram-vem' : busca.get('utm_campaign') || (/^\/a-?casa/.test(window.location.pathname) ? 'a-casa' : undefined),

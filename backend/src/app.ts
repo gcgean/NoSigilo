@@ -2238,6 +2238,8 @@ function canalDaOrigem(o: PrimeiroToque | null, signupSource: string | null): st
   const app = o?.app || '';
   const tem = (x: string, ...termos: string[]) => termos.some((t) => x.includes(t));
   if (utm) {
+    // YouTube antes do Instagram: 'youtube' não contém 'ig', mas fica explícito.
+    if (tem(utm, 'youtube')) return 'YouTube';
     if (tem(utm, 'insta', 'ig')) return 'Instagram';
     if (tem(utm, 'google')) return 'Google';
     if (tem(utm, 'face', 'fb', 'meta')) return 'Facebook';
@@ -2246,6 +2248,7 @@ function canalDaOrigem(o: PrimeiroToque | null, signupSource: string | null): st
     if (tem(utm, 'email', 'mail')) return 'E-mail';
     return `Campanha: ${utm}`;
   }
+  if (tem(ref, 'youtube', 'youtu.be')) return 'YouTube';
   if (app === 'instagram' || tem(ref, 'instagram')) return 'Instagram';
   if (app === 'tiktok' || tem(ref, 'tiktok')) return 'TikTok';
   if (app === 'facebook' || tem(ref, 'facebook', 'fb.')) return 'Facebook';
@@ -7610,6 +7613,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     'inicio_casal', 'inicio_mulher', 'inicio_homem', 'inicio_outro',
     // Página do link do Instagram (/vem).
     'ig_abriu', 'ig_casal', 'ig_mulher', 'ig_homem',
+    // Página do link da descrição do YouTube (/youtube).
+    'yt_abriu', 'yt_casal', 'yt_mulher', 'yt_homem',
     'nome_sugerido', 'email_corrigido',
     // Tela de primeiros passos, logo depois da conta criada.
     'pp_abriu', 'pp_cidade', 'pp_curte', 'pp_foto', 'pp_pulou_foto', 'pp_fim',
