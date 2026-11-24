@@ -1544,8 +1544,15 @@ export const adminTelegramService = {
   },
 };
 
-export type MesDaBase = { mes: string; novos: number; saidas: number; base: number; parcial: boolean; novosAteODia: number };
-export type CrescimentoBase = { meses: MesDaBase[]; mesAtual: string; diaAtual: number };
+export type MesDaBase = {
+  mes: string; novos: number; saidas: number; base: number; parcial: boolean; novosAteODia: number;
+  novosAssinantes: number; pagantes: number;
+};
+export type PaisDaBase = { pais: 'BR' | 'PT' | 'OUTROS'; nome: string; assinantesAtivos: number; meses: MesDaBase[] };
+export type CrescimentoBase = {
+  meses: MesDaBase[]; mesAtual: string; diaAtual: number;
+  assinantesAtivos: number; assinantesDisponivel: boolean; paises: PaisDaBase[];
+};
 
 export const adminCrescimentoService = {
   relatorio: async (): Promise<CrescimentoBase> => {

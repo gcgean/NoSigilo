@@ -4691,6 +4691,14 @@ describe('nosigilo backend', () => {
     expect(fev).toMatchObject({ novos: 1, saidas: 1, base: 3 });
     expect(mar).toMatchObject({ novos: 0, saidas: 0, base: 3 });
     expect(r.meses[r.meses.length - 1].parcial).toBe(true);
+    // Por país: a conta 5 com UF PT vira Portugal; a soma dos países bate com o total.
+    await run(ctx.db, "UPDATE users SET state = 'PT' WHERE email = 'base-5@example.com'");
+    const r2 = (await request(ctx.app).get('/api/admin/analytics/crescimento-base').set(auth).expect(200)).body;
+    const ptFev = r2.paises.find((p: any) => p.pais === 'PT').meses.find((m: any) => m.mes === '2020-02');
+    expect(ptFev).toMatchObject({ novos: 1, base: 1 });
+    const soma = (mes: string) => r2.paises.reduce((s: number, p: any) => s + p.meses.find((m: any) => m.mes === mes).novos, 0);
+    expect(soma('2020-01')).toBe(3);
+    expect(r2.assinantesDisponivel).toBe(false);
 
     await request(ctx.app).get('/api/admin/analytics/crescimento-base').set('Authorization', `Bearer ${sponsorToken}`).expect(403);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);

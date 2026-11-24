@@ -1,5 +1,6 @@
 import { HORA_INCENTIVO_MULHER, HORA_STORIES_NOVOS, INTERVALO_INCENTIVO_DIAS, MAX_STORIES_NOVOS_POR_SEMANA, MIN_STORIES_PARA_AVISO, MIN_VIEWS_PARA_INCENTIVO, semanaDoStory, textoIncentivoMulher, textoStoriesNovos } from './avisosDeStories.js';
 import { ordenarStories } from './ordemDosStories.js';
+import { montarCrescimento, paisDaConta } from './crescimentoBase.js';
 import { MODO_PONTE } from './modoPonte.js';
 import cors from 'cors';
 import { textoDaDica, ESPERA_EM_DIAS, TOTAL_DE_DICAS, pediuParaParar, RESPOSTA_PARAR, RESPOSTA_AUTOMATICA } from './dicasChat.js';
@@ -22028,43 +22029,67 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // de cada mês (horário de Brasília). Vitrine e conta oficial não contam.
   app.get('/api/admin/analytics/crescimento-base', requireAuth(env, db), requireAdmin(), async (_req, res) => {
     try {
-      const mesBR = (iso: string) => new Date(Date.parse(iso) - 3 * 3600_000).toISOString().slice(0, 7);
-      const diaBR = (iso: string) => Number(new Date(Date.parse(iso) - 3 * 3600_000).toISOString().slice(8, 10));
-      const cadastros = (await queryAll(db, 'SELECT created_at FROM users WHERE COALESCE(is_showcase, 0) = 0 AND COALESCE(conta_oficial, 0) = 0', [])) as any[];
-      const saidas = (await queryAll(db, 'SELECT created_at FROM account_deletions', [])) as any[];
-      const agora = new Date().toISOString();
-      const mesAtual = mesBR(agora);
-      const hojeDia = diaBR(agora);
-      const novos = new Map<string, number>();
-      const novosAteHoje = new Map<string, number>(); // até o mesmo dia do mês de hoje
-      for (const r of cadastros) {
-        if (!r.created_at) continue;
-        const iso = String(r.created_at);
-        const m = mesBR(iso);
-        novos.set(m, (novos.get(m) ?? 0) + 1);
-        if (diaBR(iso) <= hojeDia) novosAteHoje.set(m, (novosAteHoje.get(m) ?? 0) + 1);
+      const usuarios = (await queryAll(
+        db,
+        `SELECT id, created_at, state, email, hub_customer_id, is_premium, deleted_at, is_deactivated,
+                COALESCE(is_showcase, 0) AS vitrine, COALESCE(conta_oficial, 0) AS oficial
+           FROM users`,
+        []
+      )) as any[];
+      // País de onde mais acessou, só para quem não tem UF no perfil.
+      const acessos = (await queryAll(
+        db,
+        `SELECT sv.user_id, sv.country, COUNT(*) AS n FROM site_visits sv
+           JOIN users u ON u.id = sv.user_id
+          WHERE TRIM(COALESCE(u.state, '')) = '' AND COALESCE(sv.country, '') <> ''
+          GROUP BY sv.user_id, sv.country`,
+        []
+      )) as any[];
+      const paisAcesso = new Map<string, { pais: string; n: number }>();
+      for (const a of acessos) {
+        const atual = paisAcesso.get(String(a.user_id));
+        if (!atual || Number(a.n) > atual.n) paisAcesso.set(String(a.user_id), { pais: String(a.country), n: Number(a.n) });
       }
-      const sai = new Map<string, number>();
-      for (const r of saidas) {
-        if (!r.created_at) continue;
-        const m = mesBR(String(r.created_at));
-        sai.set(m, (sai.get(m) ?? 0) + 1);
+      const contas = usuarios.map((u) => ({
+        id: String(u.id),
+        criadoEm: u.created_at ? String(u.created_at) : '',
+        pais: paisDaConta(u.state, paisAcesso.get(String(u.id))?.pais),
+        contaNaBase: Number(u.vitrine) === 0 && Number(u.oficial) === 0,
+      }));
+      const saidas = ((await queryAll(db, 'SELECT user_id, created_at FROM account_deletions', [])) as any[])
+        .map((r) => ({ userId: String(r.user_id), em: r.created_at ? String(r.created_at) : '' }));
+      const ativos = new Map<string, number>();
+      for (const [i, u] of usuarios.entries()) {
+        if (!contas[i].contaNaBase || Number(u.is_premium) !== 1 || u.deleted_at || Number(u.is_deactivated || 0) === 1) continue;
+        ativos.set(contas[i].pais, (ativos.get(contas[i].pais) ?? 0) + 1);
       }
-      const todos = [...novos.keys(), ...sai.keys()].sort();
-      if (todos.length === 0) { res.json({ meses: [], mesAtual, diaAtual: hojeDia }); return; }
-      const meses: Array<{ mes: string; novos: number; saidas: number; base: number; parcial: boolean; novosAteODia: number }> = [];
-      let [ano, mes] = todos[0].split('-').map(Number);
-      let base = 0;
-      while (true) {
-        const chave = `${ano}-${String(mes).padStart(2, '0')}`;
-        const n = novos.get(chave) ?? 0;
-        const s = sai.get(chave) ?? 0;
-        base += n - s;
-        meses.push({ mes: chave, novos: n, saidas: s, base, parcial: chave === mesAtual, novosAteODia: novosAteHoje.get(chave) ?? 0 });
-        if (chave >= mesAtual) break;
-        mes += 1; if (mes > 12) { mes = 1; ano += 1; }
+      // Pagamentos (extrato do Hub, 5 min de cache). Sem Hub, a parte de assinantes fica indisponível.
+      let pagamentos: Array<{ userId: string; em: string }> | null = null;
+      if (shouldUseHubBilling(env)) {
+        try {
+          if (!extratoHubCache || Date.now() - extratoHubCache.em > 5 * 60_000) {
+            const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Hub demorou para responder')), 30000));
+            const ledger = await Promise.race([getHubPaymentsLedger(getHubConfig(env)), timeout]);
+            extratoHubCache = { em: Date.now(), itens: ledger.itens };
+          }
+          const porHub = new Map<string, string>();
+          const porEmail = new Map<string, string>();
+          for (const [i, u] of usuarios.entries()) {
+            if (!contas[i].contaNaBase) continue;
+            if (u.hub_customer_id) porHub.set(String(u.hub_customer_id).trim(), contas[i].id);
+            if (u.email) porEmail.set(String(u.email).toLowerCase().trim(), contas[i].id);
+          }
+          pagamentos = [];
+          for (const p of extratoHubCache.itens) {
+            const id = (p.customerId && porHub.get(p.customerId)) || (p.email && porEmail.get(String(p.email).toLowerCase().trim()));
+            if (id && p.pagoEm) pagamentos.push({ userId: id, em: String(p.pagoEm) });
+          }
+        } catch (err) {
+          console.warn('[admin/crescimento-base] extrato do Hub', (err as Error).message);
+          pagamentos = null;
+        }
       }
-      res.json({ meses, mesAtual, diaAtual: hojeDia });
+      res.json(montarCrescimento({ contas, saidas, pagamentos, assinantesAtivos: ativos, agoraIso: new Date().toISOString() }));
     } catch (err) {
       console.error('[admin/crescimento-base]', err);
       res.status(500).json({ error: 'internal_error' });
