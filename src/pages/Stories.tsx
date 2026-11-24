@@ -290,20 +290,55 @@ type RecuosDaTela = { baixo: number; topo: number; cobre: boolean };
  * teclado (relato de 07/11/2026, responder story no iPhone). Agora o conteúdo
  * ocupa exatamente a faixa visível: em cima, o deslocamento; embaixo, o resto.
  */
+/** Maior faixa que a barra do navegador cobre sem teclado aberto. */
+const MAX_BARRA_SEM_TECLADO = 120;
+
+const digitandoAgora = () => {
+  const el = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
+  if (!el) return false;
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable === true;
+};
+
+/**
+ * Conta pura dos recuos (23/11/2026). Dois casos davam uma faixa preta enorme
+ * embaixo do story no Safari do iPhone:
+ * - tela ampliada com pinça: o visualViewport encolhe pelo zoom, não por barra;
+ * - medida velha de teclado (fechou sem o iOS avisar): sem campo focado, nada
+ *   além da barra do Safari pode cobrir a tela.
+ */
+export function calcularRecuos(m: { innerHeight: number; vvHeight: number | null; vvOffsetTop: number; vvScale: number; digitando: boolean; piso: number }): RecuosDaTela {
+  if (m.vvHeight === null || Math.abs(m.vvScale - 1) > 0.01) {
+    return { baixo: m.piso, topo: 0, cobre: m.piso > 0 };
+  }
+  let coberto = Math.max(0, Math.round(m.innerHeight - m.vvHeight));
+  if (!m.digitando) coberto = Math.min(coberto, MAX_BARRA_SEM_TECLADO);
+  const topo = coberto > 0 ? Math.min(coberto, Math.max(0, Math.round(m.vvOffsetTop))) : 0;
+  const baixo = coberto > 0 ? coberto - topo : m.piso;
+  return { baixo, topo, cobre: coberto > 0 || m.piso > 0 };
+}
+
 function useBottomChromeInset(): RecuosDaTela {
   const [recuos, setRecuos] = useState<RecuosDaTela>({ baixo: 0, topo: 0, cobre: false });
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
     const piso = pisoDoChromeIOS();
     const update = () => {
-      const visivel = vv ? vv.height : window.innerHeight;
-      const coberto = Math.max(0, Math.round(window.innerHeight - visivel));
-      const topo = coberto > 0 && vv ? Math.min(coberto, Math.max(0, Math.round(vv.offsetTop))) : 0;
-      const baixo = coberto > 0 ? coberto - topo : piso;
-      const cobre = coberto > 0 || piso > 0;
+      const { baixo, topo, cobre } = calcularRecuos({
+        innerHeight: window.innerHeight,
+        vvHeight: vv ? vv.height : window.innerHeight,
+        vvOffsetTop: vv ? vv.offsetTop : 0,
+        vvScale: vv ? vv.scale : 1,
+        digitando: digitandoAgora(),
+        piso,
+      });
       setRecuos((a) => (a.baixo === baixo && a.topo === topo && a.cobre === cobre ? a : { baixo, topo, cobre }));
     };
     update();
+    // Teclado abrindo/fechando: o foco muda antes do resize; o atraso pega o
+    // fim da animação quando o iOS não manda resize nenhum.
+    const aoFoco = () => { update(); window.setTimeout(update, 400); };
+    document.addEventListener('focusin', aoFoco);
+    document.addEventListener('focusout', aoFoco);
     // scroll também: no iOS a barra some/aparece durante a rolagem, e o
     // visualViewport só emite 'resize' depois que a animação termina.
     vv?.addEventListener('resize', update);
@@ -311,6 +346,8 @@ function useBottomChromeInset(): RecuosDaTela {
     window.addEventListener('resize', update);
     window.addEventListener('orientationchange', update);
     return () => {
+      document.removeEventListener('focusin', aoFoco);
+      document.removeEventListener('focusout', aoFoco);
       vv?.removeEventListener('resize', update);
       vv?.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
