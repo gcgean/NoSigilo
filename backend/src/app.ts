@@ -22024,6 +22024,53 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
+  // Crescimento da base mês a mês (24/11/2026): cadastros, saídas e base no fim
+  // de cada mês (horário de Brasília). Vitrine e conta oficial não contam.
+  app.get('/api/admin/analytics/crescimento-base', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      const mesBR = (iso: string) => new Date(Date.parse(iso) - 3 * 3600_000).toISOString().slice(0, 7);
+      const diaBR = (iso: string) => Number(new Date(Date.parse(iso) - 3 * 3600_000).toISOString().slice(8, 10));
+      const cadastros = (await queryAll(db, 'SELECT created_at FROM users WHERE COALESCE(is_showcase, 0) = 0 AND COALESCE(conta_oficial, 0) = 0', [])) as any[];
+      const saidas = (await queryAll(db, 'SELECT created_at FROM account_deletions', [])) as any[];
+      const agora = new Date().toISOString();
+      const mesAtual = mesBR(agora);
+      const hojeDia = diaBR(agora);
+      const novos = new Map<string, number>();
+      const novosAteHoje = new Map<string, number>(); // até o mesmo dia do mês de hoje
+      for (const r of cadastros) {
+        if (!r.created_at) continue;
+        const iso = String(r.created_at);
+        const m = mesBR(iso);
+        novos.set(m, (novos.get(m) ?? 0) + 1);
+        if (diaBR(iso) <= hojeDia) novosAteHoje.set(m, (novosAteHoje.get(m) ?? 0) + 1);
+      }
+      const sai = new Map<string, number>();
+      for (const r of saidas) {
+        if (!r.created_at) continue;
+        const m = mesBR(String(r.created_at));
+        sai.set(m, (sai.get(m) ?? 0) + 1);
+      }
+      const todos = [...novos.keys(), ...sai.keys()].sort();
+      if (todos.length === 0) { res.json({ meses: [], mesAtual, diaAtual: hojeDia }); return; }
+      const meses: Array<{ mes: string; novos: number; saidas: number; base: number; parcial: boolean; novosAteODia: number }> = [];
+      let [ano, mes] = todos[0].split('-').map(Number);
+      let base = 0;
+      while (true) {
+        const chave = `${ano}-${String(mes).padStart(2, '0')}`;
+        const n = novos.get(chave) ?? 0;
+        const s = sai.get(chave) ?? 0;
+        base += n - s;
+        meses.push({ mes: chave, novos: n, saidas: s, base, parcial: chave === mesAtual, novosAteODia: novosAteHoje.get(chave) ?? 0 });
+        if (chave >= mesAtual) break;
+        mes += 1; if (mes > 12) { mes = 1; ano += 1; }
+      }
+      res.json({ meses, mesAtual, diaAtual: hojeDia });
+    } catch (err) {
+      console.error('[admin/crescimento-base]', err);
+      res.status(500).json({ error: 'internal_error' });
+    }
+  });
+
   app.get('/api/admin/analytics/exclusoes', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const pedido = Number(req.query.dias || 30);

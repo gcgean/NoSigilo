@@ -4665,6 +4665,37 @@ describe('nosigilo backend', () => {
     expect(minhas.map((m) => m.imageUrl)).toEqual(['/uploads/abc-123.webp', '/uploads/def.webp', null]);
   });
 
+  it('crescimento da base: cadastros, saídas e base por mês no horário de Brasília (24/11/2026)', async () => {
+    const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Base', email: 'admin-base@example.com', password: 'senha123', gender: 'Mulher' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);
+    const criar = async (n: number, criadoEm: string, vitrine = 0) => {
+      const r = await registerInvitedUser(ctx, sponsorToken, { name: `Base ${n}`, email: `base-${n}@example.com`, password: 'senha123', gender: 'Mulher' });
+      await run(ctx.db, 'UPDATE users SET created_at = ?, is_showcase = ? WHERE id = ?', [criadoEm, vitrine, String(r.user.id)]);
+    };
+    // Janeiro/2020: 3 (um deles 31/01 23:30 em Brasília = 01/02 02:30Z). Vitrine não conta.
+    await criar(1, '2020-01-10T12:00:00.000Z');
+    await criar(2, '2020-01-20T12:00:00.000Z');
+    await criar(3, '2020-02-01T02:30:00.000Z');
+    await criar(4, '2020-01-15T12:00:00.000Z', 1);
+    // Fevereiro/2020: 1 cadastro e 1 saída.
+    await criar(5, '2020-02-10T12:00:00.000Z');
+    await run(ctx.db, 'INSERT INTO account_deletions (id, user_id, reason_code, was_premium, created_at) VALUES (?, ?, ?, 0, ?)', ['del-base-1', 'x', 'other', '2020-02-15T12:00:00.000Z']);
+    await ctx.db.persist();
+    const auth = { Authorization: `Bearer ${adm.token}` };
+
+    const r = (await request(ctx.app).get('/api/admin/analytics/crescimento-base').set(auth).expect(200)).body;
+    const jan = r.meses.find((m: any) => m.mes === '2020-01');
+    const fev = r.meses.find((m: any) => m.mes === '2020-02');
+    const mar = r.meses.find((m: any) => m.mes === '2020-03');
+    expect(jan).toMatchObject({ novos: 3, saidas: 0, base: 3, parcial: false });
+    expect(fev).toMatchObject({ novos: 1, saidas: 1, base: 3 });
+    expect(mar).toMatchObject({ novos: 0, saidas: 0, base: 3 });
+    expect(r.meses[r.meses.length - 1].parcial).toBe(true);
+
+    await request(ctx.app).get('/api/admin/analytics/crescimento-base').set('Authorization', `Bearer ${sponsorToken}`).expect(403);
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
+
   it('cadastros por período: conta só quem entrou entre as datas (horário de Brasília) e une a cidade', async () => {
     const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Periodo', email: 'admin-periodo@example.com', password: 'senha123', gender: 'Mulher' });
     await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);

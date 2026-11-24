@@ -34,6 +34,7 @@ import AdminRankingPromotores from '@/components/AdminRankingPromotores';
 import AdminContos from '@/components/AdminContos';
 import AdminVisitantes from '@/components/AdminVisitantes';
 import AdminExclusoes from '@/components/AdminExclusoes';
+import AdminCrescimentoBase from '@/components/AdminCrescimentoBase';
 import AdminPedidos from '@/components/AdminPedidos';
 import AdminTelegramAvisos from '@/components/AdminTelegramAvisos';
 import AdminCidadesPorPeriodo from '@/components/AdminCidadesPorPeriodo';
@@ -3409,6 +3410,8 @@ export default function Admin() {
                 </Card>
               );
             })()}
+
+            <AdminCrescimentoBase />
 
             {/* ── Usuários únicos online por hora (média, horário de pico) ── */}
             {visitAnalytics.byHour.some((h) => h.count > 0) && (

@@ -1544,6 +1544,16 @@ export const adminTelegramService = {
   },
 };
 
+export type MesDaBase = { mes: string; novos: number; saidas: number; base: number; parcial: boolean; novosAteODia: number };
+export type CrescimentoBase = { meses: MesDaBase[]; mesAtual: string; diaAtual: number };
+
+export const adminCrescimentoService = {
+  relatorio: async (): Promise<CrescimentoBase> => {
+    const response = await apiClient.get('/admin/analytics/crescimento-base');
+    return response.data;
+  },
+};
+
 export const adminExclusoesService = {
   relatorio: async (dias: number, motivo?: string): Promise<RelatorioExclusoes> => {
     const response = await apiClient.get('/admin/analytics/exclusoes', { params: { dias, motivo } });
