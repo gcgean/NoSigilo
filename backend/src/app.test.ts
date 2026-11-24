@@ -1561,6 +1561,38 @@ describe('nosigilo backend', () => {
     expect(foundMarkerIds.size).toBe(230);
   });
 
+  it('curtida e comentário só notificam quando quem interage é do tipo que o dono busca (23/11/2026)', async () => {
+    const dona = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'DonaBusca', email: 'dona-busca@example.com', password: 'senha123', gender: 'Mulher', lookingFor: ['Casal (Ele/Ela)'],
+    });
+    const homem = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'HomemFora', email: 'homem-fora@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const casal = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'CasalDentro', email: 'casal-dentro@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)',
+    });
+    await grantPremium(ctx, homem.user.id);
+    const post = await request(ctx.app).post('/api/posts').set('Authorization', `Bearer ${dona.token}`).send({ content: 'post da dona' }).expect(200);
+    const story = await request(ctx.app).post('/api/stories').set('Authorization', `Bearer ${dona.token}`).send({ text: 'story da dona', background: 'sunset' }).expect(200);
+
+    for (const quem of [homem, casal]) {
+      await request(ctx.app).post('/api/likes').set('Authorization', `Bearer ${quem.token}`).send({ targetType: 'post', targetId: post.body.id }).expect(200);
+      await request(ctx.app).post(`/api/stories/${story.body.id}/like`).set('Authorization', `Bearer ${quem.token}`).send({}).expect(200);
+      await request(ctx.app).post(`/api/stories/${story.body.id}/comments`).set('Authorization', `Bearer ${quem.token}`).send({ text: 'oi' }).expect(200);
+    }
+
+    const notifs = (await request(ctx.app).get('/api/notifications').set('Authorization', `Bearer ${dona.token}`).expect(200)).body as any[];
+    const de = (id: string) => notifs.filter((n) => n.data?.actorId === id || (n.type === 'post.liked' && n.description?.includes(id === homem.user.id ? 'HomemFora' : 'CasalDentro'))).map((n) => n.type).sort();
+    expect(de(homem.user.id)).toEqual([]);
+    expect(de(casal.user.id)).toEqual(expect.arrayContaining(['post.liked', 'story.comment', 'story.liked']));
+
+    // Se a dona curtir o homem, ele passa a avisar.
+    await request(ctx.app).post('/api/likes').set('Authorization', `Bearer ${dona.token}`).send({ targetType: 'user', targetId: homem.user.id }).expect(200);
+    await request(ctx.app).post(`/api/stories/${story.body.id}/comments`).set('Authorization', `Bearer ${homem.token}`).send({ text: 'de novo' }).expect(200);
+    const depois = (await request(ctx.app).get('/api/notifications').set('Authorization', `Bearer ${dona.token}`).expect(200)).body as any[];
+    expect(depois.some((n) => n.type === 'story.comment' && n.data?.actorId === homem.user.id)).toBe(true);
+  });
+
   it('likes and comments generate notifications for post owner', async () => {
     const ownerReg = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Owner',

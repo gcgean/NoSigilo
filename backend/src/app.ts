@@ -2526,6 +2526,26 @@ async function deveVirarPedido(db: DbHandle, fromUserId: string, toUserId: strin
   return !amigo;
 }
 
+// Avisos de interação (23/11/2026): curtida/comentário em story ou publicação e
+// pedido de contato só notificam o dono se quem interagiu é do tipo que ele busca,
+// ou se ele já abriu a porta (curtiu, conversa liberada ou amizade). A interação
+// continua gravada; só não vira notificação nem push.
+class SemAviso extends Error {}
+async function donoQuerSaberDe(db: DbHandle, autorId: string, donoId: string): Promise<boolean> {
+  const dono = (await queryOne(db, 'SELECT looking_for_json FROM users WHERE id = ? LIMIT 1', [donoId])) as any;
+  if (!dono) return true;
+  const autor = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [autorId])) as any;
+  if (combinaComOQueProcura(lerLookingFor(dono.looking_for_json), autor?.gender ?? null)) return true;
+  if (await conversaLiberadaEntre(db, autorId, donoId)) return true;
+  const amigo = await queryOne(
+    db,
+    `SELECT 1 AS x FROM friend_requests WHERE status = 'accepted'
+       AND ((from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)) LIMIT 1`,
+    [autorId, donoId, donoId, autorId]
+  );
+  return !!amigo;
+}
+
 // Boas-vindas da aba "Na região" para quem não procura o tipo de quem manda.
 async function boasVindasViraPedido(db: DbHandle, fromUserId: string, toUserId: string): Promise<boolean> {
   const destino = (await queryOne(db, 'SELECT looking_for_json FROM users WHERE id = ? LIMIT 1', [toUserId])) as any;
@@ -9882,6 +9902,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Notifica o dono do story (falha de notificação não deve derrubar o comentário)
     if (story.user_id !== commenterId) {
       try {
+        if (!(await donoQuerSaberDe(db, commenterId, String(story.user_id)))) throw new SemAviso();
         const commenter = (await queryOne(db, 'SELECT name FROM users WHERE id = ?', [commenterId])) as any;
         const commenterName = commenter?.name ? String(commenter.name) : 'Alguém';
         await createNotification({ db, io }, {
@@ -9896,7 +9917,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           payload: { title: 'Comentário no seu story', body: `${commenterName} comentou no seu story`, url: '/stories', tag: `story.comment:${storyId}`, data: { storyId, actorId: commenterId } },
         });
       } catch (err) {
-        console.error('[stories/comments] notification failed', err);
+        if (!(err instanceof SemAviso)) console.error('[stories/comments] notification failed', err);
       }
 
       // Encaminha a resposta para o chat (estilo Instagram): cria/recupera a conversa
@@ -10046,7 +10067,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Notifica o dono do story quando alguém reage (não no toggle-off nem no próprio story).
     // Trocar de emoji não avisa de novo; só a troca para Coração Quente (que é paga).
     const reacaoNova = !existing || myReaction === 'hot';
-    if (myReaction !== null && reacaoNova && String(story.user_id) !== likerId) {
+    if (myReaction !== null && reacaoNova && String(story.user_id) !== likerId && (await donoQuerSaberDe(db, likerId, String(story.user_id)))) {
       try {
         const io = req.app.get('io') as SocketIOServer | undefined;
         const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [likerId])) as any;
@@ -17008,7 +17029,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     const ehPedidoParaOutro = pedidoPendente && String(conv.pedido_para) === otherId;
     // Pedido que a pessoa excluiu: não insiste com push a cada nova mensagem.
-    if (!(ehPedidoParaOutro && conv.pedido_recusado_em)) await sendPushToUser(
+    const avisaPedido = !ehPedidoParaOutro || (!conv.pedido_recusado_em && (await donoQuerSaberDe(db, req.auth!.userId, otherId)));
+    if (avisaPedido) await sendPushToUser(
       { db, env },
       {
         userId: otherId,
@@ -17080,7 +17102,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (parsed.data.targetType === 'post') {
       const post = (await queryOne(db, 'SELECT id, user_id FROM posts WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
       const ownerId = post?.user_id ? String(post.user_id) : null;
-      if (ownerId && ownerId !== req.auth!.userId) {
+      if (ownerId && ownerId !== req.auth!.userId && (await donoQuerSaberDe(db, req.auth!.userId, ownerId))) {
         const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
         const actorName = actor?.name ? String(actor.name) : 'Alguém';
         await createNotification(
