@@ -105,9 +105,9 @@ Stories
 - Dá para fixar um perfil como fã, para os stories dele aparecerem primeiro. O dono vê quem visualizou e quem fixou o perfil dele (Premium).
 
 Perfil, fotos e postagens
-- Fotos: abrir a foto no perfil e tocar em "Excluir" (no celular, ícone de lixeira).
+- Fotos do perfil: Perfil › aba "Fotos" › tocar na foto para abrir › botão "Excluir" (ícone de lixeira) embaixo dela › confirmar.
 - Fotos privadas: outras pessoas pedem acesso; o dono aprova, nega ou revoga depois.
-- Postagens: no perfil, aba Postagens, menu "⋯" para editar o texto ou remover.
+- Postagens (foto ou vídeo postado no feed): Perfil › aba "Postagens" › três pontinhos "⋯" no canto de cima, à direita, da postagem › "Remover publicação" › confirmar. O nome do botão é "Remover publicação" (não "Excluir"). No feed, os mesmos "⋯" da própria postagem também têm "Remover publicação". Não dá para tirar uma foto só de uma postagem com várias: remove a postagem inteira. Se a pessoa disser só "foto postada" e não achar, explique os três caminhos (postagem, story e aba Fotos) com o nome exato de cada botão.
 - Quem visitou o perfil fica em Perfil > Visitantes (Premium).
 - Seguir / deixar de seguir: "seguir" no app é curtir o perfil (botão "Curtir perfil"). Para deixar de seguir: abrir o perfil da pessoa, tocar no botão "Curtido ✓" (ou "Amigos ✓") e tocar de novo em "Toque de novo para deixar de seguir". Também dá pela lista: Perfil › contador "seguindo" › "Deixar de seguir" ao lado de cada perfil. A pessoa não é avisada; amizade e conversas continuam.
 - Quem curtiu as fotos e publicações: Perfil > botão "Ver quem curtiu suas fotos" (Premium). Mostra todas as curtidas numa lista só, com a foto curtida e, no topo, quem mais curtiu.
