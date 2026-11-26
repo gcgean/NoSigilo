@@ -1893,9 +1893,9 @@ export type SubscriptionAnalytics = {
     projectedNext12moCents: number;
     netMonthlyGrowthPct: number;
   };
-  monthly: Array<{ month: string; revenueCents: number; newCustomers: number; renewals: number; churned: number }>;
+  monthly: Array<{ month: string; revenueCents: number; cardRevenueCents?: number; newCustomers: number; renewals: number; churned: number }>;
   /** Últimos 60 dias, dia no fuso de Brasília. Ausente em versões antigas do Hub. */
-  daily?: Array<{ day: string; revenueCents: number; newCustomers: number; renewals: number; churned: number }>;
+  daily?: Array<{ day: string; revenueCents: number; cardRevenueCents?: number; newCustomers: number; renewals: number; churned: number }>;
   projection: Array<{ month: string; projectedRevenueCents: number }>;
   /** Triais (teste grátis) que viraram assinatura; null se o extrato do Hub não respondeu. */
   triais?: {

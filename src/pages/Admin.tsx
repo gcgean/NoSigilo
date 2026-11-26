@@ -2373,7 +2373,7 @@ export default function Admin() {
                             <p className="text-[11px] text-muted-foreground">Realizado até agora ({daysElapsed}/{daysInMonth} dias)</p>
                             <p className="text-sm font-bold text-success">{brl(realizadoCents)}</p>
                             {a.tokens && (
-                              <p className="text-[10px] text-muted-foreground">{brl(current.revenueCents)} assinaturas + <span className="text-amber-500">{brl(tokensMesCents)} tokens</span></p>
+                              <p className="text-[10px] text-muted-foreground">{brl(current.revenueCents)} assinaturas{current.cardRevenueCents ? <> (<span className="text-sky-600 dark:text-sky-400">{brl(current.cardRevenueCents)} no cartão</span>)</> : null} + <span className="text-amber-500">{brl(tokensMesCents)} tokens</span></p>
                             )}
                           </div>
                           <div className="border-l border-border/40 pl-4">
@@ -2440,7 +2440,8 @@ export default function Admin() {
                             <thead>
                               <tr className="border-b border-border/50 text-left text-xs text-muted-foreground">
                                 <th className="py-2 pr-3">{porDia ? 'Dia' : 'Mês'}</th>
-                                <th className="px-3 py-2 text-right">Assinaturas</th>
+                                <th className="px-3 py-2 text-right" title="Pix, boleto e cartão somados">Assinaturas</th>
+                                <th className="px-3 py-2 text-right" title="Parte das assinaturas paga no cartão (já somada em Assinaturas)">Cartão</th>
                                 {a.tokens && <th className="px-3 py-2 text-right">Tokens</th>}
                                 {a.tokens && <th className="px-3 py-2 text-right">Total</th>}
                                 <th className="px-3 py-2 text-right">Novos</th>
@@ -2454,6 +2455,7 @@ export default function Admin() {
                                 <tr key={m.chave} className="border-b border-border/30">
                                   <td className="py-1.5 pr-3 whitespace-nowrap">{m.rotulo}</td>
                                   <td className="px-3 py-1.5 text-right font-medium text-success">{brl(m.revenueCents)}</td>
+                                  <td className="px-3 py-1.5 text-right text-sky-600 dark:text-sky-400">{m.cardRevenueCents ? brl(m.cardRevenueCents) : '—'}</td>
                                   {a.tokens && <td className="px-3 py-1.5 text-right text-amber-500">{brl(porDia ? tkDia(m.chave) : tkMes(m.chave))}</td>}
                                   {a.tokens && <td className="px-3 py-1.5 text-right font-semibold">{brl(m.revenueCents + (porDia ? tkDia(m.chave) : tkMes(m.chave)))}</td>}
                                   <td className="px-3 py-1.5 text-right text-brand-pink">+{m.newCustomers}</td>
