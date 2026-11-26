@@ -2217,6 +2217,24 @@ export default function Profile() {
               </p>
             </div>
           ) : (
+            <>
+            {(() => {
+              // Vídeos antigos (de antes do tema obrigatório) não aparecem na busca por tema.
+              const semTema = myVideos.filter((v) => v.temas.length === 0);
+              if (semTema.length === 0) return null;
+              return (
+                <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-primary/40 bg-primary/5 px-4 py-3" data-testid="videos-sem-tema">
+                  <Tag className="h-5 w-5 shrink-0 text-primary" />
+                  <p className="min-w-0 flex-1 text-sm">
+                    <b>{semTema.length === 1 ? '1 vídeo seu está sem tema' : `${semTema.length} vídeos seus estão sem tema`}</b>
+                    <span className="block text-xs text-muted-foreground">Quem procura vídeos por tema não encontra {semTema.length === 1 ? 'ele' : 'eles'}. Leva 1 toque.</span>
+                  </p>
+                  <Button size="sm" className="shrink-0 gap-1.5" onClick={() => setTemaDoVideo({ postId: semTema[0].postId, temas: [] })}>
+                    <Tag className="h-4 w-4" /> Marcar tema
+                  </Button>
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {myVideos.map((v) => (
                 <div
@@ -2264,6 +2282,7 @@ export default function Profile() {
                 </div>
               ))}
             </div>
+            </>
           )}
         </TabsContent>
       </Tabs>

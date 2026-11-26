@@ -1,7 +1,7 @@
 // Filtros da Busca de Vídeos — compartilhados entre a página de busca e o Reels,
 // e persistidos no dispositivo (localStorage) para lembrar a última escolha.
 
-export type VideoSort = 'random' | 'recent' | 'liked' | 'commented';
+export type VideoSort = 'random' | 'recent' | 'liked' | 'commented' | 'alta';
 
 export type VideoFilters = {
   gender: string;   // 'prefs' (meus interesses) | 'all' (todos) | gênero específico
@@ -47,7 +47,7 @@ export function readVideoFilters(): VideoFilters {
       return migrated;
     }
 
-    const sort: VideoSort = (['random', 'recent', 'liked', 'commented'] as const).includes(p.sort as VideoSort)
+    const sort: VideoSort = (['random', 'recent', 'liked', 'commented', 'alta'] as const).includes(p.sort as VideoSort)
       ? (p.sort as VideoSort)
       : DEFAULT_VIDEO_FILTERS.sort;
     return {

@@ -2,7 +2,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import { useNavigate } from 'react-router-dom';
-import { Clapperboard, SlidersHorizontal, Heart, Play, X, Search, Clock, MessageCircle, Flame, Eye, EyeOff, Sparkles, Check } from 'lucide-react';
+import { Clapperboard, SlidersHorizontal, Heart, Play, X, Search, Clock, MessageCircle, Flame, Eye, EyeOff, Sparkles, Check, TrendingUp, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -39,7 +39,7 @@ const distanceOptions = [
   { value: '250', label: 'Até 250 km' },
 ];
 
-type SortOption = 'random' | 'recent' | 'liked' | 'commented';
+type SortOption = 'random' | 'recent' | 'liked' | 'commented' | 'alta';
 
 type VideoItem = {
   mediaId: string;
@@ -64,14 +64,29 @@ type VideoItem = {
 const sortOptions: { value: SortOption; label: string; icon: React.ElementType }[] = [
   // "Para você": os vídeos que as pessoas mais assistem, curtem e comentam,
   // ajustados ao gosto de quem vê (backend/src/videosParaVoce.ts).
+  // "Em alta": os mais vistos entre os postados nos últimos 30 dias.
+  { value: 'alta',      label: 'Em alta',        icon: TrendingUp },
+  { value: 'recent',    label: 'Novos',          icon: Clock },
   { value: 'random',    label: 'Para você',      icon: Sparkles },
-  { value: 'recent',    label: 'Recentes',       icon: Clock },
   { value: 'liked',     label: 'Mais curtidos',  icon: Flame },
   { value: 'commented', label: 'Mais comentados',icon: MessageCircle },
 ];
 
 
 const PAGE_SIZE = 24;
+
+/** 45700 → "45,7K", 1200000 → "1,2M" (como nas galerias de vídeo). */
+export function numeroCurto(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}M`;
+  if (n >= 1_000) return `${(n / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}K`;
+  return String(n);
+}
+
+/** 75.4 → "1:15". */
+export function duracaoCurta(seg: number): string {
+  const t = Math.max(0, Math.round(seg));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+}
 
 // ─── VideoCard com lazy-load + canvas thumbnail ───────────────────────────────
 function VideoCard({
@@ -92,6 +107,7 @@ function VideoCard({
   const [shouldLoad,  setShouldLoad]  = useState(false); // lazy: src só definido quando perto
   const [thumbDone,   setThumbDone]   = useState(false); // canvas com 1º frame capturado
   const [isHovering,  setIsHovering]  = useState(false); // hover desktop
+  const [duracao,     setDuracao]     = useState<number | null>(null); // segundos, lido dos metadados
 
   // 1. IntersectionObserver — carrega o src só quando o card chega perto do viewport
   useEffect(() => {
@@ -119,6 +135,7 @@ function VideoCard({
   // 3. Quando metadados chegam, faz seek para 0.1 s para garantir que um frame está disponível
   const handleLoadedMetadata = useCallback(() => {
     const vid = videoRef.current;
+    if (vid && Number.isFinite(vid.duration) && vid.duration > 0) setDuracao(vid.duration);
     if (vid && !thumbDone) vid.currentTime = 0.1;
   }, [thumbDone]);
 
@@ -139,7 +156,7 @@ function VideoCard({
     <button
       ref={cardRef}
       type="button"
-      className="group relative aspect-[9/16] overflow-hidden rounded-xl bg-muted text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="group relative aspect-[3/4] overflow-hidden rounded-xl bg-muted text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       onClick={onClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -182,13 +199,22 @@ function VideoCard({
       {/* Gradient overlay */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
 
-      {/* Badge "Já visto" */}
-      {seen && (
-        <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 backdrop-blur-sm">
-          <Eye className="h-3 w-3 text-white/80" />
-          <span className="text-[10px] font-semibold text-white/80">Visto</span>
+      {/* Visualizações e duração no topo, como nas galerias de vídeo */}
+      <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+        <div className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[11px] font-semibold text-white backdrop-blur-sm" title={`${item.viewsCount} visualizações`}>
+            <Eye className="h-3 w-3" /> {numeroCurto(item.viewsCount)}
+          </span>
+          {duracao !== null && (
+            <span className="rounded-md bg-black/65 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white backdrop-blur-sm">{duracaoCurta(duracao)}</span>
+          )}
         </div>
-      )}
+        {seen && (
+          <span className="flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white/80 backdrop-blur-sm">
+            <Check className="h-3 w-3" /> Visto
+          </span>
+        )}
+      </div>
 
       {/* Badge premium */}
       {!premiumAccess && (
@@ -247,10 +273,6 @@ function VideoCard({
               {item.commentsCount}
             </Badge>
           )}
-          <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
-            <Eye className="h-2.5 w-2.5 text-white/70" />
-            {item.viewsCount}
-          </Badge>
         </div>
       </div>
     </button>
@@ -277,8 +299,9 @@ export default function SearchVideos() {
   const [sortFilter,     setSortFilter]     = useState<SortOption>(savedFilters.sort);
   const [showFilters,    setShowFilters]    = useState(false);
   const [onlyUnseen,     setOnlyUnseen]     = useState(savedFilters.onlyUnseen);
-  const [temaFilter,     setTemaFilter]     = useState(savedFilters.tema);
+  const [temaFilter,     setTemaFilter]     = useState(savedFilters.tema === 'sem' ? '' : savedFilters.tema);
   const [temasVideo,     setTemasVideo]     = useState<TemaVideo[]>([]);
+  const [todosTemas,     setTodosTemas]     = useState(false); // fechado: só os 8 temas com mais vídeos
   // Contador fresco a cada visita (o cache do módulo serve ao envio, não à busca).
   useEffect(() => { carregarTemasVideo(true).then(setTemasVideo).catch(() => {}); }, []);
   const [seenIds,        setSeenIds]        = useState<Set<string>>(() => readSeenVideoIds(user?.id));
@@ -468,10 +491,57 @@ export default function SearchVideos() {
           <Clapperboard className="h-5 w-5" />
         </div>
         <div>
-          <h1 className="text-xl font-bold leading-tight">Buscar Vídeos</h1>
-          <p className="text-sm text-muted-foreground">Encontre vídeos por perfil e localização</p>
+          <h1 className="text-xl font-bold leading-tight">Vídeos por tema</h1>
+          <p className="text-sm text-muted-foreground">Escolha o tema e o tipo de perfil. Aqui nada toca sozinho: você escolhe o vídeo.</p>
         </div>
       </div>
+
+      {/* Temas em destaque: é o jeito principal de escolher o que ver. */}
+      {temasVideo.length > 0 && (
+        <div className="mb-4" data-testid="temas-destaque">
+          <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><Tag className="h-4 w-4 text-fuchsia-500" /> Escolha o tema</p>
+          {/* Celular: uma linha que desliza para o lado; computador: quebra em linhas. */}
+          <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 scrollbar-none sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+            {(() => {
+              // Temas com vídeo primeiro; os vazios ficam no fim, apagados.
+              const ordenados = [...temasVideo].sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome));
+              const visiveis = todosTemas ? ordenados : ordenados.filter((t, i) => i < 8 || t.slug === temaFilter);
+              return [{ slug: '', nome: 'Todos', total: null as number | null }, ...visiveis];
+            })().map((t) => {
+              const ativo = temaFilter === t.slug;
+              const vazio = t.total === 0;
+              return (
+                <button
+                  key={t.slug || 'todos'}
+                  type="button"
+                  aria-pressed={ativo}
+                  onClick={() => setTemaFilter(t.slug)}
+                  className={cn(
+                    'flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm transition-all',
+                    ativo
+                      ? 'bg-fuchsia-600 font-bold text-white shadow-[0_2px_10px_rgba(192,38,211,0.35)]'
+                      : 'border border-border bg-card font-medium text-foreground hover:border-fuchsia-500/60',
+                    vazio && !ativo && 'opacity-45'
+                  )}
+                >
+                  {ativo && <Check className="h-4 w-4" />}
+                  {t.nome}
+                  {t.total !== null && <span className={cn('text-xs', ativo ? 'text-white/80' : 'text-muted-foreground')}>{numeroCurto(t.total)}</span>}
+                </button>
+              );
+            })}
+            {temasVideo.length > 8 && (
+              <button
+                type="button"
+                onClick={() => setTodosTemas((v) => !v)}
+                className="flex min-h-[40px] shrink-0 items-center whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold text-fuchsia-600 hover:underline dark:text-fuchsia-400"
+              >
+                {todosTemas ? 'Menos temas' : `+ ${temasVideo.length - 8} temas`}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Filter bar */}
       <div className="mb-5 space-y-3">
@@ -506,32 +576,27 @@ export default function SearchVideos() {
             tracejadas, com cara de botão. "Ordenar" e "Ver" em linhas separadas
             para o usuário entender que são coisas diferentes. */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ordenar</span>
-            <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none sm:flex-wrap sm:overflow-visible" role="tablist">
-              {sortOptions.map(({ value, label, icon: Icon }) => {
-                const ativo = sortFilter === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    role="tab"
-                    aria-selected={ativo}
-                    title={ativo ? `Ordenando por ${label}` : `Ordenar por ${label}`}
-                    onClick={() => setSortFilter(value)}
-                    className={cn(
-                      'flex shrink-0 items-center gap-1.5 rounded-full min-h-[40px] px-3 py-1.5 text-xs transition-all sm:min-h-0',
-                      ativo
-                        ? 'bg-primary font-bold text-primary-foreground shadow-[0_2px_10px_rgba(236,72,153,0.35)]'
-                        : 'border border-dashed border-border font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground'
-                    )}
-                  >
-                    {ativo ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+          {/* Abas no estilo das galerias: "Em alta", "Novos"... (sublinhado na ativa). */}
+          <div className="-mx-3 flex overflow-x-auto overflow-y-hidden border-b border-border px-3 scrollbar-none sm:mx-0 sm:px-0" role="tablist" aria-label="Ordenar vídeos">
+            {sortOptions.map(({ value, label, icon: Icon }) => {
+              const ativo = sortFilter === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={ativo}
+                  onClick={() => setSortFilter(value)}
+                  className={cn(
+                    '-mb-px flex min-h-[44px] shrink-0 items-center gap-1.5 border-b-2 px-3 text-sm transition-colors',
+                    ativo ? 'border-primary font-bold text-primary' : 'border-transparent font-medium text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
           <div className="flex items-center gap-2">
@@ -593,42 +658,6 @@ export default function SearchVideos() {
               })}
             </div>
           </div>
-
-          {temasVideo.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tema</span>
-              <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none sm:flex-wrap sm:overflow-visible">
-                {[
-                  { slug: '', nome: 'Todos', total: null as number | null },
-                  // Temas com vídeo primeiro; os vazios continuam visíveis, só apagados.
-                  ...[...temasVideo].sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome)),
-                  { slug: 'sem', nome: 'Sem tema', total: null as number | null },
-                ].map((t) => {
-                  const ativo = temaFilter === t.slug;
-                  const vazio = t.total === 0;
-                  return (
-                    <button
-                      key={t.slug || 'todos'}
-                      type="button"
-                      aria-pressed={ativo}
-                      onClick={() => setTemaFilter(t.slug)}
-                      className={cn(
-                        'flex shrink-0 items-center gap-1.5 rounded-full min-h-[40px] px-3 py-1.5 text-xs transition-all sm:min-h-0',
-                        ativo
-                          ? 'bg-fuchsia-600 font-bold text-white shadow-[0_2px_10px_rgba(192,38,211,0.35)]'
-                          : 'border border-dashed border-border font-medium text-muted-foreground hover:border-fuchsia-500/50 hover:text-foreground',
-                        vazio && !ativo && 'opacity-50'
-                      )}
-                    >
-                      {ativo && <Check className="h-3.5 w-3.5" />}
-                      {t.nome}
-                      {t.total !== null && <span className={cn('text-[10px]', ativo ? 'text-white/80' : 'text-muted-foreground/80')}>{t.total}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {(onlyUnseen || colecao !== null) && (
             <p className="flex flex-wrap items-center gap-1 pl-16 text-xs text-muted-foreground">
@@ -705,9 +734,9 @@ export default function SearchVideos() {
       {soVistos && (
         <div>
           {carregandoVistos ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="aspect-[9/16] animate-pulse rounded-xl bg-muted" />
+                <div key={i} className="aspect-[3/4] animate-pulse rounded-xl bg-muted" />
               ))}
             </div>
           ) : erroVistos ? (
@@ -732,7 +761,7 @@ export default function SearchVideos() {
                 <Eye className="inline h-3.5 w-3.5 mr-1" />
                 {vistos.length} vídeo{vistos.length !== 1 ? 's' : ''} que você {colecao === 'curtidos' ? 'curtiu' : colecao === 'comentados' ? 'comentou' : 'já viu'}, do mais recente para o mais antigo
               </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {vistos.map((item) => (
                   <VideoCard
                     key={item.mediaId}
@@ -751,9 +780,9 @@ export default function SearchVideos() {
       {!soVistos && (<>
       {/* Loading skeleton */}
       {isLoading && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="aspect-[9/16] animate-pulse rounded-xl bg-muted" />
+            <div key={i} className="aspect-[3/4] animate-pulse rounded-xl bg-muted" />
           ))}
         </div>
       )}
@@ -780,7 +809,7 @@ export default function SearchVideos() {
             title="Nenhum vídeo encontrado"
             description={
               sortFilter === 'random'
-                ? 'Não encontramos vídeos para você com esses filtros. Toque em "Recentes" ou ajuste os filtros.'
+                ? 'Não encontramos vídeos para você com esses filtros. Toque em "Novos" ou escolha outro tema.'
                 : 'Tente ajustar os filtros ou remover a cidade para ver mais resultados.'
             }
           />
@@ -810,7 +839,7 @@ export default function SearchVideos() {
                 description="Desative o filtro 'Não vistos' para ver todos, ou aguarde novos vídeos serem publicados."
               />
             ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {displayVideos.map((item) => (
                   <VideoCard
                     key={item.mediaId}

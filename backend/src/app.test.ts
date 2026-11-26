@@ -3354,6 +3354,19 @@ describe('nosigilo backend', () => {
     expect(soSwing.body.videos.every((v: any) => v.temas.includes('swing'))).toBe(true);
     const soCuckold = await request(ctx.app).get('/api/videos/search?all=true&tema=cuckold').set(O).expect(200);
     expect(soCuckold.body.videos.some((v: any) => v.postId === post.body.id)).toBe(false);
+
+    // "Em alta" (26/11/2026): mais vistos entre os dos últimos 30 dias; vídeo antigo fica de fora.
+    const v2 = await subir('alta.mp4', 'video/mp4');
+    const maisVisto = await request(ctx.app).post('/api/posts').set(A).send({ content: '', mediaIds: [v2], temas: ['swing'] }).expect(200);
+    const v3 = await subir('antigo.mp4', 'video/mp4');
+    const antigo = await request(ctx.app).post('/api/posts').set(A).send({ content: '', mediaIds: [v3], temas: ['swing'] }).expect(200);
+    await run(ctx.db, 'UPDATE posts SET created_at = ? WHERE id = ?', ['2020-01-01T00:00:00.000Z', antigo.body.id]);
+    await run(ctx.db, 'DELETE FROM post_view_counts WHERE post_id IN (?, ?, ?)', [maisVisto.body.id, post.body.id, antigo.body.id]);
+    await run(ctx.db, 'INSERT INTO post_view_counts (post_id, c) VALUES (?, 500), (?, 3), (?, 9999)', [maisVisto.body.id, post.body.id, antigo.body.id]);
+    const alta = (await request(ctx.app).get('/api/videos/search?all=true&tema=swing&sort=alta').set(O).expect(200)).body.videos.map((v: any) => v.postId);
+    expect(alta.indexOf(maisVisto.body.id)).toBeGreaterThanOrEqual(0);
+    expect(alta.indexOf(maisVisto.body.id)).toBeLessThan(alta.indexOf(post.body.id));
+    expect(alta).not.toContain(antigo.body.id);
   });
 
   // ── Contos: categoria, trava, lidos e admin ─────────────────────────────────

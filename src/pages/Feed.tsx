@@ -2516,7 +2516,7 @@ export default function Feed() {
                 temasVideo.length ? 'border-border/50 bg-secondary/20' : 'border-primary/40 bg-primary/5'
               )}>
                 <p className="text-sm font-medium">Qual o tema do vídeo? <span className="text-xs font-normal text-muted-foreground">(até {MAX_TEMAS_VIDEO})</span></p>
-                <p className="mb-2 text-xs text-muted-foreground">Quem curte esse tema encontra seu vídeo em Buscar Vídeos.</p>
+                <p className="mb-2 text-xs text-muted-foreground">Quem curte esse tema encontra seu vídeo em Vídeos por tema.</p>
                 <ChipsTemasVideo temas={listaTemasVideo} valor={temasVideo} onChange={setTemasVideo} />
               </div>
             )}
@@ -3816,7 +3816,7 @@ export default function Feed() {
                 { path: '/search',  emoji: '🔍', label: 'Buscar' },
                 { path: '/friends', emoji: '🤝', label: 'Amigos' },
                 { path: '/reels',   emoji: '🎬', label: 'Rap (Vídeos)' },
-                { path: '/videos',  emoji: '🔎', label: 'Buscar Vídeos' },
+                { path: '/videos',  emoji: '🔎', label: 'Vídeos por tema' },
                 { path: '/events',  emoji: '🎉', label: 'Eventos' },
               ].map(({ path, emoji, label }) => (
                 <button

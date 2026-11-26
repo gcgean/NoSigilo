@@ -10377,7 +10377,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const filterGender = typeof req.query.gender === 'string' ? req.query.gender.trim() : '';
     const filterCity   = typeof req.query.city === 'string'   ? req.query.city.trim().toLowerCase()   : '';
     const filterMaxKm  = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
-    const sortParam    = ['recent', 'liked', 'commented', 'random'].includes(String(req.query.sort || '')) ? String(req.query.sort) : 'recent';
+    const sortParam    = ['recent', 'liked', 'commented', 'random', 'alta'].includes(String(req.query.sort || '')) ? String(req.query.sort) : 'recent';
     const filterTema   = typeof req.query.tema === 'string' ? req.query.tema.trim() : '';
 
     const params: (string | number)[] = [myId, myId];
@@ -10403,6 +10403,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (filterCity) {
       whereExtra += ' AND (LOWER(u.city) LIKE ? OR LOWER(u.state) LIKE ?)';
       params.push(`%${filterCity}%`, `%${filterCity}%`);
+    }
+
+    // "Em alta": os mais vistos entre os postados nos últimos 30 dias.
+    if (sortParam === 'alta') {
+      whereExtra += ' AND p.created_at >= ?';
+      params.push(new Date(Date.now() - 30 * 86_400_000).toISOString());
     }
 
     params.push(limit + 1, offset);
@@ -10485,6 +10491,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     } else if (sortParam === 'commented') {
       aggregateJoins = `LEFT JOIN (SELECT target_id, COUNT(*) as agg_cnt FROM comments WHERE target_type = 'post' GROUP BY target_id) agg ON agg.target_id = p.id`;
       orderByClause = 'COALESCE(agg.agg_cnt, 0) DESC, p.created_at DESC';
+    } else if (sortParam === 'alta') {
+      aggregateJoins = 'LEFT JOIN post_view_counts pvc ON pvc.post_id = p.id';
+      orderByClause = 'COALESCE(pvc.c, 0) DESC, p.created_at DESC';
     } else {
       orderByClause = 'p.created_at DESC';
     }

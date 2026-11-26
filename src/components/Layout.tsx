@@ -96,7 +96,7 @@ const extraNavItems = [
   { path: '/ganhe', icon: BadgeDollarSign, label: 'Ganhe dinheiro 💰', highlight: true },
   { path: '/search', icon: Search, label: 'Buscar' },
   { path: '/reels', icon: Clapperboard, label: 'Rap' },
-  { path: '/videos', icon: Search, label: 'Buscar Vídeos' },
+  { path: '/videos', icon: Search, label: 'Vídeos por tema' },
   { path: '/chat/groups', icon: UsersRound, label: 'Grupos', highlight: true },
   { path: '/favorites', icon: Heart, label: 'Curtidos' },
   { path: '/subscriptions', icon: Crown, label: 'Planos' },

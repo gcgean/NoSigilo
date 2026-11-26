@@ -98,7 +98,7 @@ export function DialogoTemaVideo({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Tag className="h-4 w-4 text-primary" /> {titulo}</DialogTitle>
           <DialogDescription>
-            Escolha até {MAX_TEMAS_VIDEO}. Assim quem curte esse tema encontra seu vídeo em Buscar Vídeos.
+            Escolha até {MAX_TEMAS_VIDEO}. Assim quem curte esse tema encontra seu vídeo em Vídeos por tema.
           </DialogDescription>
         </DialogHeader>
         <ChipsTemasVideo temas={temas} valor={valor} onChange={setValor} className="max-h-[50vh] overflow-y-auto" />

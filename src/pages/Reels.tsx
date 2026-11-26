@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { enviarSessao, enviarTodas, marcarFim, marcarSalto, registrarTempo } from '@/utils/tempoAssistido';
-import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send, Maximize2, Minimize2, Lock, Crown, Search, Eye } from 'lucide-react';
+import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send, Maximize2, Minimize2, Lock, Crown, Eye, Tag, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -82,6 +82,14 @@ function formatWhen(iso: string) {
 export default function Reels() {
   const REELS_PAGE_SIZE = 40;
   const navigate = useNavigate();
+  // Aviso de 1ª vez: quem quer escolher o que assistir tem a página de vídeos por tema.
+  const [dicaTema, setDicaTema] = useState(() => {
+    try { return localStorage.getItem('nosigilo:dica-videos-por-tema') !== '1'; } catch { return false; }
+  });
+  const fecharDicaTema = () => {
+    setDicaTema(false);
+    try { localStorage.setItem('nosigilo:dica-videos-por-tema', '1'); } catch { /* sem storage */ }
+  };
   const [searchParams] = useSearchParams();
   const targetReelId = searchParams.get('reelId') ?? null;
   const { user } = useAuth();
@@ -973,16 +981,32 @@ export default function Reels() {
         WebkitUserSelect: 'none',
       } as React.CSSProperties}
     >
-      {/* Buscar Vídeos — floating button (mobile only) */}
-      <button
-        type="button"
-        onClick={() => navigate('/videos')}
-        className="fixed right-3 z-50 flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-black/70 md:hidden"
+      {/* Atalho para escolher o que assistir (vídeos por tema), no celular e no computador. */}
+      <div
+        className="fixed right-3 z-50 flex flex-col items-end gap-2 md:right-6"
         style={{ top: 'calc(env(safe-area-inset-top, 0px) + 3.75rem)' }}
       >
-        <Search className="h-3.5 w-3.5" />
-        Buscar vídeos
-      </button>
+        <button
+          type="button"
+          onClick={() => { fecharDicaTema(); navigate('/videos'); }}
+          className="flex min-h-[36px] items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-black/70"
+        >
+          <Tag className="h-3.5 w-3.5" />
+          Escolher por tema
+        </button>
+        {dicaTema && (
+          <div className="relative max-w-[230px] rounded-xl bg-white px-3 py-2.5 pr-8 text-xs text-neutral-900 shadow-lg" role="status" data-testid="dica-videos-por-tema">
+            <button type="button" aria-label="Fechar aviso" onClick={fecharDicaTema} className="absolute right-0.5 top-0.5 flex h-8 w-8 items-center justify-center text-neutral-500">
+              <X className="h-3.5 w-3.5" />
+            </button>
+            <p className="font-semibold">Prefere escolher o que assistir?</p>
+            <p className="mt-0.5 text-neutral-600">Veja os vídeos por tema e tipo de perfil, sem nada tocando sozinho.</p>
+            <button type="button" onClick={() => { fecharDicaTema(); navigate('/videos'); }} className="mt-1.5 font-bold text-pink-600">
+              Ver vídeos por tema →
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Navigation arrows (desktop) */}
       {currentIndex > 0 && (
