@@ -74,6 +74,7 @@ type BeforeInstallPromptEvent = Event & {
 const navItems = [
   { path: '/feed', icon: Home, label: 'Feed' },
   { path: '/match', icon: Heart, label: 'Match' },
+  { path: '/videos', icon: Clapperboard, label: 'Vídeos por tema', accentClass: 'text-fuchsia-500' },
   { path: '/radar', icon: Radio, label: 'Radar', accentClass: 'text-rose-500' },
   { path: '/casa', icon: Martini, label: 'A Casa 🔥', accentClass: 'text-fuchsia-500' },
   { path: '/events', icon: Calendar, label: 'Eventos', accentClass: 'text-amber-500' },
@@ -96,7 +97,6 @@ const extraNavItems = [
   { path: '/ganhe', icon: BadgeDollarSign, label: 'Ganhe dinheiro 💰', highlight: true },
   { path: '/search', icon: Search, label: 'Buscar' },
   { path: '/reels', icon: Clapperboard, label: 'Rap' },
-  { path: '/videos', icon: Search, label: 'Vídeos por tema' },
   { path: '/chat/groups', icon: UsersRound, label: 'Grupos', highlight: true },
   { path: '/favorites', icon: Heart, label: 'Curtidos' },
   { path: '/subscriptions', icon: Crown, label: 'Planos' },
