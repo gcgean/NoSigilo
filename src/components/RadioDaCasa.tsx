@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Music2, Radio, Volume1, Volume2, VolumeX } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import BotaoSomDaCasa from '@/components/BotaoSomDaCasa';
+import BotaoEfeitosDaCasa from '@/components/BotaoEfeitosDaCasa';
 import apiClient from '@/utils/apiClient';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
@@ -165,6 +166,7 @@ export default function RadioDaCasa({ compacto = false }: { compacto?: boolean }
           🔊 Ligar o som
         </button>
       )}
+      <BotaoEfeitosDaCasa />
       </>)}
     </div>
   );

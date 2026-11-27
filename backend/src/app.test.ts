@@ -5192,6 +5192,13 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'champanhe' }).expect(402);
     await run(ctx.db, 'UPDATE users SET token_points = 20 WHERE id = ?', [String(homens[0].user.id)]);
     await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'champanhe' }).expect(200);
+    // Efeito do drink sabe quem deu e quem recebeu: esses dois veem grande, o resto pequeno (27/11/2026).
+    const comDrink = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
+    const msgDrink = [...comDrink.mensagens].reverse().find((m: any) => m.efeito === 'champanhe');
+    expect(msgDrink.efeitoDe).toBeTruthy();
+    expect(msgDrink.efeitoPara).toBeTruthy();
+    expect(msgDrink.efeitoDe).not.toBe(msgDrink.efeitoPara);
+    expect(msgDrink.efeitoTextoPara).toContain('pra você');
     await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'cerveja', mensagem: 'me chama em wa.me/55' }).expect(400);
     await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'constructor' }).expect(400);
     const saldoCasal = (await ctx.db.queryOne('SELECT token_points FROM users WHERE id = ?', [String(casal.user.id)])) as any;

@@ -159,6 +159,12 @@ type Msg = {
   tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao' | 'anfitriao' | 'promotor';
   /** Efeito animado que toca na tela de quem está na sala/cabine (drink, brinde, ação da cabine). */
   efeito?: string;
+  /** Quem deu e quem recebeu o drink/brinde (ids públicos): os dois veem o efeito grande,
+   *  o resto da sala vê uma versão pequena no canto (27/11/2026). */
+  efeitoDe?: string;
+  efeitoPara?: string;
+  /** Texto do efeito na tela de quem recebeu ("… pagou champanhe pra você!"). */
+  efeitoTextoPara?: string;
   autor?: { id: string; nome: string; avatar: string | null; cat: Categoria; cidade?: string | null };
   texto: string;
   criadoEm: string;
@@ -4034,7 +4040,10 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     if (!(await contatoPermitido(res, userId, paraId))) return;
     const pagou = await deps.transferirTokens(userId, paraId, drink.tokens, `casa-drink-${randomUUID()}`);
     if (!pagou) { res.status(402).json({ error: 'insufficient_tokens', message: `${drink.nome[0].toUpperCase()}${drink.nome.slice(1)} custa ${drink.tokens} tokens.` }); return; }
-    publicarMsg(sala, { tipo: 'sistema', texto: `${drink.emoji} ${p.nome} pagou ${drink.nome} pra ${alvo.nome} 😏`, efeito: drinkId });
+    publicarMsg(sala, {
+      tipo: 'sistema', texto: `${drink.emoji} ${p.nome} pagou ${drink.nome} pra ${alvo.nome} 😏`, efeito: drinkId,
+      efeitoDe: p.idPublico, efeitoPara: alvo.idPublico, efeitoTextoPara: `${drink.emoji} ${p.nome} pagou ${drink.nome} pra você! 😏`,
+    });
     registrarEvento(sala.id, 'drink', userId, paraId);
     pontuar(paraId, 2, 'drink_recebido');
     emitirPara(paraId, 'casa.drink', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, drink: `${drink.emoji} ${drink.nome}`, tokens: drink.tokens, ...(recado ? { mensagem: recado } : {}) });
@@ -4048,7 +4057,10 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     const p = sala?.presentes.get(userId);
     const alvo = sala ? acharPublico(sala, String((req.body as any)?.para || '')) : undefined;
     if (!sala || !p || !alvo) { res.status(404).json({ error: 'fora_da_sala' }); return; }
-    publicarMsg(sala, { tipo: 'sistema', texto: `🥂 ${p.nome} brindou com ${alvo.nome}… esses dois vão longe 🔥`, efeito: 'brinde' });
+    publicarMsg(sala, {
+      tipo: 'sistema', texto: `🥂 ${p.nome} brindou com ${alvo.nome}… esses dois vão longe 🔥`, efeito: 'brinde',
+      efeitoDe: p.idPublico, efeitoPara: alvo.idPublico, efeitoTextoPara: `🥂 ${p.nome} brindou com você! 🔥`,
+    });
     emitirPara(alvo.id, 'casa.brinde', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat } });
     // Drink + brinde de volta: a Lola sugere a cabine a quem brindou.
     emitirPara(userId, 'casa.olhares', { com: { id: alvo.idPublico, nome: alvo.nome, avatar: alvo.avatar, cat: alvo.cat }, motivo: 'brinde' });

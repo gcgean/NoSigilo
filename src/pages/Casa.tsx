@@ -21,7 +21,7 @@ import RadioDaCasa from '@/components/RadioDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
 import CabineDaCasa from '@/components/CabineDaCasa';
 import { avisoDeMencao, contaComoNovaNaCabine, enviarComNovaTentativa } from '@/utils/salaDaCasa';
-import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
+import EfeitoDaCasa, { temEfeito, useFilaDeEfeitos } from '@/components/EfeitoDaCasa';
 import { profileService } from '@/services/api';
 import PerfilNaCasa from '@/components/PerfilNaCasa';
 import ProtecaoDaCasa from '@/components/ProtecaoDaCasa';
@@ -68,7 +68,7 @@ type Info = {
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao' | 'promotor'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria; cidade?: string | null }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; legenda?: string; opcoes?: string[]; sugerir?: { id: string; nome: string } };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao' | 'promotor'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria; cidade?: string | null }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; efeitoDe?: string; efeitoPara?: string; efeitoTextoPara?: string; legenda?: string; opcoes?: string[]; sugerir?: { id: string; nome: string } };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -329,8 +329,9 @@ export default function Casa() {
   // Quem só espia: depois de 90 s vê o convite para assinar (uma vez por noite).
   const [convitePremium, setConvitePremium] = useState(false);
   // Efeito animado da sala (drink, brinde).
-  const [efeito, setEfeito] = useState<{ id: string; efeito: string; texto?: string } | null>(null);
-  const fimDoEfeito = useCallback(() => setEfeito(null), []);
+  // Fila de animações (27/11/2026): quem deu e quem recebeu veem grande; o resto da sala, pequeno.
+  const filaDeEfeitos = useFilaDeEfeitos();
+  const adicionarEfeito = filaDeEfeitos.adicionar;
   const [perguntaBrincar, setPerguntaBrincar] = useState<string | null>(null);
   const [reagindoEm, setReagindoEm] = useState<string | null>(null);
   const [convite, setConvite] = useState<Convite | null>(null);
@@ -626,7 +627,18 @@ export default function Casa() {
     const aoMsg = (d: { sala: string; msg: Msg }) => {
       setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: [...e.mensagens.slice(-299), d.msg] } : e);
       digitandoRef.current.falou(d.msg.autor?.id);
-      if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
+      if (temEfeito(d.msg.efeito)) {
+        const meu = estadoRef.current?.eu.idPublico ?? null;
+        const paraMim = !!meu && d.msg.efeitoPara === meu;
+        const deMim = !!meu && d.msg.efeitoDe === meu;
+        adicionarEfeito({
+          id: d.msg.id,
+          efeito: d.msg.efeito!,
+          texto: paraMim && d.msg.efeitoTextoPara ? d.msg.efeitoTextoPara : d.msg.texto,
+          modo: paraMim || deMim ? 'cheio' : 'mini',
+          vibrar: paraMim,
+        });
+      }
       // Me marcaram com @ ou responderam: som, aviso na tela (até dentro da cabine) e no sino.
       const agora = estadoRef.current;
       const eu = agora?.sala.id === d.sala ? agora.presentes.find((x) => x.id === agora.eu.idPublico) : null;
@@ -2130,7 +2142,10 @@ export default function Casa() {
         </div>
       )}
 
-      {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} texto={efeito.texto} onFim={fimDoEfeito} />}
+      {filaDeEfeitos.atual && (
+        <EfeitoDaCasa key={filaDeEfeitos.atual.id} efeito={filaDeEfeitos.atual.efeito} texto={filaDeEfeitos.atual.texto}
+          modo={filaDeEfeitos.atual.modo} vibrar={filaDeEfeitos.atual.vibrar} onFim={filaDeEfeitos.terminar} />
+      )}
       {!info?.teste && !(user as any)?.isAdmin && <ProtecaoDaCasa nome={String((user as any)?.name || '')} id={String(user?.id || '')} />}
       <Dialog open={recebidoAgora === 'drink'} onOpenChange={(v) => { if (!v) setDrinkRecebido(null); }}>
         <DialogContent className="z-[9995] max-w-xs">

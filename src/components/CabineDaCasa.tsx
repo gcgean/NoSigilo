@@ -9,7 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { profileService } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
+import EfeitoDaCasa, { temEfeito, useFilaDeEfeitos } from '@/components/EfeitoDaCasa';
+import BotaoEfeitosDaCasa from '@/components/BotaoEfeitosDaCasa';
 import CameraAoVivo, { MAX_VIDEO_SEG } from '@/components/CameraAoVivo';
 import BotaoSomDaCasa from '@/components/BotaoSomDaCasa';
 import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
@@ -159,8 +160,9 @@ export default function CabineDaCasa({
   const [provocacoes, setProvocacoes] = useState<{ nivel: number; itens: { id: string; texto: string; usada: boolean }[] }[]>([]);
   const [provocacaoEscrita, setProvocacaoEscrita] = useState('');
   const [alvo, setAlvo] = useState<string | null>(null);
-  const [efeito, setEfeito] = useState<{ id: string; efeito: string; texto?: string } | null>(null);
-  const fimDoEfeito = useCallback(() => setEfeito(null), []);
+  // Na cabine os dois estão envolvidos: efeito sempre grande, em fila (27/11/2026).
+  const filaDeEfeitos = useFilaDeEfeitos();
+  const adicionarEfeito = filaDeEfeitos.adicionar;
   const camera = useRef<HTMLInputElement>(null);
   const galeria = useRef<HTMLInputElement>(null);
   const fim = useRef<HTMLDivElement>(null);
@@ -188,7 +190,7 @@ export default function CabineDaCasa({
       if (d.cabineId !== cabineId) return;
       digitandoRef.current.falou(d.msg.autor?.id);
       setCab((c) => c ? { ...c, mensagens: [...c.mensagens.slice(-299), d.msg] } : c);
-      if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
+      if (temEfeito(d.msg.efeito)) adicionarEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto, modo: 'cheio' });
       else if (d.msg.tipo === 'lola' && /liberei/.test(d.msg.texto)) void tocarSomDaCasa('nivel');
       else if (d.msg.tipo === 'lola' && /DADO/.test(d.msg.texto)) void tocarSomDaCasa('dado');
       else if (d.msg.tipo === 'midia' && d.msg.autor?.id !== meuIdPublico) void tocarSomDaCasa('chegou');
@@ -388,7 +390,7 @@ export default function CabineDaCasa({
       {cab.fundo && <CenaDaSala salaId="quarto" foto={cab.fundo} />}
       {/* Luz vermelha de cabine: deixa claro que aqui não é a sala. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(ellipse_at_top,rgba(225,29,72,0.35),transparent_70%)]" />
-      {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} onFim={fimDoEfeito} />}
+      {filaDeEfeitos.atual && <EfeitoDaCasa key={filaDeEfeitos.atual.id} efeito={filaDeEfeitos.atual.efeito} onFim={filaDeEfeitos.terminar} />}
       <div className="relative bg-gradient-to-r from-rose-700 via-red-600 to-rose-700 py-1 text-center text-[11px] font-black uppercase tracking-[0.3em] shadow-[0_0_20px_rgba(225,29,72,0.6)]">
         {cab.aberta ? '👀 Cabine · porta aberta, a sala pode espiar' : '🔒 Cabine privada · só vocês'}
       </div>
@@ -423,6 +425,7 @@ export default function CabineDaCasa({
           </p>
         </div>
         <BotaoSomDaCasa />
+        <BotaoEfeitosDaCasa />
         {cab.souMembro && (
           <button type="button" onClick={() => void sair()} className="rounded-full p-2 hover:bg-white/10" aria-label="Sair da cabine" title="Sair da cabine">
             <LogOut className="h-4 w-4" />
