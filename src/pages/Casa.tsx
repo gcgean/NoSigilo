@@ -120,6 +120,14 @@ const TITULO_JOGO: Record<Jogo['tipo'], string> = {
 };
 // Respostas de um toque para quem ainda não falou nada (a timidez trava a 1ª mensagem).
 const QUEBRA_GELO = ['Boa noite 🔥', 'Primeira vez aqui 😳', 'Casal de onde? 👀', 'Quem tá on? 😈'];
+// Segunda leva (27/11/2026): depois da 1ª mensagem muita gente travava (62 pessoas só
+// mandaram 1 mensagem em 20–21/11). Até a 3ª fala, mais 4 frases de um toque.
+const segundaLeva = (cidade: string | null) => [
+  cidade ? `Sou de ${cidade}, alguém perto? 📍` : 'Alguém aqui perto de mim? 📍',
+  'Quero brincar hoje 🔥',
+  'Alguém topa uma cabine? 🚪',
+  'Como funciona aqui? 😅',
+];
 // Primeira noite na Casa (22/11/2026): a Lola explica como começar e dá 3 frases prontas.
 const CHAVE_DICA_PRIMEIRA = 'nosigilo:casa-dica-primeira-v1';
 const FRASES_DA_PRIMEIRA: Record<Categoria, string[]> = {
@@ -128,11 +136,13 @@ const FRASES_DA_PRIMEIRA: Record<Categoria, string[]> = {
   homem: ['Boa noite, pessoal! Primeira vez aqui 😊', 'Cheguei agora, como tá a noite? 🔥', 'Boa noite! Vim conhecer, com respeito 🤝'],
   outros: ['Oi, gente! Primeira vez aqui 😊', 'Cheguei! Me contem como funciona 😅', 'Boa noite! Quem tá on? 🔥'],
 };
-const CHAVE_TOUR = 'nosigilo:casa-tour-v1';
+// Tour v2 (27/11/2026): os chats de 20 e 21/11 mostraram as dúvidas reais ("quem
+// convida?", "o que é cabine?", "erramos a pulseira"). Cada passo responde uma delas.
+const CHAVE_TOUR = 'nosigilo:casa-tour-v2';
 const TOUR = [
-  { emoji: '🍸', titulo: 'Bem-vindo(a) à Casa', texto: 'É uma boate virtual: cada sala é um ambiente. Converse no chat, mande foto ou vídeo e reaja às mensagens. Toque na foto de alguém no topo para ver o que dá pra fazer.' },
-  { emoji: '🚪', titulo: 'Cabine', texto: 'Toque numa pessoa e escolha "Chamar pra cabine". Se ela aceitar, vocês vão para um cantinho só de vocês. A porta só abre se todos lá dentro quiserem plateia.' },
-  { emoji: '🟢', titulo: 'Pulseira da noite', texto: 'A cor diz o que você procura hoje: 🟢 aberto(a) a tudo, 🟡 só soft, 🟣 single é bem-vindo, 🔴 só olhando. Dá pra trocar a qualquer hora no topo.' },
+  { emoji: '👆', titulo: 'Toque na foto de alguém', texto: 'Lá em cima ficam as fotos de quem está na sala. Toque numa para ver o perfil, pagar um drink 🍸, mandar um olhar 👀 ou chamar pra cabine 🚪. Qualquer um pode chamar: não precisa esperar convite.' },
+  { emoji: '🚪', titulo: 'Cabine: fechada ou aberta', texto: 'Se a pessoa aceitar, vocês vão para a cabine, um cantinho só de vocês. Porta fechada: ninguém vê. Porta aberta: quem está na Casa pode espiar, só se todos lá dentro toparem. A faixa 🚪 mostra as cabines rolando.' },
+  { emoji: '🟢', titulo: 'Pulseira e brincadeiras', texto: 'A cor diz o que você topa hoje: 🟢 aberto(a) a tudo, 🟡 só soft, 🟣 single é bem-vindo, 🔴 só olhando (troca no ⚪ lá em cima). Toque em "Quero brincar" para entrar nas brincadeiras. Ficou com dúvida? Escreva no chat que a Lola responde 😉' },
 ];
 
 const ROTULO_CAT: Record<Categoria, string> = { casal: 'Casal', mulher: 'Mulher', homem: 'Homem', outros: 'Perfil' };
@@ -417,6 +427,8 @@ export default function Casa() {
   // Dentro do chat: ver a sala (e as outras) em primeira pessoa, por cima do chat.
   const [porDentro, setPorDentro] = useState(false);
   const [cabinesDaCasaAberto, setCabinesDaCasaAberto] = useState(false);
+  const [segundaLevaFechada, setSegundaLevaFechada] = useState(false);
+  const [expulsao, setExpulsao] = useState<{ motivo: string } | null>(null);
   // A sala em 3D atrás das mensagens (liga/desliga; gasta mais bateria, então começa desligado).
   const [fundo3D, setFundo3D] = useState(() => { try { return localStorage.getItem(CHAVE_FUNDO_3D) === '1'; } catch { return false; } });
   const trocarFundo3D = () => setFundo3D((v) => { try { localStorage.setItem(CHAVE_FUNDO_3D, v ? '0' : '1'); } catch { /* modo restrito */ } return !v; });
@@ -765,7 +777,7 @@ export default function Casa() {
       void tocarSomDaCasa('expulso');
       setCabineAberta(null);
       setEstado(null);
-      toast({ title: '🚫 Você foi retirado(a) da Casa nesta noite', description: `${d.motivo}. Na próxima noite você pode voltar.`, variant: 'destructive' });
+      setExpulsao({ motivo: d.motivo });
     };
     // O pedido de entrada agora chega como decisão (casa.cabine.decidir), com som e janela própria.
     const aoPedidoCabine = (_d: { cabineId: string; nome: string }) => {};
@@ -1481,12 +1493,14 @@ export default function Casa() {
               <Avatar p={p} tamanho="h-11 w-11" comStory={comStoryNovo.has(p.id)} />
               {p.ausente ? <span className="absolute -bottom-1 -right-1 text-xs">💤</span> : p.querBrincar && <span className="absolute -bottom-1 -right-1 text-xs">🔥</span>}
               {p.rei && <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-sm">👑</span>}
+              {/* O servidor só manda a cidade de quem é do mesmo estado: 📍 = perto de você. */}
+              {p.cidade && !p.ausente && p.id !== estado.eu.idPublico && <span className="absolute -right-1 -top-1 rounded-full bg-emerald-600 px-1 text-[9px] leading-4 ring-2 ring-zinc-950" title="Do mesmo estado que você">📍</span>}
               {p.pulseira && <span className={cn('absolute -bottom-0.5 -left-0.5 h-3 w-3 rounded-full ring-2 ring-zinc-950', corDaPulseira(p.pulseira)?.classe)} />}
             </div>
             <span className="w-full truncate text-center text-[10px] text-white/80">{p.nome}</span>
             <span className="-mt-1 w-full truncate text-center text-[9px] text-white/60">{p.ausente ? 'volta já' : ROTULO_CAT[p.cat]}</span>
             {/* O servidor só manda a cidade de quem é do mesmo estado que eu. */}
-            {p.cidade && <span className="-mt-1 w-full truncate text-center text-[9px] text-white/50">{p.cidade}</span>}
+            {p.cidade && <span className="-mt-1 w-full truncate text-center text-[9px] font-semibold text-emerald-300">📍 {p.cidade}</span>}
           </button>
         ))}
       </div>
@@ -1765,6 +1779,21 @@ export default function Casa() {
           ))}
         </div>
       )}
+      {(() => {
+        if (!estado.eu.podeFalar || texto || respondendo || segundaLevaFechada) return null;
+        const minhas = estado.mensagens.filter((m) => m.tipo === 'pessoa' && m.autor?.id === estado.eu.idPublico).length;
+        if (minhas < 1 || minhas >= 3) return null;
+        const cidade = estado.sala_anonima ? null : (user?.city ?? '').trim() || null;
+        return (
+          <div className="flex items-center gap-1.5 overflow-x-auto px-3 pb-1.5 [scrollbar-width:none]" data-testid="segunda-leva">
+            {segundaLeva(cidade).map((t) => (
+              <button key={t} type="button" onClick={() => void enviar(t)}
+                className="shrink-0 rounded-full border border-fuchsia-400/50 bg-fuchsia-950/60 px-3 py-1.5 text-xs font-medium hover:bg-fuchsia-900/70">{t}</button>
+            ))}
+            <button type="button" onClick={() => setSegundaLevaFechada(true)} aria-label="Esconder sugestões" className="shrink-0 rounded-full px-2 py-1.5 text-xs text-white/50">✕</button>
+          </div>
+        );
+      })()}
       {estado.eu.podeFalar ? (
         <form
           className="relative flex items-center gap-2 border-t border-white/10 px-3 py-2"
@@ -2489,6 +2518,22 @@ export default function Casa() {
         </p>
 
       {sala}
+      {/* Retirado(a) da noite (27/11/2026): explica o motivo, quanto tempo vale e como falar com a equipe. */}
+      <Dialog open={!!expulsao} onOpenChange={(v) => { if (!v) setExpulsao(null); }}>
+        <DialogContent className="z-[9996] max-w-sm" data-testid="dialogo-expulsao">
+          <DialogHeader><DialogTitle>🚫 Você foi retirado(a) d'A Casa nesta noite</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p><b>Motivo:</b> {expulsao?.motivo}</p>
+            <p className="text-muted-foreground">Vale <b>só para hoje</b>: na próxima noite d'A Casa você pode entrar normalmente.</p>
+            <p className="text-muted-foreground">As regras da Casa: respeito e consentimento, foto é convite (não cobrança), sem links nem contato de fora na sala e sem print.</p>
+            <p className="text-muted-foreground">Achou que foi engano? Conte para a equipe o que aconteceu que a gente olha.</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setExpulsao(null)}>Entendi</Button>
+            <Button onClick={() => { setExpulsao(null); setFeedbackAberto(true); }}>Contar para a equipe</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <FeedbackDaCasa aberto={feedbackAberto} onFechar={() => setFeedbackAberto(false)} />
       <ConviteDeAmigosDaCasa aberto={conviteAmigos !== null} automatico={conviteAmigos === 'auto'} onFechar={() => setConviteAmigos(null)} />
 

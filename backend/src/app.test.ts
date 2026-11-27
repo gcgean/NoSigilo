@@ -5199,6 +5199,18 @@ describe('nosigilo backend', () => {
     expect(msgDrink.efeitoPara).toBeTruthy();
     expect(msgDrink.efeitoDe).not.toBe(msgDrink.efeitoPara);
     expect(msgDrink.efeitoTextoPara).toContain('pra você');
+    // Ajuda e respeito no chat (27/11/2026): a Lola responde a dúvida; quem cobra foto 2x fica 5 min sem falar.
+    await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(casal.token)).send({ texto: 'o que é essa cabine??' }).expect(200);
+    const comAjuda = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
+    const duvida = [...comAjuda.mensagens].reverse().find((m: any) => m.texto === 'o que é essa cabine??');
+    expect(comAjuda.mensagens.some((m: any) => m.tipo === 'lola' && m.resposta?.id === duvida.id && m.texto.includes('Cabine'))).toBe(true);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[2].token));
+    await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[2].token)).send({ texto: 'manda foto da bucetinha' }).expect(200);
+    await new Promise((r) => setTimeout(r, 1300));
+    const calado = await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[2].token)).send({ texto: 'mostra ela pra nós' }).expect(403);
+    expect(calado.body.error).toBe('calado');
+    await new Promise((r) => setTimeout(r, 1300));
+    expect((await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[2].token)).send({ texto: 'boa noite' }).expect(403)).body.error).toBe('calado');
     await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'cerveja', mensagem: 'me chama em wa.me/55' }).expect(400);
     await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'constructor' }).expect(400);
     const saldoCasal = (await ctx.db.queryOne('SELECT token_points FROM users WHERE id = ?', [String(casal.user.id)])) as any;

@@ -14,6 +14,7 @@
  *   Quem não assina entra espiando: lê tudo, não aparece na lista e não ocupa vaga.
  * - Verdade ou desafio e match às cegas só sorteiam quem marcou "Quero brincar".
  */
+import { AVISO_COBRANCA, CALADO_POR_MS, MSG_CALADO, ehCobrancaDeNude, respostaDeAjuda } from './casaAjuda.js';
 import { randomUUID } from 'node:crypto';
 import { DEEPSEEK_URL, MODELO_TEXTO, SEM_PENSAR } from './modelosIa.js';
 import { spawn } from 'node:child_process';
@@ -1108,6 +1109,11 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     return enviados;
   };
   const lola = (sala: Sala, texto: string) => publicarMsg(sala, { tipo: 'lola', texto });
+  // Ajuda e respeito no chat (27/11/2026): quando a Lola já explicou algo a cada pessoa
+  // (não repete a mesma explicação em 3 min) e quantas vezes ela cobrou foto na noite.
+  const ajudaDada = new Map<string, number>();
+  const cobrancasDaNoite = new Map<string, number>();
+  const caladoAte = new Map<string, number>();
   // Falas espontâneas da Lola (anúncios, ranking, chamadas) têm teto por sala: em 07/11
   // ela mandou 757 mensagens e o sistema 303 (30% do chat). Respostas a quem falou,
   // jogos e moderação continuam com lola(); o que é só "animação" passa por aqui.
@@ -3469,6 +3475,25 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       return;
     }
     if (Date.now() - p.ultimaMsg < 1200) { res.status(429).json({ error: 'devagar' }); return; }
+    const calado = caladoAte.get(p.id) ?? 0;
+    if (calado > Date.now()) {
+      const min = Math.max(1, Math.ceil((calado - Date.now()) / 60_000));
+      res.status(403).json({ error: 'calado', message: `${MSG_CALADO} Falta${min === 1 ? '' : 'm'} ${min} min.` });
+      return;
+    }
+    // Homem cobrando foto/nude: 1ª vez a Lola avisa em particular; na 2ª, 5 min sem falar.
+    const cobrando = p.cat === 'homem' && ehCobrancaDeNude(texto);
+    if (cobrando) {
+      const chave = `${chaveDaNoite ?? 'sem-noite'}:${p.id}`;
+      const vezes = (cobrancasDaNoite.get(chave) ?? 0) + 1;
+      cobrancasDaNoite.set(chave, vezes);
+      if (vezes >= 2) {
+        caladoAte.set(p.id, Date.now() + CALADO_POR_MS);
+        registrarEvento(sala.id, 'calado', p.id);
+        res.status(403).json({ error: 'calado', message: MSG_CALADO });
+        return;
+      }
+    }
     p.ultimaMsg = Date.now();
     p.ultimoPing = Date.now();
     p.foraDaTela = false;
@@ -3492,6 +3517,14 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     if (respondida) void avisarRespondido(sala, p, respondida);
     if (respondida) oiFoiRespondido(sala, respondida.id, p.id);
     registrarFalaParaOi(sala, p, publicada.id, texto, !!respondida);
+    if (cobrando) emitirPara(p.id, 'casa.aviso', { texto: AVISO_COBRANCA });
+    // Perdido ou com dúvida de uso: a Lola responde na hora, citando a pessoa.
+    const ajuda = !respondida || respondida.tipo !== 'lola' ? respostaDeAjuda(texto) : null;
+    if (ajuda && Date.now() - (ajudaDada.get(`${p.id}:${ajuda.slice(0, 20)}`) ?? 0) > 3 * 60_000) {
+      ajudaDada.set(`${p.id}:${ajuda.slice(0, 20)}`, Date.now());
+      if (ajudaDada.size > 5000) ajudaDada.clear();
+      publicarMsg(sala, { tipo: 'lola', texto: ajuda, resposta: { id: publicada.id, nome: p.nome, trecho: texto.slice(0, 80) } });
+    }
     if (respondida?.tipo === 'lola') void responderComoLola(sala, p, texto, respondida.texto, publicada.id);
     if (respondida?.tipo === 'anfitriao') void responderComoAnfitrioes(sala, p, texto, publicada.id);
     res.json({ ok: true });
