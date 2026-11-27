@@ -128,6 +128,8 @@ type Presente = {
   id: string;
   /** Saiu da tela d'A Casa (abriu um perfil, o chat...): continua na sala até o ping expirar. */
   foraDaTela?: boolean;
+  /** Passou de 75 s sem sinal: aparece apagadinho como "volta já" (já avisado à sala). */
+  semSinal?: boolean;
   /** Id que os outros veem. Igual ao id real, menos no Glory Hole (anônimo). */
   idPublico: string;
   nomeReal: string;
@@ -287,6 +289,16 @@ function duracaoDoAudio(arquivo: string): Promise<number> {
 const MAX_MENSAGENS = 300; // histórico em memória por sala/cabine (era 120)
 const PRECO_REVELACAO = 5;
 const PING_EXPIRA_MS = 75_000;
+/** Sem sinal (celular bloqueado, outro app): fica na sala como "💤 volta já" por até
+ *  5 min antes de sair de verdade (27/11/2026). Antes saía em 75 s e "chegava" de novo:
+ *  em 21/11, 54 pessoas entraram de 6 a 91 vezes na mesma noite. */
+const AUSENTE_EXPIRA_MS = 5 * 60_000;
+/** Há quanto tempo sem sinal → fica normal, vira "volta já" ou sai da sala. */
+export function situacaoSemSinal(semSinalHaMs: number): 'presente' | 'ausente' | 'sair' {
+  if (semSinalHaMs > AUSENTE_EXPIRA_MS) return 'sair';
+  if (semSinalHaMs > PING_EXPIRA_MS) return 'ausente';
+  return 'presente';
+}
 const LINK_PROIBIDO = /https?:\/\/|www\.|\.com\b|\.net\b|wa\.me|t\.me/i;
 // Sala "pegando fogo": nos últimos 10 min, 8+ pessoas diferentes e 40+ mensagens.
 const FOGO_JANELA_MS = 10 * 60_000;
@@ -1206,6 +1218,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       sala: sala.id,
       presentes: [...sala.presentes.values()].filter((p) => p.podeFalar).map((p) => ({
         id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat, querBrincar: p.querBrincar, rei: ehRei(p.id), pulseira: p.pulseira,
+        ...(p.semSinal ? { ausente: true } : {}),
         cidade: !sala.anonima && ufVe && p.uf === ufVe && p.cidade ? p.cidade : null,
       })),
       espiando: sala.espiando.size + [...sala.presentes.values()].filter((p) => !p.podeFalar).length,
@@ -1217,7 +1230,8 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
 
   const contagem = (sala: Sala) => {
     const c = { homem: 0, mulher: 0, casal: 0, outros: 0 };
-    for (const p of sala.presentes.values()) if (p.podeFalar) c[p.cat] += 1;
+    // Quem está "volta já" (sem sinal) não segura vaga da cota.
+    for (const p of sala.presentes.values()) if (p.podeFalar && !p.semSinal) c[p.cat] += 1;
     return c;
   };
   // Com pouca gente, só Salão e Sala dos Casais (senão cada sala fica com 3 e parece vazia).
@@ -1863,7 +1877,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
   };
 
   // Pulseira vermelha = "só olhando": nunca é sorteada para desafio, duelo ou match.
-  const brincantes = (sala: Sala) => [...sala.presentes.values()].filter((p) => p.podeFalar && p.querBrincar && p.pulseira !== 'vermelha');
+  const brincantes = (sala: Sala) => [...sala.presentes.values()].filter((p) => p.podeFalar && p.querBrincar && p.pulseira !== 'vermelha' && !p.semSinal);
   const falantes = (sala: Sala) => [...sala.presentes.values()].filter((p) => p.podeFalar);
 
   const bloqueados = async (a: string, b: string) => !!(await db.queryOne(
@@ -2155,7 +2169,9 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
       for (const [id, p] of sala.presentes) {
         // O app parou de avisar: a saída de verdade foi no último aviso, não agora.
         // Quem só saiu da tela e não voltou conta como saída (não como queda de conexão).
-        if (agora - p.ultimoPing > PING_EXPIRA_MS) { sala.presentes.delete(id); registrarEvento(sala.id, p.foraDaTela ? 'saiu' : 'caiu', id, null, p.ultimoPing); mudou = true; }
+        const situacao = situacaoSemSinal(agora - p.ultimoPing);
+        if (situacao === 'sair') { sala.presentes.delete(id); registrarEvento(sala.id, p.foraDaTela ? 'saiu' : 'caiu', id, null, p.ultimoPing); mudou = true; }
+        else if (situacao === 'ausente' && !p.semSinal) { p.semSinal = true; mudou = true; }
       }
       for (const [id, t] of sala.espiando) {
         if (agora - t > PING_EXPIRA_MS) { sala.espiando.delete(id); mudou = true; }
@@ -3055,6 +3071,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     };
     p.ultimoPing = Date.now();
     p.foraDaTela = false;
+    p.semSinal = false;
     sala.presentes.set(userId, p);
     if (!jaEstava) {
       if ((falantes(sala).length === 1 || sala.mensagens.length === 0) && Date.now() - (ultimaSaudacao.get(sala.id) ?? 0) > 30 * 60_000) {
@@ -3102,7 +3119,11 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     const userId = userDe(req);
     if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
     const p = sala.presentes.get(userId);
-    if (p) { p.ultimoPing = Date.now(); p.foraDaTela = false; }
+    if (p) {
+      const voltou = !!p.semSinal;
+      p.ultimoPing = Date.now(); p.foraDaTela = false; p.semSinal = false;
+      if (voltou) avisarPresentes(sala);
+    }
     else if (sala.espiando.has(userId)) sala.espiando.set(userId, Date.now());
     else { res.json({ dentro: false }); return; }
     res.json({ dentro: true });
@@ -3203,6 +3224,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     p.ultimaMidia = Date.now();
     p.ultimoPing = Date.now();
     p.foraDaTela = false;
+    p.semSinal = false;
     const j = sala.jogo;
     // "Para todos verem": fica aberta na sala (quem assina vê quantas vezes quiser).
     // Desafios, duelos, relâmpago e revelação continuam de visualização única.
@@ -3450,6 +3472,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     p.ultimaMsg = Date.now();
     p.ultimoPing = Date.now();
     p.foraDaTela = false;
+    p.semSinal = false;
     const barrada = await bloqueioRapido(p.id, p.nome, texto, sala.nome);
     if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
     const respondida = sala.mensagens.find((m) => m.id === String((req.body as any)?.respostaA || ''));
@@ -3502,6 +3525,7 @@ Responda SOMENTE com a mensagem, sem aspas e sem o nome de quem fala, no máximo
     if (!sala || !p || !p.podeFalar) { res.json({ ok: false }); return; }
     p.ultimoPing = Date.now();
     p.foraDaTela = false;
+    p.semSinal = false;
     if (podeAvisarDigitando(`${sala.id}:${p.id}`)) emitirParaSala(sala, 'casa.digitando', { sala: sala.id, id: p.idPublico, nome: p.nome });
     res.json({ ok: true });
   });

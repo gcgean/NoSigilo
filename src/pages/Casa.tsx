@@ -37,6 +37,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
 import TemaDaProxima from '@/components/TemaDaProxima';
 import CabinesFechadas, { CabinesAbertas, type CabineFechada } from '@/components/CabinesFechadas';
+import { BarraDasSalas, ResumoDasCabines, contarCabines } from '@/components/NavegacaoDaCasa';
 const SalaoPorDentro = lazy(() => import('@/components/SalaoPorDentro'));
 const FundoDaSala3D = lazy(() => import('@/components/SalaoPorDentro').then((m) => ({ default: m.FundoDaSala3D })));
 const CHAVE_FUNDO_3D = 'nosigilo:casa-fundo3d';
@@ -67,7 +68,7 @@ type Info = {
   cabinesFechadas?: CabineFechada[];
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
-type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
+type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null; ausente?: boolean };
 type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao' | 'promotor'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria; cidade?: string | null }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; efeitoDe?: string; efeitoPara?: string; efeitoTextoPara?: string; legenda?: string; opcoes?: string[]; sugerir?: { id: string; nome: string } };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
@@ -415,6 +416,7 @@ export default function Casa() {
   const [cabineAberta, setCabineAberta] = useState<{ id: string; modo: 'membro' | 'espiar' } | null>(null);
   // Dentro do chat: ver a sala (e as outras) em primeira pessoa, por cima do chat.
   const [porDentro, setPorDentro] = useState(false);
+  const [cabinesDaCasaAberto, setCabinesDaCasaAberto] = useState(false);
   // A sala em 3D atrás das mensagens (liga/desliga; gasta mais bateria, então começa desligado).
   const [fundo3D, setFundo3D] = useState(() => { try { return localStorage.getItem(CHAVE_FUNDO_3D) === '1'; } catch { return false; } });
   const trocarFundo3D = () => setFundo3D((v) => { try { localStorage.setItem(CHAVE_FUNDO_3D, v ? '0' : '1'); } catch { /* modo restrito */ } return !v; });
@@ -476,8 +478,9 @@ export default function Casa() {
   }, []);
   useEffect(() => {
     void carregar();
-    // No saguão, o mapa da Casa se atualiza a cada 8 s.
-    const t = setInterval(() => { if (!salaAtual) void carregar(); }, 8_000);
+    // No saguão, o mapa da Casa se atualiza a cada 8 s; dentro de uma sala, a cada 30 s
+    // (barra das salas com quantos há em cada e o aviso das cabines rolando).
+    const t = setInterval(() => { void carregar(); }, salaAtual ? 30_000 : 8_000);
     return () => clearInterval(t);
   }, [carregar, salaAtual]);
 
@@ -822,10 +825,18 @@ export default function Casa() {
   // Rolagem estilo WhatsApp: só desce sozinho se a pessoa já está no fim.
   // @menções: quem está na sala (e meu nome aqui, que pode ser apelido).
   const meuNomeNaSala = estado?.presentes.find((x) => x.id === estado.eu.idPublico)?.nome;
+  const contagemCabines = contarCabines(info?.salas ?? [], info?.cabinesFechadas ?? [], minhasCabines);
+  const temCabineDePortaAberta = contagemCabines.abertas > 0;
   const botoesDaVisao = (classe: string) => (
     <>
       {info?.salas?.length ? (
-        <button type="button" onClick={() => { setPorDentro(true); void carregar(); }} className={cn('shrink-0 rounded-full border border-white/20 px-2.5 py-1.5 text-xs', classe)} title="Ver a sala por dentro" aria-label="Ver a sala por dentro">🎮</button>
+        <button type="button" onClick={() => { setPorDentro(true); void carregar(); }}
+          className={cn('relative shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1.5 text-xs',
+            temCabineDePortaAberta ? 'border-amber-400/70 bg-amber-500/20 text-amber-100' : 'border-white/20', classe)}
+          title={temCabineDePortaAberta ? "Mapa d'A Casa: tem cabine de porta aberta agora 👀" : "Mapa d'A Casa: salas, pessoas e cabines"} aria-label="Mapa d'A Casa">
+          🗺️ Mapa
+          {temCabineDePortaAberta && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400 ring-2 ring-black" />}
+        </button>
       ) : null}
       <button type="button" onClick={trocarFundo3D} aria-pressed={fundo3D}
         className={cn('shrink-0 rounded-full border px-2.5 py-1.5 text-xs', fundo3D ? 'border-fuchsia-400 bg-fuchsia-500/25' : 'border-white/20', classe)}
@@ -1458,19 +1469,22 @@ export default function Casa() {
       </div>
 
 
+      <BarraDasSalas salas={info?.salas ?? []} atual={estado.sala.id} entrando={entrando} onEntrar={(id) => void entrar(id)} />
+      <ResumoDasCabines total={contagemCabines.total} abertas={contagemCabines.abertas} onAbrir={() => { setCabinesDaCasaAberto(true); void carregar(); }} />
+
       {/* Quem está na sala: toque para ver o perfil ou chamar pra cabine. */}
       <div className="flex gap-3 overflow-x-auto border-b border-white/10 px-3 py-2.5 [scrollbar-width:none]">
         {estado.presentes.length === 0 && <p className="py-2 text-xs text-white/60">Ninguém falando ainda. Seja o primeiro 😉</p>}
-        {estado.presentes.map((p) => (
-          <button key={p.id} type="button" onClick={() => setPessoaAberta(p)} className="flex w-14 shrink-0 flex-col items-center gap-1">
+        {[...estado.presentes].sort((a, b) => Number(!!a.ausente) - Number(!!b.ausente)).map((p) => (
+          <button key={p.id} type="button" onClick={() => setPessoaAberta(p)} className={cn('flex w-14 shrink-0 flex-col items-center gap-1', p.ausente && 'opacity-45 grayscale')} title={p.ausente ? `${p.nome} saiu um pouquinho e volta já` : undefined}>
             <div className="relative">
               <Avatar p={p} tamanho="h-11 w-11" comStory={comStoryNovo.has(p.id)} />
-              {p.querBrincar && <span className="absolute -bottom-1 -right-1 text-xs">🔥</span>}
+              {p.ausente ? <span className="absolute -bottom-1 -right-1 text-xs">💤</span> : p.querBrincar && <span className="absolute -bottom-1 -right-1 text-xs">🔥</span>}
               {p.rei && <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-sm">👑</span>}
               {p.pulseira && <span className={cn('absolute -bottom-0.5 -left-0.5 h-3 w-3 rounded-full ring-2 ring-zinc-950', corDaPulseira(p.pulseira)?.classe)} />}
             </div>
             <span className="w-full truncate text-center text-[10px] text-white/80">{p.nome}</span>
-            <span className="-mt-1 w-full truncate text-center text-[9px] text-white/60">{ROTULO_CAT[p.cat]}</span>
+            <span className="-mt-1 w-full truncate text-center text-[9px] text-white/60">{p.ausente ? 'volta já' : ROTULO_CAT[p.cat]}</span>
             {/* O servidor só manda a cidade de quem é do mesmo estado que eu. */}
             {p.cidade && <span className="-mt-1 w-full truncate text-center text-[9px] text-white/50">{p.cidade}</span>}
           </button>
@@ -2057,6 +2071,21 @@ export default function Casa() {
         />
       )}
 
+      {/* Cabines rolando na Casa toda (aberto pela faixa "🚪 N cabines rolando agora"). */}
+      <Dialog open={cabinesDaCasaAberto && !cabineAberta} onOpenChange={setCabinesDaCasaAberto}>
+        <DialogContent className="z-[9995] max-h-[85dvh] max-w-sm overflow-y-auto border-white/10 bg-zinc-950 text-white" data-testid="lista-cabines-da-casa">
+          <DialogHeader><DialogTitle className="text-white">🚪 Cabines rolando agora</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <CabinesAbertas salas={info?.salas ?? []} onEspiar={async (salaId, cabineId) => {
+              setCabinesDaCasaAberto(false);
+              if (salaId !== estado?.sala.id) await entrar(salaId);
+              setCabineAberta({ id: cabineId, modo: 'espiar' });
+            }} />
+            <CabinesFechadas cabines={(info?.cabinesFechadas ?? []).filter((c) => !minhasCabines.includes(c.id))} pedindo={pedindoCabine} onPedir={(c) => void pedirCabineFechada(c)} />
+            {contagemCabines.total === 0 && <p className="text-sm text-white/60">Nenhuma cabine rolando agora. Puxa alguém pra uma 😉</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={listaDeCabines && !cabineAberta} onOpenChange={setListaDeCabines}>
         <DialogContent className="z-[9995] max-w-sm">
           <DialogHeader><DialogTitle>🚪 Suas cabines abertas</DialogTitle></DialogHeader>
