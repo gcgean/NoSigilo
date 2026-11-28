@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import BandeiraPortugal from '@/components/BandeiraPortugal';
+import { mensagemDeFalhaDoGps, pegarPosicaoDoAparelho } from '@/utils/posicaoDoAparelho';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -492,24 +493,9 @@ export default function SearchPage() {
   const useGroups = groupedResults.length > 0;
 
   const handleUseDeviceRadar = async () => {
-    if (!navigator.geolocation) {
-      toast({
-        title: 'Geolocalização indisponível',
-        description: 'Seu navegador não suporta localização por GPS.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setIsLocating(true);
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 12000,
-          maximumAge: 0,
-        });
-      });
+      const position = await pegarPosicaoDoAparelho();
 
       await locationService.updateLocation(position.coords.latitude, position.coords.longitude);
       if (radar === 'all') setRadar('50');
@@ -519,12 +505,8 @@ export default function SearchPage() {
         title: 'Localização atualizada',
         description: 'Busca por proximidade ativada com a localização do seu dispositivo.',
       });
-    } catch {
-      toast({
-        title: 'Não foi possível usar o GPS',
-        description: 'Permita o acesso à localização do dispositivo para buscar por proximidade.',
-        variant: 'destructive',
-      });
+    } catch (erro) {
+      toast({ ...mensagemDeFalhaDoGps(erro), variant: 'destructive' });
     } finally {
       setIsLocating(false);
     }

@@ -36,6 +36,7 @@ import DisponivelHoje from '@/components/DisponivelHoje';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { mensagemDeFalhaDoGps, pegarPosicaoDoAparelho } from '@/utils/posicaoDoAparelho';
 
 type RadarDelivery = {
   deliveredAt: string;
@@ -330,24 +331,9 @@ export default function Radar() {
   };
 
   const handleUseDeviceLocation = async () => {
-    if (!navigator.geolocation) {
-      toast({
-        title: 'Geolocalização indisponível',
-        description: 'Seu navegador não suporta localização por GPS.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setIsLocating(true);
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 12000,
-          maximumAge: 0,
-        });
-      });
+      const position = await pegarPosicaoDoAparelho();
 
       const lat = position.coords.latitude;
       const lon = position.coords.longitude;
@@ -368,12 +354,8 @@ export default function Radar() {
           ? `Radar configurado para ${nextCity}, ${nextState}.`
           : 'Sua localização foi atualizada com sucesso.',
       });
-    } catch {
-      toast({
-        title: 'Não foi possível usar o GPS',
-        description: 'Permita o acesso à localização do dispositivo para preencher a cidade.',
-        variant: 'destructive',
-      });
+    } catch (erro) {
+      toast({ ...mensagemDeFalhaDoGps(erro), variant: 'destructive' });
     } finally {
       setIsLocating(false);
     }

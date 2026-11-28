@@ -40,6 +40,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import SeloVerificado from '@/components/SeloVerificado';
 import VerificacaoPerfil from '@/components/VerificacaoPerfil';
 import BandeiraPortugal from '@/components/BandeiraPortugal';
+import { mensagemDeFalhaDoGps, pegarPosicaoDoAparelho } from '@/utils/posicaoDoAparelho';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string; broken?: boolean };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
@@ -869,24 +870,9 @@ export default function Profile() {
   };
 
   const handleUpdateLocationFromGps = async () => {
-    if (!navigator.geolocation) {
-      toast({
-        title: 'GPS indisponível',
-        description: 'Seu aparelho ou navegador não disponibiliza localização.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setIsUpdatingGpsLocation(true);
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 0,
-        });
-      });
+      const position = await pegarPosicaoDoAparelho();
 
       const lat = Number(position.coords.latitude);
       const lng = Number(position.coords.longitude);
@@ -912,20 +898,7 @@ export default function Profile() {
         description: nextCity && nextState ? `${nextCity}, ${nextState}` : 'Seu GPS foi atualizado com sucesso.',
       });
     } catch (error: any) {
-      const code = Number(error?.code || 0);
-      const description =
-        code === 1
-          ? 'Você negou a permissão de localização do aparelho.'
-          : code === 2
-            ? 'Não foi possível identificar sua posição atual.'
-            : code === 3
-              ? 'O GPS demorou demais para responder. Tente novamente.'
-              : 'Não foi possível atualizar sua localização agora.';
-      toast({
-        title: 'Falha ao atualizar localização',
-        description,
-        variant: 'destructive',
-      });
+      toast({ ...mensagemDeFalhaDoGps(error), variant: 'destructive' });
     } finally {
       setIsUpdatingGpsLocation(false);
     }

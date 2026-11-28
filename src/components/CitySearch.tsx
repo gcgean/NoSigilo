@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { locationService } from '@/services/api';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { mensagemDeFalhaDoGps, pegarPosicaoDoAparelho } from '@/utils/posicaoDoAparelho';
 
 interface CitySearchProps {
   value: string;
@@ -47,36 +48,24 @@ export function CitySearch({ value, onChange, onSelect, placeholder = 'Cidade...
   }, [value, digitou]);
 
   const handleUseLocation = async () => {
-    if (!navigator.geolocation) {
-      toast({ title: 'Localização indisponível', variant: 'destructive' });
-      return;
-    }
     setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const nearest = await locationService.getNearestCity(pos.coords.latitude, pos.coords.longitude);
-          if (nearest?.name) {
-            if (onSelect) {
-              onSelect(nearest.name, nearest.state || '');
-            } else {
-              onChange(nearest.name);
-            }
-            setDigitou(false);
-            setCityResults([]);
-          }
-        } catch {
-          toast({ title: 'Não foi possível localizar', variant: 'destructive' });
-        } finally {
-          setIsLocating(false);
+    try {
+      const pos = await pegarPosicaoDoAparelho();
+      const nearest = await locationService.getNearestCity(pos.coords.latitude, pos.coords.longitude);
+      if (nearest?.name) {
+        if (onSelect) {
+          onSelect(nearest.name, nearest.state || '');
+        } else {
+          onChange(nearest.name);
         }
-      },
-      () => {
-        setIsLocating(false);
-        toast({ title: 'Permissão negada', variant: 'destructive' });
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+        setDigitou(false);
+        setCityResults([]);
+      }
+    } catch (erro) {
+      toast({ ...mensagemDeFalhaDoGps(erro), variant: 'destructive' });
+    } finally {
+      setIsLocating(false);
+    }
   };
 
   return (
