@@ -1505,6 +1505,27 @@ export default function Casa() {
         ))}
       </div>
 
+      {/* Sala vazia (28/11/2026): em 27/11 um perfil de Portugal escreveu "só vejo eu na sala"
+          (a noite de Portugal teve 4 pessoas). Explica o que fazer em vez de parecer quebrado. */}
+      {estado.presentes.filter((x) => x.id !== estado.eu.idPublico && !x.ausente).length === 0 && (
+        <div className="border-b border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85" data-testid="sala-vazia">
+          {info?.noitePortugal ? (
+            <>🥂 <b>Por enquanto só você por aqui.</b> A noite de Portugal está a começar: chame alguém pelo ➕ Convidar.
+              {' '}{(() => {
+                try {
+                  // 22h de Brasília no relógio de Lisboa (01h no inverno, 02h no verão).
+                  const hoje = new Date();
+                  const ref = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), hoje.getUTCDate(), 25, 0, 0));
+                  const hora = ref.toLocaleTimeString('pt-PT', { timeZone: 'Europe/Lisbon', hour: '2-digit', minute: '2-digit' });
+                  return <>Às <b>{hora}</b> (Lisboa) abre a noite do Brasil, com muito mais gente, e você também pode entrar.</>;
+                } catch { return null; }
+              })()}</>
+          ) : (
+            <>😉 <b>Por enquanto só você nesta sala.</b> Veja quem está nas outras salas na barra acima ou chame alguém pelo ➕ Convidar.</>
+          )}
+        </div>
+      )}
+
       {/* As minhas ficam no ícone 🚪 do topo; aqui só as de porta aberta para espiar. */}
       {cabinesAbertas.some((c) => c.aberta !== false && !c.souMembro) && (
         <div className="relative flex gap-2 overflow-x-auto border-b border-white/10 px-3 py-2 [scrollbar-width:none]">

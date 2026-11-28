@@ -11,7 +11,7 @@ type Duvida = { padrao: RegExp; resposta: string };
 const DUVIDAS: Duvida[] = [
   {
     padrao: /\b(o que|oq|que) (e|eh|seria) (essa |a |uma )?cabine|como (funciona|vai|entra|chama|faz)( (a|na|pra|para))? cabine|cabine (e|eh) o que/,
-    resposta: 'Cabine é um cantinho só de vocês 🚪 Toque na foto da pessoa lá em cima e escolha "Chamar pra cabine". Se ela aceitar, vocês saem do chat geral. Porta fechada = só vocês; porta aberta = outros podem espiar.',
+    resposta: 'Cabine é um cantinho só de vocês 🚪 Toque na foto da pessoa lá em cima e escolha "Chamar pra cabine". Se ela aceitar, vocês saem do chat geral. Porta fechada = só vocês; porta aberta = outros podem espiar. Dica: pagar um drink 🍸 antes de chamar ajuda a pessoa topar 😉',
   },
   {
     padrao: /quem (convida|chama|puxa)|como (eu )?(convido|chamo|chamar|convidar) (alguem|o casal|um casal|ela|eles|voces)/,
@@ -34,7 +34,7 @@ const DUVIDAS: Duvida[] = [
     resposta: 'Toque em "Quero brincar" lá em cima: eu te chamo para as brincadeiras da noite (eu nunca, verdade ou desafio, duelos) 🔥 E pode pagar um drink pra quem te chamou atenção tocando na foto dela.',
   },
   {
-    padrao: /perdid[oa]|nao sei .{0,10}funciona|nao (entendi|to entendendo|estou entendendo|sei como (funciona|usa|mexe)|sei (o que|oq) fazer|sei responder)|como (funciona|que funciona|usa|mexe)( isso| aqui| esse trem| a casa)?\b|tentando entender|igual cego|que nem cego|mais perdid|aprendendo a mexer|quem me (explica|apresenta)/,
+    padrao: /perdid[oa]|nao sei .{0,10}funciona|nao (entendi|entendo|to entendendo|estou entendendo|sei como (funciona|usa|mexe)|sei (o que|oq) fazer|sei responder)|como (funciona|que funciona|usa|mexe)( isso| aqui| esse trem| a casa)?\b|tentando entender|igual cego|que nem cego|mais perdid|aprendendo a mexer|quem me (explica|apresenta)/,
     resposta: 'Relaxa, é fácil 😊 1) Conversa aqui no chat com a sala. 2) Toque na foto de alguém lá em cima para pagar um drink 🍸, mandar um olhar 👀 ou chamar pra cabine 🚪 (um cantinho só de vocês). 3) Toque em "Quero brincar" e eu te chamo pras brincadeiras. Qualquer dúvida, toque em "Responder à Lola" numa mensagem minha 😉',
   },
 ];

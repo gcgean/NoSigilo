@@ -9,11 +9,13 @@ describe('ajuda da Lola para quem está perdido (27/11/2026)', () => {
       'Boa noite a todos. Nao entendi como funciona kkkk', 'Primeira vez aqui não sei vomo funciona',
       'Nunca participei estou igual cego em tiroteio', 'Estou perdida aqui kkkk', 'Primeira vez aqui, como funciona esse trem heim rs',
       'To perdido sem saber responder ou interagir', 'Olhar amor , ainda estou aprendendo a mexer no app',
+      'Sou novo aqui nao entendo muito como funciona',
     ]) expect(respostaDeAjuda(t), t).toBeTruthy();
   });
 
   it('explica cabine, quem convida e pulseira com a resposta certa', () => {
     expect(respostaDeAjuda('O que e essa cabine ??')).toContain('Cabine é um cantinho');
+    expect(respostaDeAjuda('Como funciona a cabine?')).toContain('drink');
     expect(respostaDeAjuda('Mas quem convida casal no caso?')).toContain('Qualquer um pode chamar');
     expect(respostaDeAjuda('Erramos a pulseira')).toContain('pulseira');
     expect(respostaDeAjuda('Como faço pra ver?')).toContain('abrir');
